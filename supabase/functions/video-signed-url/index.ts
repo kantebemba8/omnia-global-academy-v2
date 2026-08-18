@@ -3,6 +3,7 @@ import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 import { makeCorsHeaders, getClientIP, logSecurityEvent } from "../_shared/security.ts";
 
 import { getActiveOmniaSessionResult } from "../_shared/omnia-auth.ts";
+import { hasStructurePermission, validatedStructureAccess } from "../_shared/structure-access.ts";
 import { signedStreamManifest } from "../_shared/cloudflare-stream.ts";
 import { PRIVATE_COURSE_BUCKET_SET, createSignedObjectUrl, parseStorageLocator } from "../_shared/protected-storage.ts";
 Deno.serve(async (req: Request) => {
@@ -13,7 +14,7 @@ Deno.serve(async (req: Request) => {
   const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
   if (!token) return json({ error: "AUTH_REQUIRED" }, 401);
 
-  let body: { action?: string; lesson_id?: string; course_id?: string; device_id?: string; seconds?: number };
+  let body: { action?: string; lesson_id?: string; course_id?: string; device_id?: string; seconds?: number; preview?: string | boolean };
   try { body = await req.json(); } catch { return json({ error: "INVALID_BODY" }, 400); }
   const action = body.action ?? "stream";
   const { lesson_id, course_id } = body;
@@ -24,14 +25,33 @@ Deno.serve(async (req: Request) => {
     const { data: sess } = await getActiveOmniaSessionResult(sb, token);
     if (!sess) return json({ error: "SESSION_INVALID" }, 401);
     const userId = sess.user_id as string;
+    const previewMode = String(body.preview || "").toLowerCase();
+    const previewRequested = ["learner", "admin", "true"].includes(previewMode);
+    let previewAllowed = false;
+    if (previewRequested) {
+      const { data: course } = await sb.from("courses").select("creator_id,creator_context,structure_id").eq("id", course_id).maybeSingle();
+      if (!course) return json({ error: "COURSE_NOT_FOUND" }, 404);
+      const { data: roleRows } = await sb.from("user_roles").select("role").eq("user_id", userId);
+      if ((roleRows || []).some((row: any) => row.role === "super_admin")) previewAllowed = true;
+      else if (String(course.creator_id || "") === userId) {
+        if (String(course.creator_context || "") !== "structure") previewAllowed = true;
+        else if (course.structure_id) {
+          const access = await validatedStructureAccess(sb, userId, String(course.structure_id));
+          previewAllowed = hasStructurePermission(access, "can_edit_courses");
+        }
+      }
+      if (!previewAllowed) return json({ error: "PREVIEW_FORBIDDEN" }, 403);
+    }
     const { data: enroll } = await sb.from("user_enrollments").select("id").eq("user_id", userId).eq("course_id", course_id).maybeSingle();
-    if (!enroll) return json({ error: "NOT_ENROLLED", message: "Cette formation n’est pas accessible avec ce compte." }, 403);
+    if (!previewAllowed && !enroll) return json({ error: "NOT_ENROLLED", message: "Cette formation n’est pas accessible avec ce compte." }, 403);
     const { data: lesson } = await sb.from("course_lessons").select("id,cloudflare_stream_uid,video_url,duration_seconds,module_id").eq("id", lesson_id).maybeSingle();
     if (!lesson) return json({ error: "LESSON_NOT_FOUND" }, 404);
     const { data: lessonModule } = await sb.from("course_modules").select("course_id").eq("id", lesson.module_id).maybeSingle();
     if (!lessonModule || lessonModule.course_id !== course_id) {
       return json({ error: "LESSON_COURSE_MISMATCH", message: "Cette leçon n’appartient pas à la formation demandée." }, 403);
     }
+
+    if (previewAllowed && action !== "stream") return json({ error: "PREVIEW_READ_ONLY" }, 403);
 
     if (action === "offline_authorize") {
       if (!body.device_id) return json({ error: "DEVICE_REQUIRED" }, 400);

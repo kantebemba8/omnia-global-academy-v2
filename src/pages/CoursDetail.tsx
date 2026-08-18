@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ChevronDown, ChevronRight, Lock, PlayCircle, Volume2, FileText, Check, Ear, BookOpen, Mic, PenLine, AlertTriangle, BadgeCheck, Building2, ExternalLink, Eye, Radio, Video } from 'lucide-react';
+import { ChevronDown, ChevronRight, Lock, PlayCircle, Volume2, FileText, Check, Ear, BookOpen, Mic, PenLine, AlertTriangle, BadgeCheck, Building2, ExternalLink, Eye, Radio, Video, ShieldCheck } from 'lucide-react';
 import { AdaptiveFormationsLayout } from '../components/formations/FormationsRoleLayout';
 import { CourseCard, type CourseCardData } from '../components/CourseCard';
 import { useAuth } from '../hooks/useAuth';
@@ -47,6 +47,8 @@ export function CoursDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { user, sessionToken } = useAuth();
+  const previewMode = new URLSearchParams(window.location.search).get('preview');
+  const isCreatorPreview = previewMode === 'visitor';
 
   const [detail, setDetail] = useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState(true);
@@ -55,6 +57,7 @@ export function CoursDetail() {
   const [enrolling, setEnrolling] = useState(false);
   const [enrollMsg, setEnrollMsg] = useState('');
   const [similar, setSimilar] = useState<CourseCardData[]>([]);
+  const [aboutOpen, setAboutOpen] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -62,7 +65,7 @@ export function CoursDetail() {
     const headers: Record<string, string> = { Authorization: `Bearer ${ANON_KEY}` };
     if (sessionToken) headers.Authorization = `Bearer ${sessionToken}`;
 
-    fetch(`${ENDPOINTS.courseDetail}?id=${id}`, { headers })
+    fetch(`${ENDPOINTS.courseDetail}?id=${id}${isCreatorPreview ? '&preview=visitor' : ''}`, { headers })
       .then(r => r.json())
       .then(d => {
         setDetail(d);
@@ -80,7 +83,7 @@ export function CoursDetail() {
       })
       .catch(() => setDetail(null))
       .finally(() => setLoading(false));
-  }, [id, sessionToken]);
+  }, [id, sessionToken, isCreatorPreview]);
 
   const toggleModule = (mid: string) => {
     setOpenModules(prev => {
@@ -155,9 +158,16 @@ export function CoursDetail() {
   const cpd = course.cpd_hours as number ?? 0;
   const levelColor = LEVEL_COLORS[course.level as string] ?? '#6B7280';
   const isFree = course.is_free as boolean;
+  const averageRating = Number(course.average_rating || 0);
+  const totalReviews = Number(course.total_reviews || 0);
+  const totalStudents = Number(course.total_students || 0);
+  const priceXof = Number(course.price_xof || 0);
 
   // Purchase card CTA
   const renderCTA = () => {
+    if (isCreatorPreview) {
+      return <button type="button" disabled className="w-full py-3 rounded-lg font-semibold text-white opacity-90" style={{ backgroundColor: '#BF8813' }}>Acheter maintenant</button>;
+    }
     if (!user) {
       return (
         <div className="space-y-2">
@@ -198,9 +208,11 @@ export function CoursDetail() {
     <AdaptiveFormationsLayout>
     <div style={{ fontFamily: 'Inter, system-ui, sans-serif', backgroundColor: '#FFFFFF' }}>
 
+      {isCreatorPreview && <div className="fixed left-0 right-0 top-0 z-50 border-b" style={{background:'#FFFBEB',borderColor:'#E9C969'}}><div className="mx-auto flex max-w-7xl items-center gap-2 px-4 py-2.5 text-xs font-semibold" style={{color:'#7A560C'}}><ShieldCheck size={15}/>Prévisualisation « visiteur avant achat » — cette page est la vraie présentation de la formation. Les actions d’achat sont neutralisées.</div></div>}
+
       {/* ── HERO ──────────────────────────────────────────────────────── */}
-      <section className="pt-16" style={{ backgroundColor: '#002050' }}>
-        <div className="max-w-6xl mx-auto px-6 py-12 flex flex-col md:flex-row gap-8 items-start">
+      <section className={isCreatorPreview ? "pt-24" : "pt-16"} style={{ background: 'linear-gradient(135deg,#00183F 0%,#002050 62%,#123C6A 100%)' }}>
+        <div className="max-w-7xl mx-auto px-5 sm:px-6 py-10 sm:py-14 grid lg:grid-cols-[minmax(0,1fr)_minmax(390px,480px)] gap-9 items-center">
           {/* Left */}
           <div className="flex-1">
             {/* Breadcrumb */}
@@ -225,16 +237,17 @@ export function CoursDetail() {
             {course.short_description && <p className="mb-4" style={{ color: '#BF8813', fontSize: '15px', lineHeight: 1.6 }}>{String(course.short_description)}</p>}
 
             <div className="flex items-center gap-3 mb-3 flex-wrap">
-              <Stars rating={course.average_rating as number} size={16} />
-              <span className="font-bold text-white text-sm">{(course.average_rating as number).toFixed(1)}</span>
-              <span className="text-sm" style={{ color: 'rgba(255,255,255,0.60)' }}>({course.total_reviews as number} avis)</span>
-              <span className="text-sm" style={{ color: 'rgba(255,255,255,0.60)' }}>· {course.total_students as number} élèves</span>
+              <Stars rating={averageRating} size={16} />
+              <span className="font-bold text-white text-sm">{averageRating.toFixed(1)}</span>
+              <span className="text-sm" style={{ color: 'rgba(255,255,255,0.60)' }}>({totalReviews} avis)</span>
+              <span className="text-sm" style={{ color: 'rgba(255,255,255,0.60)' }}>· {totalStudents} élèves</span>
             </div>
 
-            {creator.full_name && (
-              <p className="text-sm mb-2" style={{ color: 'rgba(255,255,255,0.70)' }}>
-                Créé par <span className="underline cursor-pointer hover:text-white">{String(creator.full_name)}</span>
-              </p>
+            {(creator.full_name || creator.school_name) && (
+              <div className="mt-5 flex items-center gap-3">
+                {(creator.avatar_url || creator.logo_url) ? <img src={String(creator.avatar_url || creator.logo_url)} alt="" className="h-11 w-11 rounded-full border-2 border-white/30 object-cover" /> : <Monogram name={String(creator.full_name || creator.school_name || 'Omnia')} size={44} />}
+                <div><p className="text-xs" style={{ color:'rgba(255,255,255,.55)' }}>Créé par</p><p className="text-sm font-bold text-white">{String(creator.full_name || creator.school_name)}</p>{creator.expertise_domain&&<p className="text-xs" style={{color:'#E5BE5B'}}>{String(creator.expertise_domain)}</p>}</div>
+              </div>
             )}
             {creator.school_name && (
               <p className="text-sm mb-2" style={{ color: 'rgba(255,255,255,0.70)' }}>École : <span>{String(creator.school_name)}</span></p>
@@ -243,7 +256,7 @@ export function CoursDetail() {
           </div>
 
           {/* Purchase card */}
-          <div className="w-full md:w-80 flex-shrink-0">
+          <div className="w-full min-w-0">
             <div className="rounded-2xl overflow-hidden sticky" style={{ top: '88px', backgroundColor: '#FFFFFF', boxShadow: '0 8px 32px rgba(0,0,0,0.22)' }}>
               {course.cover_image_url
                 ? <img src={String(course.cover_image_url)} alt={String(course.title)} style={{ width: '100%', aspectRatio: '16/9', objectFit: 'cover' }} />
@@ -251,11 +264,11 @@ export function CoursDetail() {
               }
               <div className="p-5">
                 <p className="font-bold mb-4" style={{ color: isFree ? '#1E7A52' : '#002050', fontSize: '28px' }}>
-                  {isFree ? 'Gratuit' : `${(course.price_xof as number).toLocaleString()} XOF`}
+                  {isFree ? 'Gratuit' : `${priceXof.toLocaleString('fr-FR')} XOF`}
                 </p>
                 {renderCTA()}
-                  <button onClick={() => navigate(`/cours/${id}/apercu`)} className="w-full mt-2 py-2.5 rounded-lg text-sm font-semibold" style={{ border: '1.5px solid #002050', color: '#002050', backgroundColor: '#FFFFFF' }}>
-                    Lire l’introduction gratuitement
+                  <button onClick={() => navigate(isCreatorPreview ? `/cours/${id}/apprendre?preview=learner` : `/cours/${id}/apercu`)} className="w-full mt-2 py-2.5 rounded-lg text-sm font-semibold" style={{ border: '1.5px solid #002050', color: '#002050', backgroundColor: '#FFFFFF' }}>
+                    {isCreatorPreview ? 'Voir le rendu apprenant après achat' : 'Lire un aperçu gratuit'}
                   </button>
                 <ul className="mt-4 space-y-1.5">
                   {[
@@ -277,17 +290,17 @@ export function CoursDetail() {
       </section>
 
       {/* ── MAIN CONTENT ──────────────────────────────────────────────── */}
-      <div className="max-w-4xl mx-auto px-6 py-12 space-y-12">
+      <div className="max-w-6xl mx-auto px-5 sm:px-6 py-10 sm:py-12 space-y-10">
 
         {/* Présentation visible avant achat */}
-        {course.long_description && (
-          <section>
-            <h2 className="font-bold mb-4" style={{ color: '#002050', fontSize: '22px' }}>À propos de cette formation</h2>
-            <div className="p-5 rounded-xl text-sm whitespace-pre-line" style={{ border: '1px solid #E4E7EC', color: '#374151', lineHeight: 1.75 }}>
-              {String(course.long_description)}
-            </div>
+        {course.long_description && (() => { const text=String(course.long_description); const isLong=text.length>900; const visible=!isLong||aboutOpen?text:`${text.slice(0,900).trim()}…`; return (
+          <section className="rounded-[22px] border bg-white p-5 sm:p-7" style={{borderColor:'#E4E7EC'}}>
+            <p className="text-xs font-black uppercase tracking-[.15em]" style={{color:'#BF8813'}}>Présentation</p>
+            <h2 className="mt-1 font-black" style={{ color: '#002050', fontSize: '24px' }}>À propos de cette formation</h2>
+            <div className="mt-4 text-sm whitespace-pre-line" style={{ color: '#475569', lineHeight: 1.8 }}>{visible}</div>
+            {isLong&&<button type="button" onClick={()=>setAboutOpen(value=>!value)} className="mt-3 text-sm font-bold" style={{color:'#002050'}}>{aboutOpen?'Réduire':'Voir plus'}</button>}
           </section>
-        )}
+        ); })()}
 
         {course.target_audience && (
           <section>
@@ -301,9 +314,9 @@ export function CoursDetail() {
 
         {/* Objectives */}
         {Array.isArray(course.objectives) && (course.objectives as unknown[]).length > 0 && (
-          <section>
-            <h2 className="font-bold mb-5" style={{ color: '#002050', fontSize: '22px' }}>Ce que vous apprendrez</h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 p-5 rounded-xl" style={{ border: '1px solid #E4E7EC' }}>
+          <section className="rounded-[22px] border bg-white p-5 sm:p-7" style={{borderColor:'#E4E7EC'}}>
+            <h2 className="font-black mb-5" style={{ color: '#002050', fontSize: '22px' }}>Ce que vous allez apprendre</h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {(course.objectives as string[]).map((obj, i) => (
                 <div key={i} className="flex items-start gap-3">
                   <Check size={15} style={{ color: '#BF8813', flexShrink: 0, marginTop: 2 }} />
@@ -518,7 +531,7 @@ export function CoursDetail() {
                       onClick={() => toggleModule(mid)}
                     >
                       <div className="flex items-start gap-3">
-                        <span className="text-xs font-bold mt-0.5" style={{ color: '#BF8813' }}>Module {mi + 1}</span>
+                        <span className="text-[10px] font-black uppercase tracking-[.08em] mt-0.5 rounded-lg px-2 py-1" style={{ color: '#8A650F', background:'#FFF7E1' }}>{mod.is_intro ? 'Introduction' : mod.is_conclusion ? 'Conclusion' : mod.is_final_exam ? 'Examen final' : `Module ${modules.slice(0,mi+1).filter((item:any)=>!item.is_intro&&!item.is_conclusion&&!item.is_final_exam).length}`}</span>
                         <div>
                           <p className="font-semibold text-sm" style={{ color: '#002050' }}>{String(mod.title)}</p>
                           <p className="text-xs mt-0.5" style={{ color: '#9CA3AF' }}>{lessons.length} leçon{lessons.length > 1 ? 's' : ''}</p>
@@ -528,11 +541,11 @@ export function CoursDetail() {
                     </button>
                     {isOpen && (
                       <div style={{ borderTop: '1px solid #F0F0F0' }}>
-                        {String(mod.objective) && (
+                        {mod.objective && (
                           <p className="px-5 py-3 text-xs" style={{ color: '#6B7280', backgroundColor: '#FAFAFA' }}>Objectif : {String(mod.objective)}</p>
                         )}
                         {lessons.map((lesson, li) => {
-                          const isPreview = lesson.is_free_preview as boolean || (mi === 0 && li === 0);
+                          const isPreview = lesson.is_free_preview as boolean;
                           const sec = lesson.cpd_calculated_time_seconds as number ?? 0;
                           const mins = sec > 0 ? `${Math.ceil(sec / 60)} min` : '';
                           return (
@@ -543,7 +556,7 @@ export function CoursDetail() {
                               <span className="flex-1 text-sm" style={{ color: '#374151' }}>{String(lesson.title)}</span>
                               {mins && <span className="text-xs" style={{ color: '#9CA3AF' }}>{mins}</span>}
                               {isPreview
-                                ? <button onClick={() => navigate(`/cours/${id}/apercu`)} className="text-xs font-semibold px-2 py-0.5 rounded" style={{ backgroundColor: 'rgba(30,122,82,0.10)', color: '#1E7A52' }}>APERÇU</button>
+                                ? <button onClick={() => navigate(isCreatorPreview ? `/cours/${id}/apprendre/${lesson.id}?preview=learner` : `/cours/${id}/apercu`)} className="text-xs font-semibold px-2 py-0.5 rounded" style={{ backgroundColor: 'rgba(30,122,82,0.10)', color: '#1E7A52' }}>APERÇU</button>
                                 : <Lock size={13} style={{ color: '#D1D5DB', flexShrink: 0 }} />
                               }
                             </div>
@@ -562,7 +575,7 @@ export function CoursDetail() {
         <section>
           <h2 className="font-bold mb-5" style={{ color: '#002050', fontSize: '22px' }}>Votre formateur</h2>
           <div className="flex items-start gap-4 p-5 rounded-xl" style={{ border: '1px solid #E4E7EC' }}>
-            <Monogram name={String(creator.full_name ?? creator.school_name ?? 'Omnia')} size={64} />
+            {(creator.avatar_url || creator.logo_url) ? <img src={String(creator.avatar_url || creator.logo_url)} alt="" className="h-16 w-16 rounded-full object-cover" /> : <Monogram name={String(creator.full_name ?? creator.school_name ?? 'Omnia')} size={64} />}
             <div>
               <p className="font-bold" style={{ color: '#002050', fontSize: '17px' }}>
                 {String(creator.full_name ?? creator.school_name ?? 'Omnia Global Academy')}
@@ -579,9 +592,9 @@ export function CoursDetail() {
           <h2 className="font-bold mb-6" style={{ color: '#002050', fontSize: '22px' }}>Avis et évaluations</h2>
           <div className="flex flex-col sm:flex-row gap-8 mb-8">
             <div className="text-center flex-shrink-0">
-              <p className="font-bold leading-none" style={{ color: '#002050', fontSize: '56px' }}>{(course.average_rating as number).toFixed(1)}</p>
-              <Stars rating={course.average_rating as number} size={20} />
-              <p className="text-xs mt-1" style={{ color: '#9CA3AF' }}>{course.total_reviews as number} avis</p>
+              <p className="font-bold leading-none" style={{ color: '#002050', fontSize: '56px' }}>{averageRating.toFixed(1)}</p>
+              <Stars rating={averageRating} size={20} />
+              <p className="text-xs mt-1" style={{ color: '#9CA3AF' }}>{totalReviews} avis</p>
             </div>
             <div className="flex-1 space-y-2">
               {ratingDist.map(({ stars, count, pct }) => (

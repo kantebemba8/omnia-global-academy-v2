@@ -2,6 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 
 import { getActiveOmniaSessionResult } from "../_shared/omnia-auth.ts";
+import { hasStructurePermission, validatedStructureAccess } from "../_shared/structure-access.ts";
 const corsHeaders={"Access-Control-Allow-Origin":"*","Access-Control-Allow-Methods":"GET, OPTIONS","Access-Control-Allow-Headers":"Content-Type, Authorization, X-Client-Info, Apikey"};
 const json=(d:unknown,s=200)=>new Response(JSON.stringify(d),{status:s,headers:{...corsHeaders,"Content-Type":"application/json"}});
 
@@ -10,7 +11,11 @@ async function canPreviewCourse(sb:any,userId:string,courseId:string){
   if(!course)return false;
   const {data:roleRows}=await sb.from("user_roles").select("role").eq("user_id",userId);
   if((roleRows||[]).some((row:any)=>row.role==="super_admin"))return true;
-  return String(course.creator_id||"")===userId;
+  if(String(course.creator_id||"")!==userId)return false;
+  if(String(course.creator_context||"")!=="structure")return true;
+  if(!course.structure_id)return false;
+  const access=await validatedStructureAccess(sb,userId,String(course.structure_id));
+  return hasStructurePermission(access,"can_edit_courses");
 }
 
 Deno.serve(async(req:Request)=>{
@@ -20,7 +25,8 @@ Deno.serve(async(req:Request)=>{
   if(!token)return json({error:"AUTH_REQUIRED"},401);
   const url=new URL(req.url);
   const courseId=url.searchParams.get("course_id");
-  const preview=url.searchParams.get("preview")==="admin";
+  const previewMode=String(url.searchParams.get("preview")||"").toLowerCase();
+  const preview=["learner","admin"].includes(previewMode);
   if(!courseId)return json({error:"course_id requis"},400);
   try{
     const sb=createClient(Deno.env.get("SUPABASE_URL")??"",Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")??"");
@@ -70,6 +76,6 @@ Deno.serve(async(req:Request)=>{
     const allRequiredLessons=enriched.flatMap((m:any)=>m.lessons.filter((l:any)=>l.is_required!==false));const totalLessons=allRequiredLessons.length;const completed=allRequiredLessons.filter((l:any)=>l.is_completed).length;
     const courseCompleted=totalLessons>0&&completed===totalLessons&&allModulesPassed&&(!finalAssessment||Boolean(passedByAssessment[finalAssessment.id]));
     if(courseCompleted&&!previewAllowed){try{await sb.rpc("oga_referral_record_event",{p_referred_user_id:userId,p_event_type:"course_completed",p_event_key:`course-completed:${courseId}:${userId}`,p_metadata:{course_id:courseId}})}catch{/* le parrainage ne bloque jamais la progression */}}
-    return json({modules:enriched,preview:previewAllowed,final_validation_unlocked:previewAllowed||allModulesPassed,final_validation:finalAttempt?{status:finalAttempt.passed?"passed":finalAttempt.status,score:finalAttempt.score,validation_type:"assessment"}:null,progress:{total_lessons:totalLessons,completed_lessons:completed,percent:totalLessons?Math.round(completed/totalLessons*100):0}});
+    return json({modules:enriched,preview:previewAllowed,preview_mode:previewAllowed?previewMode:null,final_validation_unlocked:previewAllowed||allModulesPassed,final_validation:finalAttempt?{status:finalAttempt.passed?"passed":finalAttempt.status,score:finalAttempt.score,validation_type:"assessment"}:null,progress:{total_lessons:totalLessons,completed_lessons:completed,percent:totalLessons?Math.round(completed/totalLessons*100):0}});
   }catch(error){console.error("course-progress",error);return json({error:"SERVER_ERROR",message:(error as Error).message},500);}
 });

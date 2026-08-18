@@ -117,6 +117,7 @@ export function AssessmentEngine({
   scope = 'lesson',
   onPassed,
   onSubmitted,
+  preview = false,
 }: {
   courseId: string;
   lessonId?: string;
@@ -126,6 +127,7 @@ export function AssessmentEngine({
   scope?: 'lesson' | 'module' | 'final';
   onPassed?: () => void;
   onSubmitted?: (attemptId?: string) => void;
+  preview?: boolean;
 }) {
   const [assessment, setAssessment] = useState<Assessment | null>(null);
   const [answers, setAnswers] = useState<Record<string, AnswerValue>>({});
@@ -147,6 +149,7 @@ export function AssessmentEngine({
         assessment_id: assessmentId,
         session_id: sessionId,
         scope,
+        preview,
       });
       setAssessment(data.assessment || null);
     } catch (caught) {
@@ -154,7 +157,7 @@ export function AssessmentEngine({
     } finally {
       setLoading(false);
     }
-  }, [assessmentId, courseId, lessonId, moduleId, scope, sessionId]);
+  }, [assessmentId, courseId, lessonId, moduleId, scope, sessionId, preview]);
 
   useEffect(() => {
     setAnswers({});
@@ -178,6 +181,7 @@ export function AssessmentEngine({
   }
 
   function setFiles(questionId: string, files: FileList | null) {
+    if (preview) return;
     const selected = Array.from(files || []).map(file => ({ file }));
     setAnswers(current => ({ ...current, [questionId]: { files: selected } }));
   }
@@ -221,6 +225,7 @@ export function AssessmentEngine({
   }
 
   async function submit() {
+    if (preview) { setResult({ preview: true }); return; }
     if (!assessment || !complete || assessment.latest_attempt?.passed || !assessment.can_retry) return;
     setSending(true);
     setUploading(true);
@@ -257,6 +262,7 @@ export function AssessmentEngine({
   }
 
   async function completeRemediation() {
+    if (preview) return;
     if (!assessment || assessment.remediation_mode === 'manual') return;
     setRemediationLoading(true);
     setError('');
@@ -296,6 +302,7 @@ export function AssessmentEngine({
 
   return (
     <section className="mt-8 rounded-2xl border p-5" style={{ borderColor: BORDER }}>
+      {preview && <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-semibold text-amber-800">Mode prévisualisation — vous pouvez parcourir les questions, mais aucune réponse, copie, tentative ou note n’est enregistrée.</div>}
       <div className="mb-4 flex items-start justify-between gap-4">
         <div>
           <h2 className="font-semibold" style={{ color: BLUE }}>{assessment.title}</h2>
@@ -312,7 +319,7 @@ export function AssessmentEngine({
 
       {assessment.instructions && <p className="mb-4 text-sm">{assessment.instructions}</p>}
 
-      {latest && (
+      {!preview && latest && (
         <div className={`mb-5 rounded-xl p-4 ${passed ? 'bg-green-50' : pending ? 'bg-amber-50' : 'bg-gray-50'}`}>
           <div className="flex items-start gap-2">
             {passed ? <CheckCircle size={18} className="mt-0.5 text-green-700" /> : pending ? <Clock size={18} className="mt-0.5 text-amber-700" /> : <XCircle size={18} className="mt-0.5 text-red-700" />}
@@ -327,7 +334,7 @@ export function AssessmentEngine({
         </div>
       )}
 
-      {assessment.correction && (
+      {!preview && assessment.correction && (
         <div className="mb-5 rounded-xl border p-4" style={{ borderColor: '#C7D7EF', background: '#F7FAFF' }}>
           <p className="text-sm font-semibold" style={{ color: BLUE }}>Correction publiée</p>
           <p className="mt-1 text-sm text-gray-700">Note : {assessment.correction.score ?? 0}/{assessment.correction.max_score ?? 100}</p>
@@ -340,14 +347,14 @@ export function AssessmentEngine({
         </div>
       )}
 
-      {assessment.retry_blocked_until && !assessment.remediation_blocked && (
+      {!preview && assessment.retry_blocked_until && !assessment.remediation_blocked && (
         <div className="mb-5 flex items-start gap-2 rounded-xl bg-amber-50 p-4 text-sm text-amber-800">
           <Clock size={17} className="mt-0.5 shrink-0" />
           <div><p className="font-semibold">Nouvelle tentative temporairement bloquée</p><p className="mt-1">Disponible le {formatDate(assessment.retry_blocked_until)}.</p></div>
         </div>
       )}
 
-      {assessment.remediation_blocked && (
+      {!preview && assessment.remediation_blocked && (
         <div className="mb-5 rounded-xl bg-amber-50 p-4 text-sm text-amber-900">
           <div className="flex items-start gap-2"><RefreshCw size={17} className="mt-0.5 shrink-0" /><div><p className="font-semibold">Remédiation obligatoire : {remediationLabel(assessment.remediation_mode)}</p><p className="mt-1">{assessment.retry_instructions || 'Revoyez le contenu concerné avant de reprendre l’évaluation.'}</p></div></div>
           {assessment.remediation_mode !== 'manual' && (
@@ -428,9 +435,9 @@ export function AssessmentEngine({
 
               {['exercise', 'assignment_upload', 'oral_response', 'pronunciation'].includes(question.question_type) && (
                 <div>
-                  <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm">
-                    <Upload size={15} /> {question.question_type === 'oral_response' || question.question_type === 'pronunciation' ? 'Déposer mon enregistrement audio' : 'Déposer mon travail'}
-                    <input type="file" multiple className="hidden" accept={(question.accepted_submission_types || []).map(type => `.${type}`).join(',')} onChange={event => setFiles(question.id, event.target.files)} />
+                  <label className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm ${preview ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}>
+                    <Upload size={15} /> {preview ? 'Dépôt désactivé en prévisualisation' : (question.question_type === 'oral_response' || question.question_type === 'pronunciation' ? 'Déposer mon enregistrement audio' : 'Déposer mon travail')}
+                    <input type="file" multiple disabled={preview} className="hidden" accept={(question.accepted_submission_types || []).map(type => `.${type}`).join(',')} onChange={event => setFiles(question.id, event.target.files)} />
                   </label>
                   {pendingFiles(question.id).length > 0 && (
                     <div className="mt-2 space-y-1 text-xs text-green-700">
@@ -446,13 +453,17 @@ export function AssessmentEngine({
 
       {error && <p className="mt-4 flex items-center gap-2 rounded-lg bg-red-50 p-3 text-sm text-red-700"><AlertCircle size={16} />{error}</p>}
 
-      {result && !latest && (
+      {result && !latest && !preview && (
         <div className={`mt-4 rounded-xl p-4 ${result.passed ? 'bg-green-50' : 'bg-amber-50'}`}>
           {result.passed ? <div className="flex gap-2 text-green-700"><CheckCircle size={18} />Évaluation réussie : {result.score}%</div> : result.pending_review ? <div className="flex gap-2 text-amber-700"><Clock size={18} />Réponse envoyée, correction en attente.</div> : <div className="flex gap-2 text-red-700"><XCircle size={18} />Score : {result.score}% — seuil requis {assessment.passing_score}%.</div>}
         </div>
       )}
 
-      {!passed && !pending && !blocked && (
+      {preview ? (
+        <div className="mt-5 rounded-xl border border-blue-100 bg-blue-50 p-4 text-sm text-blue-900">
+          <div className="flex items-start gap-2"><CheckCircle size={17} className="mt-0.5 shrink-0" /><div><p className="font-semibold">Simulation en lecture seule</p><p className="mt-1 text-xs">Vous pouvez vérifier toutes les questions et interactions. L’envoi, les dépôts de fichiers, la note, les tentatives et la progression sont volontairement désactivés dans cette prévisualisation.</p></div></div>
+        </div>
+      ) : !passed && !pending && !blocked && (
         <button disabled={!complete || sending} onClick={submit} className="mt-5 inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-40" style={{ backgroundColor: BLUE }}>
           {sending ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
           {uploading ? 'Téléversement des fichiers…' : 'Envoyer l’évaluation'}

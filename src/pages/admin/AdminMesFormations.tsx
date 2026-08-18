@@ -26,6 +26,8 @@ interface Formation {
   last_autosave_at?: string;
   admin_comment?: string;
   template_used?: string;
+  module_count?: number;
+  lesson_count?: number;
 }
 
 const STUDIO_STATUS: Record<string, { label: string; color: string; bg: string; dot: string; icon: typeof Clock }> = {
@@ -257,6 +259,9 @@ export default function AdminMesFormations() {
                             {LEVEL_LABELS[f.level] || f.level}
                           </span>
                         )}
+                        <span className="text-xs font-medium" style={{ color: '#64748B' }}>
+                          {f.module_count || 0} module{(f.module_count || 0) !== 1 ? 's' : ''} · {f.lesson_count || 0} leçon{(f.lesson_count || 0) !== 1 ? 's' : ''}
+                        </span>
                         {f.word_count && f.word_count > 0 && (
                           <span className="text-xs" style={{ color: '#9CA3AF' }}>
                             {f.word_count} mots · {f.estimated_read_min || Math.ceil(f.word_count / 200)} min
@@ -318,6 +323,12 @@ export default function AdminMesFormations() {
                           {deletingId === f.id ? 'Suppression…' : 'Supprimer'}
                         </button>
                       )}
+
+                      <button onClick={() => navigate(`/cours/${f.id}?preview=visitor`)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border"
+                        style={{ borderColor: '#BF8813', color: '#8A650F' }}>
+                        <Eye size={12} /> Prévisualiser
+                      </button>
 
                       {/* Modifier */}
                       <button onClick={() => navigate(`/admin/studio/${f.id}`)}

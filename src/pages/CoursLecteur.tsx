@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { CheckCircle, Circle, PlayCircle, Volume2, FileText, ChevronDown, ChevronRight, X, Bot, ArrowLeft, ClipboardList, Trophy, Send, AlertCircle, ExternalLink, WifiOff, Database, ShieldCheck, Gauge, RefreshCw, Menu } from 'lucide-react';
+import { CheckCircle, Circle, PlayCircle, Volume2, FileText, ChevronDown, ChevronRight, X, Bot, ArrowLeft, ClipboardList, Trophy, Send, AlertCircle, ExternalLink, WifiOff, Database, ShieldCheck, Gauge, RefreshCw, Menu, Target, Clock3, Layers3, Sparkles } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { useCpdTimer } from '../hooks/useCpdTimer';
 import { ENDPOINTS } from '../lib/config';
@@ -26,6 +26,7 @@ interface ModuleItem {
   module_id: string; title: string; position: number; description?: string;
   lessons: LessonItem[]; exam_unlocked: boolean; exam_passed: boolean;
   exam_score: number | null; exam_attempts: number; is_unlocked: boolean;
+  is_intro?: boolean; is_conclusion?: boolean; is_final_exam?: boolean; is_required?: boolean;
 }
 interface LessonContent {
   id: string; title: string; content_type: 'video' | 'audio' | 'text' | 'external';
@@ -312,55 +313,104 @@ function CpdBar({ required, spent, reached, isActive, assessmentPassed, isComple
   );
 }
 
-function CourseInfoView({ info, modules, progressPct, preview, onStart, onSelectLesson }: {
-  info: CourseInfoPayload | null; modules: ModuleItem[]; progressPct: number; preview: boolean;
+function CourseInfoView({ info, modules, progressPct, preview, previewMode, onStart, onSelectLesson }: {
+  info: CourseInfoPayload | null; modules: ModuleItem[]; progressPct: number; preview: boolean; previewMode?: string | null;
   onStart: () => void; onSelectLesson: (id: string) => void;
 }) {
   const course = info?.course || {};
   const creator = info?.creator || {};
+  const [aboutOpen, setAboutOpen] = useState(false);
   const totalLessons = modules.reduce((sum, mod) => sum + mod.lessons.length, 0);
+  const totalModules = modules.filter(mod => !mod.is_intro && !mod.is_conclusion && !mod.is_final_exam).length;
   const duration = Number(course.total_duration_seconds || 0);
-  const durationLabel = duration > 0 ? `${Math.max(1, Math.round(duration / 60))} min` : null;
+  const durationLabel = duration > 0
+    ? duration >= 3600 ? `${Math.floor(duration / 3600)} h ${Math.round((duration % 3600) / 60)} min` : `${Math.max(1, Math.round(duration / 60))} min`
+    : null;
+  const creatorName = String(creator.full_name || creator.school_name || 'Omnia Global Academy');
+  const creatorRole = String(creator.expertise_domain || (creator.school_name ? 'Structure de formation' : course.creator_type === 'plateforme' ? 'Équipe pédagogique Omnia' : 'Créateur de la formation'));
+  const avatar = String(creator.avatar_url || creator.logo_url || '');
+  const initials = creatorName.split(/\s+/).filter(Boolean).slice(0, 2).map((part:string) => part[0]?.toUpperCase() || '').join('') || 'OG';
+  const description = String(course.long_description || '');
+  const longDescription = description.length > 720;
+  const visibleDescription = !longDescription || aboutOpen ? description : `${description.slice(0, 720).trim()}…`;
+  const previewLabel = previewMode === 'admin' ? 'Administration Omnia' : 'Apprenant après achat';
+
+  const stageLabel = (mod: ModuleItem, index: number) => {
+    if (mod.is_intro) return 'Introduction';
+    if (mod.is_conclusion) return 'Conclusion';
+    if (mod.is_final_exam) return 'Examen final';
+    return `Module ${Math.max(1, modules.slice(0, index + 1).filter(item => !item.is_intro && !item.is_conclusion && !item.is_final_exam).length)}`;
+  };
+
   return (
-    <div className="min-h-screen" style={{ background: '#F8FAFC', fontFamily: 'Inter, system-ui, sans-serif' }}>
-      <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-10">
-        {preview && <div className="mb-4 rounded-xl border px-4 py-3 text-sm font-semibold" style={{ borderColor: '#BF8813', background: '#FFFBEB', color: '#92400E' }}>Prévisualisation créateur / Administration Omnia — aucune progression apprenant n'est enregistrée.</div>}
-        <div className="overflow-hidden rounded-2xl bg-white shadow-sm" style={{ border: '1px solid #E4E7EC' }}>
-          <div className="grid md:grid-cols-[minmax(0,1fr)_360px]">
-            <div className="p-6 sm:p-8">
-              <p className="mb-2 text-xs font-bold uppercase tracking-wider" style={{ color: '#BF8813' }}>Info formation</p>
-              <h1 className="text-2xl font-black sm:text-3xl" style={{ color: '#002050' }}>{String(course.title || 'Formation')}</h1>
-              {course.short_description && <p className="mt-3 text-base leading-relaxed text-slate-600">{String(course.short_description)}</p>}
-              <div className="mt-5 flex flex-wrap gap-2 text-xs">
-                {course.level && <span className="rounded-full bg-slate-100 px-3 py-1.5">Niveau : {String(course.level)}</span>}
-                {course.language && <span className="rounded-full bg-slate-100 px-3 py-1.5">Langue : {String(course.language).toUpperCase()}</span>}
-                {durationLabel && <span className="rounded-full bg-slate-100 px-3 py-1.5">Durée : {durationLabel}</span>}
-                <span className="rounded-full bg-slate-100 px-3 py-1.5">{totalLessons} étape{totalLessons > 1 ? 's' : ''}</span>
-              </div>
-              {creator.full_name && <p className="mt-4 text-sm text-slate-500">Par <strong className="text-slate-700">{String(creator.full_name)}</strong></p>}
-              {course.long_description && <div className="mt-6 whitespace-pre-line text-sm leading-7 text-slate-700">{String(course.long_description)}</div>}
-              {Array.isArray(course.objectives) && course.objectives.length > 0 && <div className="mt-6"><h2 className="font-bold" style={{ color: '#002050' }}>Ce que vous allez apprendre</h2><ul className="mt-2 space-y-2 text-sm text-slate-700">{course.objectives.map((x:any,i:number)=><li key={i} className="flex gap-2"><CheckCircle size={15} style={{ color:'#1E7A52', flexShrink:0, marginTop:2 }}/><span>{String(x)}</span></li>)}</ul></div>}
+    <div className="min-h-screen pb-14" style={{ background: '#F5F7FB', fontFamily: 'Inter, system-ui, sans-serif' }}>
+      {preview && (
+        <div className="border-b" style={{ background: '#FFFBEB', borderColor: '#F4D788' }}>
+          <div className="mx-auto flex max-w-7xl items-start gap-3 px-4 py-3 text-sm sm:px-6">
+            <ShieldCheck size={17} className="mt-0.5 shrink-0" style={{ color: '#9A6D0F' }} />
+            <div><strong style={{ color: '#7A560C' }}>Prévisualisation {previewLabel}</strong><span className="text-amber-800"> — rendu réel de la formation, sans inscription, progression, tentative ni certificat enregistrés.</span></div>
+          </div>
+        </div>
+      )}
+
+      <section style={{ background: 'linear-gradient(135deg,#00183F 0%,#002050 58%,#123C6A 100%)' }}>
+        <div className="mx-auto grid max-w-7xl gap-8 px-4 py-8 sm:px-6 sm:py-12 lg:grid-cols-[minmax(0,1fr)_minmax(390px,520px)] lg:items-center lg:py-14">
+          <div className="min-w-0 text-white">
+            <div className="mb-4 flex flex-wrap gap-2 text-[11px] font-bold uppercase tracking-[.12em]">
+              {course.category && <span className="rounded-full border border-white/20 bg-white/10 px-3 py-1.5">{String(course.category)}</span>}
+              {course.level && <span className="rounded-full border border-white/20 bg-white/10 px-3 py-1.5">{String(course.level)}</span>}
+              {course.language && <span className="rounded-full border border-white/20 bg-white/10 px-3 py-1.5">{String(course.language).toUpperCase()}</span>}
             </div>
-            <div className="border-t bg-slate-50 p-5 md:border-l md:border-t-0" style={{ borderColor: '#E4E7EC' }}>
-              <div className="aspect-video overflow-hidden rounded-xl bg-white" style={{ border: '1px solid #E4E7EC' }}>
-                {course.cover_image_url ? <img src={String(course.cover_image_url)} alt="Couverture de la formation" className="h-full w-full object-cover" /> : <div className="flex h-full items-center justify-center text-sm text-slate-400">Image de couverture</div>}
-              </div>
-              {!preview && progressPct > 0 && <div className="mt-4"><div className="mb-1 flex justify-between text-xs text-slate-500"><span>Progression</span><span>{progressPct}%</span></div><div className="h-2 overflow-hidden rounded-full bg-slate-200"><div className="h-full rounded-full" style={{ width:`${progressPct}%`, background:'#1E7A52' }}/></div></div>}
-              <button onClick={onStart} className="mt-5 w-full rounded-xl px-4 py-3 text-sm font-bold text-white" style={{ background:'#002050' }}>{preview ? 'Commencer la prévisualisation' : progressPct > 0 ? 'Continuer la formation' : 'Commencer la formation'}</button>
+            <p className="text-xs font-black uppercase tracking-[.18em]" style={{ color: '#E5BE5B' }}>Info formation</p>
+            <h1 className="mt-3 max-w-4xl text-3xl font-black leading-tight tracking-[-.035em] sm:text-4xl lg:text-[46px]">{String(course.title || 'Formation')}</h1>
+            {course.short_description && <p className="mt-4 max-w-3xl text-base leading-7 text-slate-200 sm:text-lg">{String(course.short_description)}</p>}
+            <div className="mt-6 flex flex-wrap gap-x-5 gap-y-3 text-sm text-slate-200">
+              {durationLabel && <span className="inline-flex items-center gap-2"><Clock3 size={16} style={{ color: '#E5BE5B' }} />{durationLabel}</span>}
+              <span className="inline-flex items-center gap-2"><Layers3 size={16} style={{ color: '#E5BE5B' }} />{totalModules} module{totalModules > 1 ? 's' : ''}</span>
+              <span className="inline-flex items-center gap-2"><BookOpen size={16} style={{ color: '#E5BE5B' }} />{totalLessons} étape{totalLessons > 1 ? 's' : ''}</span>
+            </div>
+            <div className="mt-7 flex items-center gap-3">
+              {avatar ? <img src={avatar} alt="" className="h-11 w-11 rounded-full border-2 border-white/30 object-cover" /> : <span className="flex h-11 w-11 items-center justify-center rounded-full border-2 border-white/20 bg-white/10 text-sm font-black">{initials}</span>}
+              <div><p className="text-xs text-slate-300">Créé par</p><p className="font-bold text-white">{creatorName}</p></div>
+            </div>
+          </div>
+
+          <div className="overflow-hidden rounded-[24px] bg-white shadow-[0_24px_70px_rgba(0,0,0,.28)]">
+            <div className="aspect-video bg-slate-100">
+              {course.cover_image_url ? <img src={String(course.cover_image_url)} alt={`Couverture — ${String(course.title || 'formation')}`} className="h-full w-full object-cover" /> : <div className="flex h-full items-center justify-center"><BookOpen size={44} style={{ color: '#BF8813' }} /></div>}
+            </div>
+            <div className="p-5 sm:p-6">
+              {!preview && progressPct > 0 && <div className="mb-4"><div className="mb-1.5 flex justify-between text-xs font-semibold text-slate-500"><span>Votre progression</span><span>{progressPct}%</span></div><div className="h-2.5 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full" style={{ width:`${progressPct}%`, background:'#1E7A52' }}/></div></div>}
+              <button onClick={onStart} className="w-full rounded-xl px-4 py-3.5 text-sm font-black text-white shadow-sm transition hover:opacity-90" style={{ background:'#002050' }}>{preview ? 'Entrer dans la formation' : progressPct > 0 ? 'Continuer la formation' : 'Commencer la formation'}</button>
+              <p className="mt-3 text-center text-xs text-slate-400">La formation commence par l’Introduction, puis suit l’ordre pédagogique défini.</p>
             </div>
           </div>
         </div>
+      </section>
 
-        <div className="mt-6 rounded-2xl bg-white p-5 sm:p-6" style={{ border:'1px solid #E4E7EC' }}>
-          <div className="mb-4 flex items-end justify-between gap-4"><div><p className="text-xs font-bold uppercase tracking-wider" style={{ color:'#BF8813' }}>Programme</p><h2 className="mt-1 text-xl font-black" style={{ color:'#002050' }}>Étapes de la formation</h2></div></div>
-          <div className="space-y-3">{modules.map((mod, mi) => <details key={mod.module_id} open={mi < 2 || !!mod.is_intro} className="overflow-hidden rounded-xl border" style={{ borderColor:'#E4E7EC' }}>
-            <summary className="cursor-pointer list-none px-4 py-3 font-bold" style={{ color:'#002050', background:'#F8FAFC' }}>{mod.title}</summary>
-            <div className="divide-y" style={{ borderColor:'#E4E7EC' }}>{mod.lessons.map((lesson, li) => <button key={lesson.lesson_id} onClick={() => (preview || lesson.is_unlocked !== false) ? onSelectLesson(lesson.lesson_id) : undefined} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50" disabled={!preview && lesson.is_unlocked === false}>
-              <span className="flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold" style={{ background:'#EEF2F7', color:'#002050' }}>{li+1}</span><span className="min-w-0 flex-1 text-sm text-slate-700">{lesson.title}</span>{lesson.duration_seconds > 0 && <span className="text-xs text-slate-400">{Math.max(1,Math.round(lesson.duration_seconds/60))} min</span>}
-            </button>)}</div>
-          </details>)}</div>
+      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 sm:py-10">
+        <div className="grid gap-7 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start">
+          <div className="space-y-7">
+            {description && <section className="rounded-[22px] border bg-white p-5 sm:p-7" style={{ borderColor:'#E4E7EC' }}><p className="text-xs font-black uppercase tracking-[.15em]" style={{ color:'#BF8813' }}>Présentation</p><h2 className="mt-1 text-2xl font-black tracking-[-.02em]" style={{ color:'#002050' }}>À propos de cette formation</h2><div className="mt-4 whitespace-pre-line text-sm leading-7 text-slate-600">{visibleDescription}</div>{longDescription&&<button type="button" onClick={()=>setAboutOpen(value=>!value)} className="mt-3 text-sm font-bold" style={{color:'#002050'}}>{aboutOpen?'Réduire':'Voir plus'}</button>}</section>}
+
+            {Array.isArray(course.objectives) && course.objectives.length > 0 && <section className="rounded-[22px] border bg-white p-5 sm:p-7" style={{ borderColor:'#E4E7EC' }}><div className="flex items-center gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-xl" style={{background:'#ECFDF5',color:'#1E7A52'}}><Target size={19}/></span><div><p className="text-xs font-black uppercase tracking-[.15em]" style={{color:'#1E7A52'}}>Objectifs</p><h2 className="text-xl font-black" style={{color:'#002050'}}>Ce que vous saurez faire</h2></div></div><div className="mt-5 grid gap-3 sm:grid-cols-2">{course.objectives.map((item:any,index:number)=><div key={index} className="flex items-start gap-3 rounded-xl bg-slate-50 p-3.5"><CheckCircle size={17} className="mt-0.5 shrink-0" style={{color:'#1E7A52'}}/><span className="text-sm leading-6 text-slate-700">{String(item)}</span></div>)}</div></section>}
+
+            <section className="rounded-[22px] border bg-white p-5 sm:p-7" style={{ borderColor:'#E4E7EC' }}>
+              <div className="flex flex-wrap items-end justify-between gap-3"><div><p className="text-xs font-black uppercase tracking-[.15em]" style={{ color:'#BF8813' }}>Programme</p><h2 className="mt-1 text-2xl font-black tracking-[-.02em]" style={{ color:'#002050' }}>Contenu de la formation</h2></div><p className="text-xs font-semibold text-slate-400">{modules.length} étape{modules.length>1?'s':''} · {totalLessons} leçon{totalLessons>1?'s':''}</p></div>
+              <div className="mt-5 space-y-3">{modules.map((mod, mi) => <details key={mod.module_id} open={mi < 2 || !!mod.is_intro} className="group overflow-hidden rounded-xl border" style={{ borderColor:'#E4E7EC' }}>
+                <summary className="flex cursor-pointer list-none items-center gap-3 bg-slate-50 px-4 py-3.5"><span className="rounded-lg px-2 py-1 text-[10px] font-black uppercase tracking-[.08em]" style={{background:'#FFF7E1',color:'#8A650F'}}>{stageLabel(mod,mi)}</span><span className="min-w-0 flex-1 font-bold" style={{color:'#002050'}}>{mod.title}</span><span className="text-xs text-slate-400">{mod.lessons.length} leçon{mod.lessons.length>1?'s':''}</span><ChevronDown size={16} className="text-slate-400 transition group-open:rotate-180"/></summary>
+                {mod.description&&<p className="border-t px-4 py-3 text-xs leading-5 text-slate-500" style={{borderColor:'#EEF1F5'}}>{mod.description}</p>}
+                <div className="divide-y" style={{borderColor:'#EEF1F5'}}>{mod.lessons.map((lesson, li) => <button key={lesson.lesson_id} type="button" onClick={() => (preview || lesson.is_unlocked !== false) ? onSelectLesson(lesson.lesson_id) : undefined} className="flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-45" disabled={!preview && lesson.is_unlocked === false}><span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[11px] font-black" style={{color:'#002050'}}>{li+1}</span><span className="min-w-0 flex-1 text-sm font-medium text-slate-700">{lesson.title}</span>{lesson.duration_seconds > 0 && <span className="text-xs text-slate-400">{Math.max(1,Math.round(lesson.duration_seconds/60))} min</span>}{!preview&&lesson.is_unlocked===false&&<span className="text-xs text-slate-400">Verrouillée</span>}</button>)}</div>
+              </details>)}</div>
+            </section>
+          </div>
+
+          <aside className="space-y-5 lg:sticky lg:top-24">
+            <section className="rounded-[22px] border bg-white p-5" style={{borderColor:'#E4E7EC'}}><p className="text-xs font-black uppercase tracking-[.15em]" style={{color:'#BF8813'}}>Votre formateur</p><div className="mt-4 flex items-center gap-3">{avatar?<img src={avatar} alt="" className="h-14 w-14 rounded-full object-cover"/>:<span className="flex h-14 w-14 items-center justify-center rounded-full text-sm font-black text-white" style={{background:'#002050'}}>{initials}</span>}<div className="min-w-0"><p className="truncate font-black" style={{color:'#002050'}}>{creatorName}</p><p className="mt-0.5 text-xs font-semibold" style={{color:'#BF8813'}}>{creatorRole}</p></div></div>{creator.bio&&<p className="mt-4 text-sm leading-6 text-slate-500">{String(creator.bio)}</p>}</section>
+            <section className="rounded-[22px] border p-5" style={{borderColor:'#DDE5EF',background:'#F8FAFC'}}><div className="flex items-start gap-3"><Sparkles size={18} className="mt-0.5 shrink-0" style={{color:'#BF8813'}}/><div><p className="font-bold" style={{color:'#002050'}}>Parcours clair</p><p className="mt-1 text-xs leading-5 text-slate-500">Consultez d’abord les informations et le programme. Le bouton principal vous fait ensuite entrer dans l’Introduction puis dans les modules.</p></div></div></section>
+          </aside>
         </div>
-      </div>
+      </main>
     </div>
   );
 }
@@ -371,7 +421,9 @@ export function CoursLecteur() {
   const navigate = useNavigate();
   const { user, sessionToken, loading: authLoading } = useAuth();
   const previewMode = new URLSearchParams(window.location.search).get('preview');
-  const isAdminPreview = previewMode === 'admin';
+  const isPreview = previewMode === 'admin' || previewMode === 'learner';
+  const previewQuery = isPreview ? `&preview=${previewMode}` : '';
+  const previewRouteQuery = isPreview ? `?preview=${previewMode}` : '';
   const network = useOmniaNetworkStatus();
   const isOnline = network.connected;
 
@@ -427,17 +479,15 @@ export function CoursLecteur() {
   }, [user?.id, courseId, resilientMessage]);
 
   useEffect(() => {
-    // L'aperçu Administration Omnia reste accessible avec la session active et ne doit pas
-    // rediriger vers la connexion pendant l'initialisation du hook d'authentification.
-    if (!authLoading && !user && !isAdminPreview) navigate('/connexion');
-  }, [authLoading, user, navigate, isAdminPreview]);
+    if (!authLoading && !user) navigate('/connexion');
+  }, [authLoading, user, navigate]);
 
   useEffect(() => {
     if (!courseId || !sessionToken) return;
-    const suffix = isAdminPreview ? '&preview=admin' : '';
+    const suffix = isPreview ? `&preview=${previewMode}` : '';
     fetch(`${ENDPOINTS.courseDetail}?id=${courseId}${suffix}`, { headers: { Authorization: `Bearer ${sessionToken}` } })
       .then(r => r.json()).then(data => { if (data?.course) setCourseInfo(data); }).catch(() => undefined);
-  }, [courseId, sessionToken, isAdminPreview]);
+  }, [courseId, sessionToken, isPreview, previewMode]);
 
   const applyProgressSnapshot = useCallback((snapshot: CourseProgressSnapshot) => {
     setModules(snapshot.modules);
@@ -450,7 +500,7 @@ export function CoursLecteur() {
 
     try {
       if (!isOnline) throw new Error('offline');
-      const response = await fetch(`${ENDPOINTS.courseProgress}?course_id=${courseId}${isAdminPreview ? '&preview=admin' : ''}`, {
+      const response = await fetch(`${ENDPOINTS.courseProgress}?course_id=${courseId}${previewQuery}`, {
         headers: { Authorization: `Bearer ${sessionToken}` },
       });
       const data = await response.json();
@@ -485,10 +535,10 @@ export function CoursLecteur() {
         setResilientMessage('Le programme de cette formation n’est pas encore disponible hors connexion sur cet appareil.');
       }
     }
-  }, [sessionToken, courseId, user?.id, isOnline, navigate, applyProgressSnapshot, isAdminPreview]);
+  }, [sessionToken, courseId, user?.id, isOnline, navigate, applyProgressSnapshot, isPreview, previewQuery]);
 
   const syncOfflineProgress = useCallback(async () => {
-    if (isAdminPreview || !isOnline || !appActive || !user?.id || !courseId || !sessionToken) return;
+    if (isPreview || !isOnline || !appActive || !user?.id || !courseId || !sessionToken) return;
     const pending = await listOfflineProgress({ userId: user.id, courseId }).catch(() => []);
     if (pending.length === 0) return;
 
@@ -523,7 +573,7 @@ export function CoursLecteur() {
       setResilientMessage('Progression hors connexion synchronisée.');
       await loadProgress();
     }
-  }, [isOnline, appActive, user?.id, courseId, sessionToken, loadProgress, isAdminPreview]);
+  }, [isOnline, appActive, user?.id, courseId, sessionToken, loadProgress, isPreview, previewQuery]);
 
   useEffect(() => {
     void syncOfflineProgress();
@@ -559,7 +609,7 @@ export function CoursLecteur() {
     (async () => {
       try {
         if (!isOnline) throw new Error('offline');
-        const response = await fetch(`${ENDPOINTS.lessonContent}?lesson_id=${currentLessonId}&course_id=${courseId}${isAdminPreview ? '&preview=admin' : ''}`, {
+        const response = await fetch(`${ENDPOINTS.lessonContent}?lesson_id=${currentLessonId}&course_id=${courseId}${previewQuery}`, {
           headers: { Authorization: `Bearer ${sessionToken}` },
         });
         const data = await response.json();
@@ -601,7 +651,7 @@ export function CoursLecteur() {
     return () => { cancelled = true; };
   // signVideo est stable pour le cours et le jeton courants.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentLessonId, courseId, sessionToken, user?.id, dataSaver, isOnline, isAdminPreview]);
+  }, [currentLessonId, courseId, sessionToken, user?.id, dataSaver, isOnline, isPreview, previewQuery]);
 
   const signVideo = useCallback((lessonId: string) => {
     if (!courseId || !sessionToken || !isOnline) return;
@@ -610,7 +660,7 @@ export function CoursLecteur() {
         const response = await fetch(ENDPOINTS.videoSignedUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionToken}` },
-          body: JSON.stringify({ lesson_id: lessonId, course_id: courseId }),
+          body: JSON.stringify({ lesson_id: lessonId, course_id: courseId, preview: isPreview ? previewMode : undefined }),
         });
         const data = await response.json();
         if (response.ok && data.url) setVideoUrl(data.url);
@@ -621,7 +671,7 @@ export function CoursLecteur() {
     void requestSignedUrl();
     if (videoTimerRef.current) clearInterval(videoTimerRef.current);
     videoTimerRef.current = setInterval(requestSignedUrl, 55_000);
-  }, [courseId, sessionToken, isOnline]);
+  }, [courseId, sessionToken, isOnline, isPreview, previewMode]);
 
   useEffect(() => {
     if (!isOnline) {
@@ -634,19 +684,19 @@ export function CoursLecteur() {
   }, [isOnline]);
 
   const { timeSpent, cpdTimeReached, isActive } = useCpdTimer({
-    lessonId: isAdminPreview ? null : currentLessonId, courseId: isAdminPreview ? null : (courseId ?? null),
+    lessonId: isPreview ? null : currentLessonId, courseId: isPreview ? null : (courseId ?? null),
     requiredSeconds: lessonData?.required_seconds ?? 0,
     initialSpent: lessonData?.progress.time_spent_seconds ?? 0,
     sessionToken,
     onTimeReached: () => {
-      if (isAdminPreview || !isOnline || !currentLessonId || !courseId || !sessionToken) return;
-      fetch(`${ENDPOINTS.lessonContent}?lesson_id=${currentLessonId}&course_id=${courseId}${isAdminPreview ? '&preview=admin' : ''}`, { headers: { Authorization: `Bearer ${sessionToken}` } })
+      if (isPreview || !isOnline || !currentLessonId || !courseId || !sessionToken) return;
+      fetch(`${ENDPOINTS.lessonContent}?lesson_id=${currentLessonId}&course_id=${courseId}${previewQuery}`, { headers: { Authorization: `Bearer ${sessionToken}` } })
         .then(r => r.json()).then(d => { if (!d.error) setLessonData(d); });
     },
   });
 
   useEffect(() => {
-    if (isAdminPreview || isOnline || !isActive || !appActive || !user?.id || !courseId || !currentLessonId) return;
+    if (isPreview || isOnline || !isActive || !appActive || !user?.id || !courseId || !currentLessonId) return;
     const timer = window.setInterval(() => {
       if (!document.hidden) {
         queueOfflineSeconds({ userId: user.id, courseId, lessonId: currentLessonId, seconds: 30 }).catch(() => undefined);
@@ -655,7 +705,7 @@ export function CoursLecteur() {
     return () => window.clearInterval(timer);
   }, [isOnline, isActive, appActive, user?.id, courseId, currentLessonId]);
 
-  const goToLesson = (id: string) => { setReaderStarted(true); setCurrentLessonId(id); navigate(`/cours/${courseId}/apprendre/${id}${isAdminPreview ? '?preview=admin' : ''}`, { replace: true }); };
+  const goToLesson = (id: string) => { setReaderStarted(true); setCurrentLessonId(id); navigate(`/cours/${courseId}/apprendre/${id}${previewRouteQuery}`, { replace: true }); };
 
   const handleNext = () => {
     const nextId = lessonData?.next_lesson_id ?? findNext(modules, currentLessonId ?? '');
@@ -800,7 +850,7 @@ export function CoursLecteur() {
   const quizPassed = prog?.quiz_passed ?? false;
   const effectiveCpd = cpdTimeReached || (lessonData?.cpd_time_reached ?? false);
   const submitTrainingResult = useCallback(async (blockId: string, score: number, answer: any, _passedClient: boolean) => {
-    if (isAdminPreview || !isOnline || !currentLessonId || !courseId || !sessionToken) return;
+    if (isPreview || !isOnline || !currentLessonId || !courseId || !sessionToken) return;
     try {
       const response = await fetch(ENDPOINTS.lessonContent, {
         method: 'POST',
@@ -809,7 +859,7 @@ export function CoursLecteur() {
       });
       const data = await response.json();
       if (!response.ok || data.error) throw new Error(data.message || data.error || 'Enregistrement de l’entraînement impossible');
-      const refreshed = await fetch(`${ENDPOINTS.lessonContent}?lesson_id=${currentLessonId}&course_id=${courseId}${isAdminPreview ? '&preview=admin' : ''}`, { headers: { Authorization: `Bearer ${sessionToken}` } });
+      const refreshed = await fetch(`${ENDPOINTS.lessonContent}?lesson_id=${currentLessonId}&course_id=${courseId}${previewQuery}`, { headers: { Authorization: `Bearer ${sessionToken}` } });
       const refreshedData = await refreshed.json();
       if (refreshed.ok && !refreshedData.error) setLessonData(refreshedData);
       await loadProgress();
@@ -817,10 +867,10 @@ export function CoursLecteur() {
       console.error('training_submit', error);
       setResilientMessage(error instanceof Error ? error.message : 'Résultat d’entraînement non synchronisé.');
     }
-  }, [isOnline, currentLessonId, courseId, sessionToken, loadProgress, isAdminPreview]);
+  }, [isOnline, currentLessonId, courseId, sessionToken, loadProgress, isPreview, previewQuery]);
 
   const saveBlockState = useCallback(async (blockId: string, state: Record<string, any>, completed: boolean) => {
-    if (isAdminPreview || !isOnline || !currentLessonId || !courseId || !sessionToken) return;
+    if (isPreview || !isOnline || !currentLessonId || !courseId || !sessionToken) return;
     try {
       await fetch(ENDPOINTS.lessonContent, {
         method: 'POST',
@@ -828,7 +878,7 @@ export function CoursLecteur() {
         body: JSON.stringify({ action: 'block_state_save', course_id: courseId, lesson_id: currentLessonId, block_id: blockId, state, completed }),
       });
     } catch (error) { console.error('block_state_save', error); }
-  }, [isOnline, currentLessonId, courseId, sessionToken, isAdminPreview]);
+  }, [isOnline, currentLessonId, courseId, sessionToken, isPreview, previewQuery]);
 
   const learnerStateByBlock = useMemo(() => Object.fromEntries((lessonData?.block_states || []).map(item => [item.block_id, item.state_json || {}])), [lessonData?.block_states]);
 
@@ -840,14 +890,14 @@ export function CoursLecteur() {
     </div>
   );
 
-  if (!readerStarted) return <CourseInfoView info={courseInfo} modules={modules} progressPct={progressPct} preview={isAdminPreview} onStart={() => setReaderStarted(true)} onSelectLesson={goToLesson} />;
+  if (!readerStarted) return <CourseInfoView info={courseInfo} modules={modules} progressPct={progressPct} preview={isPreview} previewMode={previewMode} onStart={() => setReaderStarted(true)} onSelectLesson={goToLesson} />;
 
   return (
     <div className="oga-course-reader-shell flex flex-col" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
       {/* Header */}
       <header className="flex items-center gap-3 px-4 flex-shrink-0" style={{ backgroundColor: '#002050', height: 56 }}>
         <button
-          onClick={() => { setReaderStarted(false); setCurrentLessonId(null); navigate(`/cours/${courseId}/apprendre${isAdminPreview ? '?preview=admin' : ''}`, { replace: true }); }}
+          onClick={() => { setReaderStarted(false); setCurrentLessonId(null); navigate(`/cours/${courseId}/apprendre${previewRouteQuery}`, { replace: true }); }}
           className="inline-flex items-center gap-2 rounded-lg px-2.5 py-1.5 hover:bg-white/10 transition-colors"
           title="Retour à Info formation"
           aria-label="Retour à Info formation"
@@ -920,11 +970,11 @@ export function CoursLecteur() {
                 }}
                 onGoExam={(modId) => {
                   setProgramOpen(false);
-                  navigate(`/cours/${courseId}/examen-module/${modId}`);
+                  navigate(`/cours/${courseId}/examen-module/${modId}${previewRouteQuery}`);
                 }}
                 onGoFinal={() => {
                   setProgramOpen(false);
-                  navigate(`/cours/${courseId}/validation-finale`);
+                  navigate(`/cours/${courseId}/validation-finale${previewRouteQuery}`);
                 }}
                 finalUnlocked={finalUnlocked}
                 isOnline={isOnline}
@@ -941,8 +991,8 @@ export function CoursLecteur() {
         <aside className="hidden md:flex flex-col flex-shrink-0" style={{ width: 280 }}>
           <CourseSidebar modules={modules} currentLessonId={currentLessonId}
             onSelectLesson={goToLesson}
-            onGoExam={(modId) => navigate(`/cours/${courseId}/examen-module/${modId}`)}
-            onGoFinal={() => navigate(`/cours/${courseId}/validation-finale`)}
+            onGoExam={(modId) => navigate(`/cours/${courseId}/examen-module/${modId}${previewRouteQuery}`)}
+            onGoFinal={() => navigate(`/cours/${courseId}/validation-finale${previewRouteQuery}`)}
             finalUnlocked={finalUnlocked}
             isOnline={isOnline}
             offlineLessonIds={offlineLessonSet} />
@@ -974,7 +1024,7 @@ export function CoursLecteur() {
                     <button onClick={() => setDataSaver(v => !v)} className="inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-bold" style={{ borderColor: dataSaver ? '#BF8813' : '#D1D5DB', color: '#002050', background: dataSaver ? '#FFFBEB' : '#FFF' }}>
                       <Gauge size={14}/>{dataSaver ? 'Économie de données active' : 'Activer l’économie de données'}
                     </button>
-                    {!isAdminPreview && isOnline && (
+                    {!isPreview && isOnline && (
                       <button disabled={resilientBusy} onClick={saveCurrentLessonForResilientAccess} className="inline-flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-bold text-white disabled:opacity-50" style={{ backgroundColor: '#002050' }}>
                         {resilientBusy ? <RefreshCw size={14} className="animate-spin"/> : <Database size={14}/>}Conserver cette leçon
                       </button>
@@ -1016,7 +1066,7 @@ export function CoursLecteur() {
                   {isOnline && externalVisited && !isCompleted && (
                     <button
                       onClick={async () => {
-                        if (isAdminPreview || !currentLessonId || !courseId || !sessionToken) return;
+                        if (isPreview || !currentLessonId || !courseId || !sessionToken) return;
                         await fetch(`${ENDPOINTS.lessonContent}?lesson_id=${currentLessonId}&course_id=${courseId}&mark_external_done=1`, {
                           headers: { Authorization: `Bearer ${sessionToken}` },
                         });
@@ -1119,12 +1169,14 @@ export function CoursLecteur() {
                 </div>
               )}
 
-              {!isAdminPreview && isOnline && courseId && currentLessonId && !(lesson.is_external || lesson.content_type === 'external') && (
+              {isOnline && courseId && currentLessonId && !(lesson.is_external || lesson.content_type === 'external') && (
                 <AssessmentEngine
                   courseId={courseId}
                   lessonId={currentLessonId}
                   scope="lesson"
+                  preview={isPreview}
                   onPassed={async () => {
+                    if (isPreview) return;
                     await loadProgress();
                     setShowSummary(true);
                     setLessonData(prev => prev ? { ...prev, progress: { ...prev.progress, quiz_passed: true, is_completed: true } } : prev);
@@ -1144,7 +1196,7 @@ export function CoursLecteur() {
                   reached={effectiveCpd} isActive={isActive} assessmentPassed={quizPassed}
                   isCompleted={isCompleted} />
                 {isOnline && currentMod?.exam_unlocked && !currentMod.exam_passed && (
-                  <button onClick={() => navigate(`/cours/${courseId}/examen-module/${currentMod.module_id}`)}
+                  <button onClick={() => navigate(`/cours/${courseId}/examen-module/${currentMod.module_id}${previewRouteQuery}`)}
                     className="text-xs font-bold px-3 py-1.5 rounded-lg hover:opacity-80"
                     style={{ backgroundColor: '#BF8813', color: '#FFF' }}>Passer l'examen</button>
                 )}
@@ -1171,7 +1223,7 @@ export function CoursLecteur() {
                       style={{ backgroundColor: '#002050' }}>Leçon suivante →</button>
                   )}
                   {isOnline && currentMod?.exam_unlocked && !currentMod.exam_passed && (
-                    <button onClick={() => navigate(`/cours/${courseId}/examen-module/${currentMod.module_id}`)}
+                    <button onClick={() => navigate(`/cours/${courseId}/examen-module/${currentMod.module_id}${previewRouteQuery}`)}
                       className="px-5 py-2.5 rounded-xl font-semibold text-sm hover:opacity-85"
                       style={{ border: '1.5px solid #BF8813', color: '#BF8813' }}>Passer l'examen du module</button>
                   )}

@@ -171,7 +171,16 @@ export function ApercuGratuit() {
               {program.map((module, index) => (
                 <div key={module.id} className="rounded-xl border p-3" style={{ borderColor: '#E4E7EC' }}>
                   <div className="flex items-start gap-2"><Lock size={13} className="mt-0.5 flex-shrink-0" style={{ color: '#9CA3AF' }} /><div><p className="text-xs font-semibold" style={{ color: '#002050' }}>Module {index + 1} — {module.title}</p>{module.objective && <p className="text-xs mt-1" style={{ color: '#6B7280' }}>{module.objective}</p>}</div></div>
-                  {module.lessons.length > 0 && <p className="text-[11px] mt-2 pl-5" style={{ color: '#9CA3AF' }}>{module.lessons.length} leçon{module.lessons.length > 1 ? 's' : ''} verrouillée{module.lessons.length > 1 ? 's' : ''}</p>}
+                  {module.lessons.length > 0 && (
+                    <div className="mt-3 space-y-2 pl-5">
+                      {module.lessons.map((lesson, lessonIndex) => (
+                        <div key={lesson.id} className="flex items-start gap-2 text-[11px]" style={{ color: lesson.locked ? '#9CA3AF' : '#1E7A52' }}>
+                          {lesson.locked ? <Lock size={11} className="mt-0.5 shrink-0" /> : <BookOpen size={11} className="mt-0.5 shrink-0" />}
+                          <span><strong>{lessonIndex + 1}.</strong> {lesson.title}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

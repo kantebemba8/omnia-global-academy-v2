@@ -3,6 +3,7 @@ import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 import { corsHeaders } from "../_shared/cors.ts";
 
 import { getActiveOmniaSessionResult } from "../_shared/omnia-auth.ts";
+import { hasStructurePermission, validatedStructureAccess } from "../_shared/structure-access.ts";
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
@@ -16,7 +17,8 @@ Deno.serve(async (req: Request) => {
 
   const url = new URL(req.url);
   const courseId = url.searchParams.get("id");
-  const previewRequested = url.searchParams.get("preview") === "admin";
+  const previewMode = String(url.searchParams.get("preview") ?? "").toLowerCase();
+  const previewRequested = ["visitor", "learner", "admin"].includes(previewMode);
   if (!courseId) return json({ success: false, message: "id requis" }, 400);
 
   // Optional auth
@@ -41,16 +43,23 @@ Deno.serve(async (req: Request) => {
       "id, title, short_description, long_description, cover_image_url, " +
       "preview_video_url, category, level, price_xof, is_free, cpd_hours, " +
       "cpd_accredited, cpd_provider_code, average_rating, total_reviews, " +
-      "total_students, language, subtitles_available, prerequisites, " +
+      "total_students, language, subtitles_available, prerequisites, target_audience, learning_outcomes, course_intro_title, course_intro_summary, " +
       "objectives, creator_type, creator_id, establishment_id, " +
-      "total_duration_seconds, is_published, learning_design_settings, " +
+      "total_duration_seconds, is_published, learning_design_settings, free_preview_mode, preview_first_lesson_enabled, " +
       "lesson_passing_score, module_passing_score, final_passing_score, is_catalog_active, is_current_catalog_version";
 
     let courseQuery = supabase.from("courses").select(courseSelect).eq("id", courseId);
     if (previewRequested && viewerId) {
       const { data: roleRows } = await supabase.from("user_roles").select("role").eq("user_id", viewerId);
-      const { data: owned } = await supabase.from("courses").select("creator_id").eq("id", courseId).maybeSingle();
-      previewAllowed = String(owned?.creator_id || "") === viewerId || (roleRows ?? []).some((row: any) => row.role === "super_admin");
+      const { data: owned } = await supabase.from("courses").select("creator_id,creator_context,structure_id").eq("id", courseId).maybeSingle();
+      const isAdmin = (roleRows ?? []).some((row: any) => row.role === "super_admin");
+      const isDirectOwner = String(owned?.creator_id || "") === viewerId;
+      let structureAllowed = false;
+      if (isDirectOwner && String(owned?.creator_context || "") === "structure" && owned?.structure_id) {
+        const access = await validatedStructureAccess(supabase, viewerId, String(owned.structure_id));
+        structureAllowed = hasStructurePermission(access, "can_edit_courses");
+      }
+      previewAllowed = isAdmin || (isDirectOwner && (String(owned?.creator_context || "") !== "structure" || structureAllowed));
       if (!previewAllowed) return json({ success: false, message: "Prévisualisation non autorisée" }, 403);
     } else {
       courseQuery = courseQuery.eq("is_published", true).eq("is_catalog_active", true).eq("is_current_catalog_version", true);
@@ -231,7 +240,7 @@ Deno.serve(async (req: Request) => {
     }
 
     return json({
-      course, creator, preview: previewAllowed,
+      course, creator, preview: previewAllowed, preview_mode: previewAllowed ? previewMode : null,
       modules: modulesWithLessons,
       reviews: reviewsWithInitials,
       rating_distribution: ratingDist,

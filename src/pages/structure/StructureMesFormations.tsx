@@ -2,7 +2,7 @@ import { getSessionToken } from '../../lib/session';
 import { API_BASE_URL } from '../../lib/config';
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { AlertCircle, BookOpen, CheckCircle, Edit2, PlusCircle, Trash2, Building2, GitBranch, ShieldCheck, Radio } from 'lucide-react';
+import { AlertCircle, BookOpen, CheckCircle, Edit2, PlusCircle, Trash2, Building2, GitBranch, ShieldCheck, Radio, Eye } from 'lucide-react';
 import { StructureFormationsLayout } from '../../components/formations/FormationsRoleLayout';
 import { CourseLiveLinksManager } from '../../components/formations/CourseLiveLinksManager';
 import { deleteOrRequestContent } from '../../lib/contentDeletion';
@@ -17,6 +17,7 @@ type Formation = {
   updated_at?: string | null;
   admin_comment?: string | null;
   is_catalog_active?: boolean; is_published?: boolean; version_number?: number; course_code?: string | null;
+  module_count?: number; lesson_count?: number;
 };
 
 const API = `${API_BASE_URL}/studio-unified`;
@@ -191,8 +192,10 @@ export default function StructureMesFormations() {
                   <div className="p-4">
                     <div className="flex items-start justify-between gap-2"><h2 className="line-clamp-2 text-sm font-semibold" style={{ color: '#002050' }}>{formation.title || 'Formation sans titre'}</h2>{['validated','published'].includes(formation.studio_status || '') && <span className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-bold ${formation.is_catalog_active === false ? 'bg-slate-100 text-slate-500' : 'bg-emerald-50 text-emerald-700'}`}>{formation.is_catalog_active === false ? 'Désactivée' : 'Active'}</span>}</div>
                     <p className="mt-2 text-xs text-gray-500">{[formation.category, formation.level].filter(Boolean).join(' · ') || 'Informations à compléter'}</p>
+                    <p className="mt-2 flex items-center gap-1.5 text-xs font-medium text-slate-500"><BookOpen size={13}/>{formation.module_count || 0} module{(formation.module_count || 0) !== 1 ? 's' : ''} · {formation.lesson_count || 0} leçon{(formation.lesson_count || 0) !== 1 ? 's' : ''}</p>
                     {formation.admin_comment && <p className="mt-3 rounded-lg bg-amber-50 p-2 text-xs text-amber-800">{formation.admin_comment}</p>}
-                    <div className="mt-4 flex gap-2">
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <button type="button" onClick={() => navigate(`/cours/${formation.id}?preview=visitor`)} className="rounded-lg border px-2.5 py-2 text-xs font-semibold inline-flex items-center gap-1" style={{ borderColor: '#BF8813', color: '#8A650F' }}><Eye size={14}/> Prévisualiser</button>
                       {['draft', 'changes_requested', 'rejected'].includes(formation.studio_status || 'draft') ? (
                         <Link to={`/structure/studio/${formation.id}`} className="flex flex-1 items-center justify-center gap-1 rounded-lg border py-2 text-xs font-semibold" style={{ borderColor: '#002050', color: '#002050' }}>
                           <Edit2 size={14} /> Modifier
