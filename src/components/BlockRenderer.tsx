@@ -916,7 +916,7 @@ export function LessonBlocksRenderer({ blocks, contentText, onQuizAnswer, onTrai
         .sort((a, b) => a.position - b.position)
         .map(block => {
           const compactTypes = new Set(['image','gallery','video','audio','pdf','word','excel','table','interactive_table','chart','scorm','embed','download']);
-          const widthClass = compactTypes.has(block.block_type) ? 'max-w-4xl' : 'max-w-5xl';
+          const widthClass = compactTypes.has(block.block_type) ? 'max-w-3xl' : 'max-w-5xl';
           return (
             <div key={block.id} className={`mx-auto w-full ${widthClass}`}>
               <BlockRenderBoundary blockType={block.block_type}><BlockRenderer block={block} onQuizAnswer={onQuizAnswer} onTrainingResult={block.interaction_mode === 'training' ? onTrainingResult : undefined} onFileTrainingSubmit={block.interaction_mode === 'training' ? onFileTrainingSubmit : undefined} learnerState={learnerStateByBlock[block.id] || {}} onStateChange={onStateChange} isOnline={isOnline} /></BlockRenderBoundary>

@@ -475,7 +475,7 @@ function CourseInfoView({ info, modules, progressPct, preview, previewMode, onSt
               <div className="flex flex-wrap items-end justify-between gap-3"><div><p className="text-xs font-black uppercase tracking-[.15em]" style={{ color:'#BF8813' }}>Programme</p><h2 className="mt-1 text-2xl font-black tracking-[-.02em]" style={{ color:'#002050' }}>Contenu de la formation</h2></div><p className="text-xs font-semibold text-slate-400">{totalModules} module{totalModules>1?'s':''} · {totalLessons} leçon{totalLessons>1?'s':''}</p></div>
               <div className="mt-5 space-y-3">{modules.map((mod, mi) => <details key={mod.module_id} open={mi < 2 || !!mod.is_intro} className="group overflow-hidden rounded-xl border" style={{ borderColor:'#E4E7EC' }}>
                 <summary className="flex cursor-pointer list-none items-center gap-3 bg-slate-50 px-4 py-3.5"><span className="rounded-lg px-2 py-1 text-[10px] font-black uppercase tracking-[.08em]" style={{background:'#FFF7E1',color:'#8A650F'}}>{stageLabel(mod,mi)}</span><span className="min-w-0 flex-1 font-bold" style={{color:'#002050'}}>{mod.title}</span><span className="text-xs text-slate-400">{mod.lessons.filter(l => (l.stage_type || 'lesson') === 'lesson').length} leçon{mod.lessons.filter(l => (l.stage_type || 'lesson') === 'lesson').length>1?'s':''}</span><ChevronDown size={16} className="text-slate-400 transition group-open:rotate-180"/></summary>
-                {mod.description&&<p className="border-t px-4 py-3 text-xs leading-5 text-slate-500" style={{borderColor:'#EEF1F5'}}>{mod.description}</p>}
+                {(mod.section_type || (mod.is_intro ? 'introduction' : mod.is_conclusion ? 'conclusion' : mod.is_final_exam ? 'final_exam' : 'module')) === 'module' && mod.description && <p className="border-t px-4 py-3 text-xs leading-5 text-slate-500" style={{borderColor:'#EEF1F5'}}>{mod.description}</p>}
                 <div className="divide-y" style={{borderColor:'#EEF1F5'}}>{mod.lessons.map((lesson, li) => <button key={lesson.lesson_id} type="button" onClick={() => (preview || lesson.is_unlocked !== false) ? onSelectLesson(lesson.lesson_id) : undefined} className="flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-45" disabled={!preview && lesson.is_unlocked === false}><span className="flex h-7 min-w-7 shrink-0 items-center justify-center rounded-full bg-slate-100 px-2 text-[10px] font-black" style={{color:'#002050'}}>{lesson.stage_type === 'module_presentation' ? 'Intro' : lesson.stage_type === 'module_summary' ? 'Synth.' : lesson.stage_type === 'introduction' ? 'Intro' : lesson.stage_type === 'conclusion' ? 'Fin' : lesson.stage_type === 'final_exam' ? 'Exam' : mod.lessons.filter((candidate, idx) => idx <= li && (candidate.stage_type || 'lesson') === 'lesson').length}</span><span className="min-w-0 flex-1 text-sm font-medium text-slate-700">{lesson.title}</span>{lesson.duration_seconds > 0 && <span className="text-xs text-slate-400">{Math.max(1,Math.round(lesson.duration_seconds/60))} min</span>}{!preview&&lesson.is_unlocked===false&&<span className="text-xs text-slate-400">Verrouillée</span>}</button>)}</div>
               </details>)}</div>
             </section>
@@ -813,7 +813,7 @@ export function CoursLecteur() {
     onTimeReached: () => {
       if (isPreview || !isOnline || !currentLessonId || !courseId || !sessionToken) return;
       fetch(`${ENDPOINTS.lessonContent}?lesson_id=${currentLessonId}&course_id=${courseId}${previewQuery}`, { headers: { Authorization: `Bearer ${sessionToken}` } })
-        .then(r => r.json()).then(d => { if (!d.error) setLessonData(d); });
+        .then(r => r.json()).then(async d => { if (!d.error) { setLessonData(d); await loadProgress(); } });
     },
   });
 
@@ -1049,6 +1049,12 @@ export function CoursLecteur() {
   const currentReaderIndex = orderedReaderLessons.findIndex(l => l.lesson_id === currentLessonId);
   const previousReaderLesson = currentReaderIndex > 0 ? orderedReaderLessons[currentReaderIndex - 1] : null;
   const nextReaderLesson = currentReaderIndex >= 0 && currentReaderIndex < orderedReaderLessons.length - 1 ? orderedReaderLessons[currentReaderIndex + 1] : null;
+  // En prévisualisation, aucune progression n'est enregistrée : la barre reflète donc
+  // uniquement la position courante dans le parcours. Pour un vrai apprenant, elle
+  // reste pilotée par la progression persistée renvoyée par course-progress.
+  const displayProgressPct = isPreview
+    ? (currentReaderIndex >= 0 && orderedReaderLessons.length > 0 ? Math.round(((currentReaderIndex + 1) / orderedReaderLessons.length) * 100) : 0)
+    : progressPct;
 
   if (progressLoading) return (
     <div className="min-h-screen flex items-center justify-center">
@@ -1087,9 +1093,9 @@ export function CoursLecteur() {
         </button>
         <div className="flex-1 flex items-center gap-3">
           <div className="flex-1 rounded-full overflow-hidden" style={{ height: 4, backgroundColor: 'rgba(255,255,255,0.15)' }}>
-            <div className="h-full rounded-full transition-all" style={{ width: `${progressPct}%`, backgroundColor: '#BF8813' }} />
+            <div className="h-full rounded-full transition-all" style={{ width: `${displayProgressPct}%`, backgroundColor: '#BF8813' }} />
           </div>
-          <span className="text-xs font-semibold text-white">{progressPct}%</span>
+          <span className="text-xs font-semibold text-white">{displayProgressPct}%</span>
         </div>
         <button onClick={() => setAiOpen(o => !o)}
           title={isOnline ? 'Ouvrir l’assistant IA' : 'L’assistant IA nécessite une connexion'}
@@ -1173,25 +1179,15 @@ export function CoursLecteur() {
             <div className="w-full px-4 py-6">
               <div className="mx-auto max-w-5xl">
                 {progressError && isPreview && <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800">Le service de progression de preview a signalé : {progressError}. Le curriculum de contrôle a été chargé depuis Info formation.</div>}
-                {lesson.stage_type === 'module_presentation' && currentMod ? (
-                  <div className="mb-6 rounded-3xl border p-6 sm:p-8" style={{borderColor:'#E4E7EC',background:'linear-gradient(135deg,#F8FAFC,#FFF7E1)'}}>
-                    <p className="text-xs font-black uppercase tracking-[.18em]" style={{color:'#BF8813'}}>Présentation du module</p>
-                    <h1 className="mt-2 text-2xl font-black sm:text-3xl" style={{color:'#002050'}}>{currentMod.title}</h1>
-                    {currentMod.description && <p className="mt-3 text-sm leading-relaxed text-slate-600">{currentMod.description}</p>}
+                <div className="mb-6 rounded-3xl border p-6 sm:p-8" style={{borderColor:'#E4E7EC',background:lesson.stage_type === 'module_summary' ? '#F0FDF4' : 'linear-gradient(135deg,#F8FAFC,#FFF7E1)'}}>
+                  <h1 className="text-2xl font-black sm:text-3xl" style={{color:'#002050'}}>{lesson.title}</h1>
+                  {lesson.stage_type === 'module_presentation' && currentMod && (
                     <div className="mt-5 flex flex-wrap gap-2 text-xs font-semibold text-slate-600">
-                      <span className="rounded-full bg-white px-3 py-1.5 shadow-sm">{currentMod.lessons.filter(l=>l.stage_type==='lesson').length} leçon(s)</span>
-                      <span className="rounded-full bg-white px-3 py-1.5 shadow-sm">{Math.ceil(currentMod.lessons.filter(l=>l.stage_type==='lesson').reduce((sum,l)=>sum+Number(l.duration_seconds||0),0)/60)} min estimées</span>
+                      <span className="rounded-full bg-white px-3 py-1.5 shadow-sm">{currentMod.lessons.filter(l=>l.stage_type==='lesson').length} leçon{currentMod.lessons.filter(l=>l.stage_type==='lesson').length > 1 ? 's' : ''}</span>
+                      <span className="rounded-full bg-white px-3 py-1.5 shadow-sm">{Math.max(0, Math.ceil(currentMod.lessons.filter(l=>l.stage_type==='lesson').reduce((sum,l)=>sum+Number(l.duration_seconds||0),0)/60))} min estimées</span>
                     </div>
-                  </div>
-                ) : lesson.stage_type === 'module_summary' && currentMod ? (
-                  <div className="mb-6 rounded-3xl border p-6 sm:p-8" style={{borderColor:'#A7F3D0',background:'#F0FDF4'}}>
-                    <p className="text-xs font-black uppercase tracking-[.18em]" style={{color:'#1E7A52'}}>Synthèse du module</p>
-                    <h1 className="mt-2 text-2xl font-black" style={{color:'#002050'}}>{lesson.title}</h1>
-                    <p className="mt-2 text-sm text-slate-600">Bilan, consolidation et validation du module « {currentMod.title} ».</p>
-                  </div>
-                ) : (
-                  <h1 className="font-bold text-xl mb-4" style={{ color: '#002050' }}>{lesson.title}</h1>
-                )}
+                  )}
+                </div>
               </div>
 
               {resilientMessage && <div className="mx-auto mb-4 max-w-5xl rounded-xl border px-4 py-3 text-xs font-semibold" style={{borderColor:'#E4E7EC',color:resilientMessage.includes('impossible') || resilientMessage.includes('refusé') || resilientMessage.includes('pas disponible') ? '#B91C1C' : '#1E7A52'}}>{resilientMessage}</div>}
@@ -1252,7 +1248,7 @@ export function CoursLecteur() {
               {lesson.content_type === 'video' && !(lesson.is_external) && !dataSaver && isOnline && (
                 <div
                   ref={videoContainerRef}
-                  className="mx-auto max-w-5xl rounded-2xl overflow-hidden mb-5"
+                  className="mx-auto max-w-3xl rounded-2xl overflow-hidden mb-5"
                   style={{ aspectRatio: '16/9', backgroundColor: '#000', userSelect: 'none', WebkitUserSelect: 'none' } as React.CSSProperties}
                   onContextMenu={(e) => e.preventDefault()}
                 >
@@ -1265,14 +1261,14 @@ export function CoursLecteur() {
                 </div>
               )}
               {lesson.content_type === 'video' && !(lesson.is_external) && (dataSaver || !isOnline) && (
-                <div className="mx-auto max-w-5xl rounded-2xl border p-5 mb-5" style={{ borderColor: '#BF8813', backgroundColor: '#FFFBEB' }}>
+                <div className="mx-auto max-w-3xl rounded-2xl border p-5 mb-5" style={{ borderColor: '#BF8813', backgroundColor: '#FFFBEB' }}>
                   <div className="flex items-center gap-2 font-bold text-sm" style={{ color: '#002050' }}><Gauge size={16}/>Lecture vidéo suspendue pour économiser les données</div>
                   <p className="mt-2 text-xs text-slate-600">Utilisez le texte, la transcription ou la piste audio lorsqu’elle est disponible. Désactivez l’économie de données pour reprendre la vidéo.</p>
                   {lesson.audio_url && isOnline && <audio controls controlsList="nodownload" preload="metadata" className="mt-3 w-full" src={lesson.audio_url} />}
                 </div>
               )}
               {lesson.content_type === 'audio' && lesson.audio_url && (
-                <div className="mx-auto max-w-5xl rounded-2xl p-5 mb-5" style={{ border: '1px solid #E4E7EC', backgroundColor: '#F8F9FA' }}>
+                <div className="mx-auto max-w-3xl rounded-2xl p-5 mb-5" style={{ border: '1px solid #E4E7EC', backgroundColor: '#F8F9FA' }}>
                   <audio controls controlsList="nodownload" preload="metadata" className="w-full"><source src={lesson.audio_url} /></audio>
                 </div>
               )}
