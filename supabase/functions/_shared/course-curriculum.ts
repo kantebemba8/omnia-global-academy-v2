@@ -24,8 +24,24 @@ export async function loadCourseCurriculum(sb: any, courseId: string): Promise<C
   const safeModules = modules || [];
   const safeLessons = lessons || [];
   const moduleIds = new Set(safeModules.map((m: any) => String(m.id)));
+  const sectionRank = (mod: any) => {
+    const type = String(mod.section_type || (mod.is_intro ? "introduction" : mod.is_conclusion ? "conclusion" : mod.is_final_exam ? "final_exam" : "module"));
+    if (type === "introduction") return -100000;
+    if (type === "conclusion") return 100000;
+    if (type === "final_exam") return 200000;
+    return Number(mod.position || 0);
+  };
+  const stageRank = (lesson: any) => {
+    const type = String(lesson.stage_type || (lesson.is_intro ? "introduction" : lesson.is_module_intro ? "module_presentation" : lesson.is_conclusion ? "conclusion" : lesson.is_final_exam ? "final_exam" : "lesson"));
+    if (type === "introduction") return -100000;
+    if (type === "module_presentation") return -10000;
+    if (type === "module_summary") return 10000;
+    if (type === "conclusion") return 100000;
+    if (type === "final_exam") return 200000;
+    return Number(lesson.position || 0);
+  };
   const modulePosition: Record<string, number> = {};
-  for (const mod of safeModules) modulePosition[String(mod.id)] = Number(mod.position || 0);
+  for (const mod of safeModules) modulePosition[String(mod.id)] = sectionRank(mod);
 
   const orphanLessonIds = safeLessons
     .filter((lesson: any) => !moduleIds.has(String(lesson.module_id)))
@@ -35,7 +51,7 @@ export async function loadCourseCurriculum(sb: any, courseId: string): Promise<C
     .filter((lesson: any) => moduleIds.has(String(lesson.module_id)))
     .sort((a: any, b: any) =>
       (Number(modulePosition[String(a.module_id)] || 0) - Number(modulePosition[String(b.module_id)] || 0)) ||
-      (Number(a.position || 0) - Number(b.position || 0)) ||
+      (stageRank(a) - stageRank(b)) ||
       String(a.id).localeCompare(String(b.id))
     );
 

@@ -154,7 +154,9 @@ export function CoursDetail() {
     live_media?: { id:string; event_id?:string; title?:string|null; media_type?:string; status?:string; processing_status?:string; sequence_no?:number|null; duration_seconds?:number|null } | null;
   }>;
 
-  const totalLessons = modules.reduce((s, m) => s + ((m.lessons as unknown[])?.length ?? 0), 0);
+  const realModules = modules.filter((m:any) => (m.section_type || (m.is_intro ? 'introduction' : m.is_conclusion ? 'conclusion' : m.is_final_exam ? 'final_exam' : 'module')) === 'module');
+  const totalLessons = realModules.reduce((sum:number, m:any) => sum + ((m.lessons as any[]) || []).filter((lesson:any) => (lesson.stage_type || (lesson.is_module_intro ? 'module_presentation' : 'lesson')) === 'lesson').length, 0);
+  const totalModules = realModules.length;
   const cpd = course.cpd_hours as number ?? 0;
   const levelColor = LEVEL_COLORS[course.level as string] ?? '#6B7280';
   const isFree = course.is_free as boolean;
@@ -518,12 +520,13 @@ export function CoursDetail() {
         {modules.length > 0 && (
           <section>
             <h2 className="font-bold mb-2" style={{ color: '#002050', fontSize: '22px' }}>Programme de la formation</h2>
-            <p className="text-sm mb-5" style={{ color: '#6B7280' }}>{modules.length} module{modules.length > 1 ? 's' : ''} · {totalLessons} leçon{totalLessons > 1 ? 's' : ''}{cpd > 0 ? ` · ${cpd} h reconnues` : ''}</p>
+            <p className="text-sm mb-5" style={{ color: '#6B7280' }}>{totalModules} module{totalModules > 1 ? 's' : ''} · {totalLessons} leçon{totalLessons > 1 ? 's' : ''}{cpd > 0 ? ` · ${cpd} h reconnues` : ''}</p>
             <div className="space-y-2">
               {modules.map((mod, mi) => {
                 const mid = mod.id as string;
                 const isOpen = openModules.has(mid);
                 const lessons = (mod.lessons as Record<string, unknown>[]) ?? [];
+                const realLessonCount = lessons.filter((lesson:any) => (lesson.stage_type || (lesson.is_module_intro ? 'module_presentation' : 'lesson')) === 'lesson').length;
                 return (
                   <div key={mid} className="rounded-xl overflow-hidden" style={{ border: '1px solid #E4E7EC' }}>
                     <button
@@ -531,10 +534,10 @@ export function CoursDetail() {
                       onClick={() => toggleModule(mid)}
                     >
                       <div className="flex items-start gap-3">
-                        <span className="text-[10px] font-black uppercase tracking-[.08em] mt-0.5 rounded-lg px-2 py-1" style={{ color: '#8A650F', background:'#FFF7E1' }}>{mod.is_intro ? 'Introduction' : mod.is_conclusion ? 'Conclusion' : mod.is_final_exam ? 'Examen final' : `Module ${modules.slice(0,mi+1).filter((item:any)=>!item.is_intro&&!item.is_conclusion&&!item.is_final_exam).length}`}</span>
+                        <span className="text-[10px] font-black uppercase tracking-[.08em] mt-0.5 rounded-lg px-2 py-1" style={{ color: '#8A650F', background:'#FFF7E1' }}>{(mod.section_type || (mod.is_intro ? 'introduction' : mod.is_conclusion ? 'conclusion' : mod.is_final_exam ? 'final_exam' : 'module')) === 'introduction' ? 'Introduction' : (mod.section_type || '') === 'conclusion' || mod.is_conclusion ? 'Conclusion' : (mod.section_type || '') === 'final_exam' || mod.is_final_exam ? 'Examen final' : `Module ${modules.slice(0,mi+1).filter((item:any)=>(item.section_type || (item.is_intro ? 'introduction' : item.is_conclusion ? 'conclusion' : item.is_final_exam ? 'final_exam' : 'module')) === 'module').length}`}</span>
                         <div>
                           <p className="font-semibold text-sm" style={{ color: '#002050' }}>{String(mod.title)}</p>
-                          <p className="text-xs mt-0.5" style={{ color: '#9CA3AF' }}>{lessons.length} leçon{lessons.length > 1 ? 's' : ''}</p>
+                          <p className="text-xs mt-0.5" style={{ color: '#9CA3AF' }}>{realLessonCount} leçon{realLessonCount > 1 ? 's' : ''}</p>
                         </div>
                       </div>
                       {isOpen ? <ChevronDown size={18} style={{ color: '#6B7280', flexShrink: 0 }} /> : <ChevronRight size={18} style={{ color: '#6B7280', flexShrink: 0 }} />}

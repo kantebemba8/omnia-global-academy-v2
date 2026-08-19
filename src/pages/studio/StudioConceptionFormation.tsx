@@ -46,8 +46,8 @@ interface Block {
   ai_generated?: boolean;
 }
 
-interface Lesson { id: string; title: string; position: number; has_blocks: boolean; block_count: number; is_required?: boolean; is_intro?: boolean; is_module_intro?: boolean; is_conclusion?: boolean; is_final_exam?: boolean; }
-interface Module { id: string; title: string; objective: string; position: number; lessons: Lesson[]; is_required?: boolean; is_intro?: boolean; is_conclusion?: boolean; is_final_exam?: boolean; }
+interface Lesson { id: string; title: string; position: number; has_blocks: boolean; block_count: number; is_required?: boolean; is_intro?: boolean; is_module_intro?: boolean; is_conclusion?: boolean; is_final_exam?: boolean; is_free_preview?: boolean; stage_type?: 'introduction'|'module_presentation'|'lesson'|'module_summary'|'conclusion'|'final_exam'; }
+interface Module { id: string; title: string; objective: string; position: number; lessons: Lesson[]; is_required?: boolean; is_intro?: boolean; is_conclusion?: boolean; is_final_exam?: boolean; section_type?: 'introduction'|'module'|'conclusion'|'final_exam'; }
 interface Course {
   id: string; course_code?: string; title: string; short_description?: string; long_description?: string;
   category?: string; level?: string; language?: string; course_type?: 'standard'|'language_learning'; instruction_language?: string; target_language?: string; cefr_start_level?: string; cefr_target_level?: string; language_framework?: string; prerequisites?: string;
@@ -504,23 +504,31 @@ export default function StudioConceptionFormation() {
   }
 
   async function duplicateBlock(block: Block) {
-    if (!course?.id || !currentModule?.id || !currentLesson?.id) return;
-    const data = await api('create_block', {
-      course_id: course.id, module_id: currentModule.id, lesson_id: currentLesson.id,
-      block_type: block.block_type, content_json: block.content_json, settings_json: block.settings_json,
-      interaction_mode: block.interaction_mode || 'content', assessment_scope: block.assessment_scope || null,
-      is_required: block.is_required ?? false, training_passing_score: block.training_passing_score ?? 80,
-      rag_enabled: block.rag_enabled ?? true, preview_allowed: block.preview_allowed ?? false,
-      position: block.position + 1,
-    });
-    if (data.success) {
+    if (!course?.id || !currentLesson?.id) return;
+    const data = await api('duplicate_block', { course_id: course.id, block_id: block.id });
+    if (data.success && data.block) {
       setBlocks(bs => {
         const idx = bs.findIndex(b => b.id === block.id);
-        const next = [...bs]; next.splice(idx + 1, 0, data.block); return next;
+        const next = [...bs];
+        next.splice(idx + 1, 0, data.block);
+        return next.map((item, position) => ({ ...item, position }));
       });
+      if (data.stream_requires_reupload) showToast('Le bloc vidéo a été dupliqué sans copier le flux privé. Téléversez la vidéo du nouveau bloc.', 'info');
     } else {
       showToast(data.message || data.error || 'Impossible de dupliquer le bloc.', 'error');
     }
+  }
+
+  async function removeBlockResource(block: Block) {
+    if (!course?.id) return;
+    const data = await api('remove_block_resource', { course_id: course.id, block_id: block.id });
+    if (!data.success || !data.block) {
+      showToast(data.message || data.error || 'Impossible de retirer la ressource.', 'error');
+      return;
+    }
+    setBlocks(bs => bs.map(item => item.id === block.id ? data.block : item));
+    setSelectedBlock(current => current?.id === block.id ? data.block : current);
+    showToast('Ressource retirée et nettoyage serveur effectué.', 'success');
   }
 
   const dragIdx = useRef<number | null>(null);
@@ -1377,9 +1385,33 @@ export default function StudioConceptionFormation() {
                     }}
                     disabled={locked} spellCheck lang={course?.instruction_language || course?.language || 'fr'} />
                   {!locked && course.id && (
-                    <button type="button" onClick={() => setBuilderImportTarget({ type: 'lesson', id: currentLesson.id })} className="mt-3 inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold" style={{ borderColor: '#E4E7EC', color: '#002050' }}>
-                      <UploadCloud size={13} /> Importer un document dans cette leçon
-                    </button>
+                    <div className="mt-3 flex flex-wrap items-center gap-3">
+                      <button type="button" onClick={() => setBuilderImportTarget({ type: 'lesson', id: currentLesson.id })} className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold" style={{ borderColor: '#E4E7EC', color: '#002050' }}>
+                        <UploadCloud size={13} /> Importer un document dans cette leçon
+                      </button>
+                      {(currentLesson.stage_type || (currentLesson.is_module_intro ? 'module_presentation' : currentLesson.is_intro ? 'introduction' : currentLesson.is_conclusion ? 'conclusion' : currentLesson.is_final_exam ? 'final_exam' : 'lesson')) === 'lesson' && (
+                        <label className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold" style={{ borderColor:'#E4E7EC', color:'#002050' }}>
+                          <input
+                            type="checkbox"
+                            checked={currentLesson.is_free_preview === true}
+                            onChange={async e => {
+                              const lessonId = currentLesson.id;
+                              const enabled = e.target.checked;
+                              const result = await api('update_lesson', { course_id: course.id, lesson_id: lessonId, is_free_preview: enabled });
+                              if (!result.success) {
+                                showToast(result.message || result.error || 'Le réglage de l’aperçu avant achat n’a pas été enregistré.', 'error');
+                                return;
+                              }
+                              const selectedId = enabled ? lessonId : null;
+                              setCurrentLesson(l => l?.id === lessonId ? { ...l, is_free_preview: enabled } : l);
+                              setModules(ms => ms.map(m => ({ ...m, lessons: (m.lessons || []).map(l => ({ ...l, is_free_preview: selectedId ? l.id === selectedId : (l.id === lessonId ? false : l.is_free_preview) })) })));
+                              showToast(enabled ? 'Cette leçon sera utilisée dans l’aperçu avant achat.' : 'Cette leçon n’est plus utilisée dans l’aperçu avant achat.', 'success');
+                            }}
+                          />
+                          Autoriser cette leçon dans l’aperçu avant achat
+                        </label>
+                      )}
+                    </div>
                   )}
                   {currentLesson.is_module_intro && (
                     <p className="text-xs mt-2" style={{ color: '#6B7280' }}>Cette présentation est facultative. Utilisez les blocs pour expliquer le module, ses objectifs, sa méthode ou ses ressources avant la première leçon.</p>
@@ -1616,6 +1648,7 @@ export default function StudioConceptionFormation() {
                     onAI={async (action, prompt) => {
                       setAiAction(action); setAiInput(prompt); setShowAI(true); setSelectedBlock(null);
                     }}
+                    onRemoveResource={() => removeBlockResource(selectedBlock)}
                     courseId={course?.id || ''}
                     moduleId={currentModule?.id || ''}
                     lessonId={currentLesson?.id || ''}
@@ -1862,7 +1895,6 @@ function LanguageBlockEditor({type,c,locked,onChange}:{type:string;c:Record<stri
   if(type==='oral_response') return <div className="space-y-2"><textarea className={cls} style={st} rows={3} value={c.prompt||''} onChange={e=>onChange({...c,prompt:e.target.value})} placeholder="Consigne orale" disabled={locked}/><input className={cls} style={st} value={c.reference_audio_url||''} onChange={e=>onChange({...c,reference_audio_url:e.target.value})} placeholder="Audio de référence" disabled={locked}/></div>;
   return <div className="space-y-2"><textarea className={cls} style={st} rows={4} value={c.prompt||''} onChange={e=>onChange({...c,prompt:e.target.value})} placeholder="Sujet d’expression écrite" disabled={locked}/><input type="number" min={20} className={cls} style={st} value={c.target_words||120} onChange={e=>onChange({...c,target_words:Math.max(20,Number(e.target.value)||120)})} disabled={locked}/></div>;
 }
-function LanguageBlockReadonly({type,c}:{type:string;c:Record<string,any>}){return <div className="rounded-xl border p-4" style={{borderColor:'#E4E7EC'}}><p className="text-xs font-bold uppercase tracking-wide text-[#BF8813]">Activité de langue</p><p className="mt-2 text-sm font-semibold text-[#002050]">{c.title||String(type).replaceAll('_',' ')}</p>{c.prompt&&<p className="mt-2 text-sm text-slate-600">{c.prompt}</p>}{c.audio_url&&<audio className="mt-3 w-full" controls src={c.audio_url}/>}</div>}
 
 // ─── Aperçu inline du bloc (éditable) ────────────────────────
 function BlockPreview({ block, def, locked, onChange, onGenerateTts, onGenerateSubtitles, mediaAiBusy, defaultLanguage = 'fr' }: {
@@ -2076,6 +2108,7 @@ function BlockSettings({ block, locked, onUpdate, onAI, courseId, moduleId, less
   const [uploadProgress, setUploadProgress] = useState(0);
   const showOptionalBlockTitle = ['video','audio','pdf','word','excel','scorm','download','embed','assignment_upload','exercise','case_study','oral_response','listening_comprehension','written_expression'].includes(block.block_type);
   const resourceRagCapable = ['pdf','word','excel','download'].includes(block.block_type);
+  const previewProtectedResource = ['image','gallery','video','audio','pdf','word','excel','download','embed'].includes(block.block_type);
 
   // ── Upload fichier vers Supabase Storage ──────────────────
   async function handleFileUpload(file: File, blockType: string) {
@@ -2350,7 +2383,7 @@ function BlockSettings({ block, locked, onUpdate, onAI, courseId, moduleId, less
                   {block.file_size && <p className="text-xs" style={{ color: '#9CA3AF' }}>{Math.round(block.file_size / 1024)} Ko</p>}
                 </div>
                 {!locked && (
-                  <button onClick={() => onUpdate({ file_url: undefined, file_name: undefined, file_size: undefined, content_json: { ...c, url: '' } })}
+                  <button onClick={onRemoveResource}
                     className="text-xs px-2 py-1 rounded-lg" style={{ color: '#DC2626', background: '#FEE2E2' }}>
                     Retirer
                   </button>
@@ -2451,18 +2484,18 @@ function BlockSettings({ block, locked, onUpdate, onAI, courseId, moduleId, less
               <span className="text-sm" style={{ color: '#374151' }}>Autoriser le téléchargement</span>
             </label>
           )}
-          {resourceRagCapable && (
+          {(resourceRagCapable || previewProtectedResource) && (
             <div className="space-y-2 rounded-xl border p-3" style={{ borderColor: '#E4E7EC' }}>
-              <label className="flex items-start gap-2 cursor-pointer">
+              {resourceRagCapable && <label className="flex items-start gap-2 cursor-pointer">
                 <input type="checkbox" checked={block.rag_enabled === true} disabled={locked || !block.file_name}
                   onChange={async e => { const enabled = e.target.checked; const data = await api('resource_rag_update', { course_id: courseId, block_id: block.id, enabled }); if (data.success) onUpdate({ rag_enabled: enabled, content_json: data.block?.content_json || c }); }}
                   style={{ accentColor: '#002050', marginTop: 2 }} />
                 <span><span className="block text-sm font-medium text-gray-700">Accessible à l’Assistant pédagogique</span><span className="block text-[11px] text-gray-500">Le texte du document est extrait de façon privée pour le RAG. Le fichier lui-même reste protégé.</span></span>
-              </label>
-              <label className="flex items-start gap-2 cursor-pointer">
+              </label>}
+              {previewProtectedResource && <label className="flex items-start gap-2 cursor-pointer">
                 <input type="checkbox" checked={block.preview_allowed === true} disabled={locked} onChange={e => onUpdate({ preview_allowed: e.target.checked })} style={{ accentColor: '#002050', marginTop: 2 }} />
-                <span><span className="block text-sm font-medium text-gray-700">Autoriser dans l’aperçu gratuit</span><span className="block text-[11px] text-gray-500">Désactivé par défaut pour protéger les ressources premium.</span></span>
-              </label>
+                <span><span className="block text-sm font-medium text-gray-700">Autoriser dans l’aperçu gratuit</span><span className="block text-[11px] text-gray-500">Le contenu n’est montré avant achat que si vous l’autorisez explicitement.</span></span>
+              </label>}
             </div>
           )}
         </div>
@@ -2491,7 +2524,7 @@ function BlockSettings({ block, locked, onUpdate, onAI, courseId, moduleId, less
               <CheckCircle size={14} style={{ color: '#1E7A52' }} />
               <p className="text-xs font-semibold truncate flex-1" style={{ color: '#065F46' }}>{block.file_name}</p>
               {!locked && (
-                <button onClick={() => onUpdate({ file_url: undefined, file_name: undefined, content_json: { ...c, url: '' } })}
+                <button onClick={onRemoveResource}
                   className="text-xs px-2 py-1 rounded" style={{ color: '#DC2626' }}>Retirer</button>
               )}
             </div>
@@ -2504,59 +2537,4 @@ function BlockSettings({ block, locked, onUpdate, onAI, courseId, moduleId, less
           Les réglages d’un bloc n’affichent que les aides IA réellement spécifiques au type de bloc. */}
     </div>
   );
-}
-
-// ─── Aperçu lecture seule (panneau droit) ─────────────────────
-function BlockPreviewReadonly({ block }: { block: Block }) {
-  const c = block.content_json;
-  const def = BLOCK_DEFS.find(d => d.type === block.block_type);
-
-  switch (block.block_type) {
-    case 'heading': return <h2 className="text-xl font-black" style={{ color: '#002050' }}>{c.text}</h2>;
-    case 'subheading': return <h3 className="text-lg font-bold" style={{ color: '#374151' }}>{c.text}</h3>;
-    case 'text': return <div className="text-sm" style={{ color: '#374151', lineHeight: 1.7 }} dangerouslySetInnerHTML={{ __html: c.html || '' }} />;
-    case 'vocabulary': case 'dialogue': case 'cloze': case 'dictation': case 'pronunciation': case 'matching': case 'sentence_order': case 'oral_response': case 'listening_comprehension': case 'written_expression': return <LanguageBlockReadonly type={block.block_type} c={c} />;
-    case 'separator': return <hr style={{ borderColor: '#E4E7EC' }} />;
-    case 'callout': return (
-      <div className="flex gap-2 p-3 rounded-lg" style={{ background: '#EFF6FF' }}>
-        <Info size={14} style={{ color: '#0369A1', flexShrink: 0 }} />
-        <p className="text-sm" style={{ color: '#374151' }}>{c.content}</p>
-      </div>
-    );
-    case 'remember': return (
-      <div className="p-3 rounded-lg" style={{ background: 'rgba(191,136,19,0.08)' }}>
-        <p className="text-xs font-bold mb-2" style={{ color: '#BF8813' }}>⭐ À retenir</p>
-        {(c.points || []).map((pt: string, i: number) => (
-          <p key={i} className="text-sm mb-1" style={{ color: '#374151' }}>• {pt}</p>
-        ))}
-      </div>
-    );
-    case 'image': return c.url ? <img src={c.url} alt={c.alt} className="w-full rounded-lg" /> : null;
-    case 'qcm': return (
-      <div className="space-y-2">
-        <p className="text-sm font-semibold" style={{ color: '#002050' }}>{c.question}</p>
-        {(c.options || []).map((opt: string, i: number) => (
-          <div key={i} className="flex items-center gap-2 p-2 rounded-lg" style={{ background: '#F8F9FA' }}>
-            <div className="w-4 h-4 rounded-full border-2 flex-shrink-0" style={{ borderColor: '#D1D5DB' }} />
-            <span className="text-sm">{opt}</span>
-          </div>
-        ))}
-      </div>
-    );
-    case 'true_false': return (
-      <div className="space-y-2">
-        <p className="text-sm font-semibold" style={{ color: '#002050' }}>{c.statement}</p>
-        <div className="flex gap-3">
-          <button className="px-4 py-2 rounded-lg text-sm font-semibold" style={{ background: '#D1FAE5', color: '#065F46' }}>Vrai</button>
-          <button className="px-4 py-2 rounded-lg text-sm font-semibold" style={{ background: '#FEE2E2', color: '#991B1B' }}>Faux</button>
-        </div>
-      </div>
-    );
-    default: return def ? (
-      <div className="flex items-center gap-2 p-3 rounded-lg" style={{ background: '#F8F9FA' }}>
-        <def.icon size={16} style={{ color: def.color }} />
-        <span className="text-sm" style={{ color: '#374151' }}>{def.label} {c.title || ''}</span>
-      </div>
-    ) : null;
-  }
 }

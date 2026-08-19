@@ -14,15 +14,28 @@ const json=(d:unknown,s=200)=>new Response(JSON.stringify(d),{status:s,headers:{
 
 const STUDIO_UPLOAD_BUCKETS=new Set<string>(["course-images",...PRIVATE_COURSE_BUCKET_SET]);
 function validCourseStoragePath(courseId:string,path:unknown){const clean=String(path||"").trim().replace(/^\/+/,"");return clean&&clean.startsWith(`${courseId}/`)?clean:""}
+async function signNestedStudioRefs(sb:any,value:any,depth=0):Promise<any>{
+ if(depth>5||value==null)return value;
+ if(typeof value==="string"){const locator=parseStorageLocator(value);if(locator&&PRIVATE_COURSE_BUCKET_SET.has(locator.bucket)){const signed=await createSignedObjectUrl(sb,locator.bucket,locator.path,900);return signed||null;}return value;}
+ if(Array.isArray(value))return await Promise.all(value.map(item=>signNestedStudioRefs(sb,item,depth+1)));
+ if(typeof value!=="object")return value;
+ const out:any={};for(const [key,item] of Object.entries(value))out[key]=await signNestedStudioRefs(sb,item,depth+1);return out;
+}
 async function decorateStudioBlock(sb:any,block:any){
- const content={...(block?.content_json||{})};
+ const content=await signNestedStudioRefs(sb,{...(block?.content_json||{})});
  const streamUid=String(content.cloudflare_stream_uid||"").trim();
  if(streamUid){
   try{const signed=await signedStreamManifest(streamUid,900);return {...block,file_url:signed.iframe_url,content_json:{...content,url:signed.iframe_url,provider:"cloudflare_stream"},_signed:true,_stream:true};}
   catch{return {...block,file_url:null,content_json:{...content,url:null,provider:"cloudflare_stream"},_signed:false,_stream:true};}
  }
- const bucket=String(block?.bucket_name||"");if(!PRIVATE_COURSE_BUCKET_SET.has(bucket))return block;const locator=parseStorageLocator(block.storage_path||block.file_url,bucket);if(!locator)return {...block,file_url:null,content_json:{...content,url:null}};const signed=await createSignedObjectUrl(sb,locator.bucket,locator.path,900);return {...block,file_url:signed,content_json:{...content,url:signed},_signed:!!signed}
+ const bucket=String(block?.bucket_name||"");
+ if(!PRIVATE_COURSE_BUCKET_SET.has(bucket))return {...block,content_json:content};
+ const locator=parseStorageLocator(block.storage_path||block.file_url,bucket);
+ if(!locator)return {...block,file_url:null,content_json:{...content,url:null}};
+ const signed=await createSignedObjectUrl(sb,locator.bucket,locator.path,900);
+ return {...block,file_url:signed,content_json:{...content,url:signed},_signed:!!signed};
 }
+
 
 async function sessionUser(sb:any, req:Request, bodyToken=""){
  const token=(bodyToken||req.headers.get("x-omnia-session-token")||req.headers.get("Authorization")||"").replace(/^Bearer\s+/i,"").trim();
@@ -35,7 +48,7 @@ async function sessionUser(sb:any, req:Request, bodyToken=""){
 }
 async function roles(sb:any,userId:string){const {data}=await sb.from("user_roles").select("role").eq("user_id",userId);return (data||[]).map((r:any)=>r.role)}
 async function owns(sb:any,userId:string,courseId:string,permission="can_edit_courses"){const {data}=await sb.from("courses").select("creator_id,creator_context,structure_id").eq("id",courseId).maybeSingle();if(!data)return false;const rs=await roles(sb,userId);if(rs.includes("super_admin"))return true;if(String(data.creator_context||"")==="structure"){if(!data.structure_id)return false;const access=await validatedStructureAccess(sb,userId,String(data.structure_id));return hasStructurePermission(access,permission)}return String(data.creator_id)===userId}
-function coursePermissionForAction(action:string){if(action==="submit_course")return "can_submit_courses";if(["create_module","update_module","delete_module","create_lesson","update_lesson","delete_lesson","create_module_stage","create_block","update_block","delete_block","reorder_blocks","ensure_special_sections","ensure_assessments","assessment_policy_update","assessment_policy_confirm_review"].includes(action))return "can_manage_lessons";if(["prepare_upload","upload_block_file","prepare_assessment_correction_upload"].includes(action))return "can_upload_files";return "can_edit_courses"}
+function coursePermissionForAction(action:string){if(action==="submit_course")return "can_submit_courses";if(["create_module","update_module","delete_module","create_lesson","update_lesson","delete_lesson","create_module_stage","create_block","update_block","delete_block","duplicate_block","remove_block_resource","reorder_blocks","ensure_special_sections","ensure_assessments","assessment_policy_update","assessment_policy_confirm_review"].includes(action))return "can_manage_lessons";if(["prepare_upload","upload_block_file","prepare_assessment_correction_upload"].includes(action))return "can_upload_files";return "can_edit_courses"}
 async function log(sb:any,courseId:string,userId:string,action:string,details:any={}){await Promise.allSettled([sb.from("course_studio_logs").insert({course_id:courseId,user_id:userId,action,details}),sb.from("course_audit_log").insert({course_id:courseId,actor_id:userId,action,entity_type:"course",metadata:details})])}
 
 
@@ -537,19 +550,28 @@ Deno.serve(async(req)=>{
    const viewerId=token?await sessionUser(sb,req):null; const viewerRoles=viewerId?await roles(sb,viewerId):[];
    const privileged=!!viewerId&&(viewerId===course.creator_id||viewerRoles.includes("super_admin"));
    if((!course.is_published||course.is_catalog_active===false)&&!privileged)return json({success:false,error:"NOT_FOUND"},404);
-   const {data:modules,error:moduleError}=await sb.from("course_modules").select("id,title,objective,position,is_intro,is_conclusion,is_final_exam").eq("course_id",courseId).order("position");if(moduleError)throw moduleError;
+   const {data:modules,error:moduleError}=await sb.from("course_modules").select("id,title,objective,position,is_intro,is_conclusion,is_final_exam,section_type").eq("course_id",courseId).order("position");if(moduleError)throw moduleError;
    const moduleIds=(modules||[]).map((m:any)=>m.id);
-   const {data:lessons,error:lessonError}=moduleIds.length?await sb.from("course_lessons").select("id,module_id,title,position,is_intro,is_module_intro,is_conclusion,is_final_exam").in("module_id",moduleIds).order("position"):{data:[],error:null};if(lessonError)throw lessonError;
-   const introLesson=(lessons||[]).find((l:any)=>l.is_intro);
-   const firstModule=(modules||[]).filter((m:any)=>!m.is_intro&&!m.is_conclusion&&!m.is_final_exam).sort((a:any,b:any)=>a.position-b.position)[0]||null;
-   const firstLesson=firstModule?(lessons||[]).filter((l:any)=>l.module_id===firstModule.id&&!l.is_module_intro&&!l.is_conclusion&&!l.is_final_exam).sort((a:any,b:any)=>a.position-b.position)[0]||null:null;
-   const safePreviewTypes=new Set(["heading","subheading","text","separator","callout","remember","objective","example","summary","important","definition","correction","bullet_list","numbered_list","quote","code","accordion","timeline","columns","formula","chart","image","gallery","video","audio","pdf","word","excel","download","embed"]);
+   const {data:lessons,error:lessonError}=moduleIds.length?await sb.from("course_lessons").select("id,module_id,title,position,is_intro,is_module_intro,is_conclusion,is_final_exam,is_free_preview,cpd_calculated_time_seconds,stage_type").in("module_id",moduleIds).order("position"):{data:[],error:null};if(lessonError)throw lessonError;
+   const sectionType=(m:any)=>String(m.section_type||(m.is_intro?"introduction":m.is_conclusion?"conclusion":m.is_final_exam?"final_exam":"module"));
+   const stageType=(l:any)=>String(l.stage_type||(l.is_intro?"introduction":l.is_module_intro?"module_presentation":l.is_conclusion?"conclusion":l.is_final_exam?"final_exam":"lesson"));
+   const introLesson=(lessons||[]).find((l:any)=>stageType(l)==="introduction")||null;
+   const firstModule=(modules||[]).filter((m:any)=>sectionType(m)==="module").sort((a:any,b:any)=>Number(a.position||0)-Number(b.position||0))[0]||null;
+   const firstPresentation=firstModule?(lessons||[]).filter((l:any)=>l.module_id===firstModule.id&&stageType(l)==="module_presentation")[0]||null:null;
+   const realLessons=(lessons||[]).filter((l:any)=>stageType(l)==="lesson").sort((a:any,b:any)=>Number(a.position||0)-Number(b.position||0));
+   const selectedPreviewLesson=realLessons.find((l:any)=>l.is_free_preview===true)||null;
+   const firstLesson=selectedPreviewLesson||(firstModule?realLessons.find((l:any)=>l.module_id===firstModule.id)||null:null);
+   const safePreviewTypes=new Set(["heading","subheading","text","separator","callout","remember","objective","example","summary","important","definition","correction","bullet_list","numbered_list","quote","code","accordion","flashcards","interactive_table","checklist","link_button","timeline","columns","formula","chart","image","gallery","video","audio","pdf","word","excel","download","embed"]);
    const protectedPreviewTypes=new Set(["image","gallery","video","audio","pdf","word","excel","download","embed"]);
-   async function previewBlocks(lesson:any){if(!lesson)return[];const {data,error}=await sb.from("lesson_blocks").select("id,block_type,position,title,content_json,settings_json,file_url,file_name,file_size,file_mime,storage_path,bucket_name,interaction_mode,preview_allowed").eq("lesson_id",lesson.id).order("position");if(error)throw error;const filtered=(data||[]).filter((row:any)=>row.interaction_mode==="content"&&safePreviewTypes.has(String(row.block_type))&&(!protectedPreviewTypes.has(String(row.block_type))||row.preview_allowed===true));return await Promise.all(filtered.map((row:any)=>decorateStudioBlock(sb,row)));}
+   async function previewBlocks(lesson:any){if(!lesson)return[];const {data,error}=await sb.from("lesson_blocks").select("id,block_type,position,title,content_json,settings_json,file_url,file_name,file_size,file_mime,storage_path,bucket_name,interaction_mode,preview_allowed").eq("lesson_id",lesson.id).order("position");if(error)throw error;const filtered=(data||[]).filter((row:any)=>String(row.interaction_mode||"content")==="content"&&safePreviewTypes.has(String(row.block_type))&&(!protectedPreviewTypes.has(String(row.block_type))||row.preview_allowed===true));return await Promise.all(filtered.map((row:any)=>decorateStudioBlock(sb,row)));}
    const blocks=course.free_preview_mode!=="none"?await previewBlocks(introLesson):[];
+   const presentationBlocks=course.free_preview_mode==="introduction_first_lesson"&&course.preview_first_lesson_enabled!==false?await previewBlocks(firstPresentation):[];
    const firstLessonBlocks=course.free_preview_mode==="introduction_first_lesson"&&course.preview_first_lesson_enabled!==false?await previewBlocks(firstLesson):[];
-   const program=(modules||[]).filter((m:any)=>!m.is_intro&&!m.is_conclusion&&!m.is_final_exam).map((m:any)=>({...m,lessons:(lessons||[]).filter((l:any)=>l.module_id===m.id&&!l.is_module_intro).map((l:any)=>({id:l.id,title:l.title,position:l.position,locked:!firstLesson||l.id!==firstLesson.id}))}));
-   return json({success:true,course,preview_enabled:course.free_preview_mode!=="none",introduction:introLesson?{...introLesson,blocks}:null,first_lesson:firstLesson?{...firstLesson,blocks:firstLessonBlocks}:null,program,privileged,preview_rules:{progress_recorded:false,training_recorded:false,assessment_access:false}});
+   const program=(modules||[]).sort((a:any,b:any)=>{const rank=(m:any)=>sectionType(m)==="introduction"?-100000:sectionType(m)==="conclusion"?100000:sectionType(m)==="final_exam"?200000:Number(m.position||0);return rank(a)-rank(b)}).map((m:any)=>{
+    const st=sectionType(m);const moduleLessons=(lessons||[]).filter((l:any)=>l.module_id===m.id).sort((a:any,b:any)=>{const rank=(l:any)=>stageType(l)==="module_presentation"?-10000:stageType(l)==="module_summary"?10000:Number(l.position||0);return rank(a)-rank(b)});
+    return {...m,section_type:st,lessons:moduleLessons.map((l:any)=>{const lt=stageType(l);const previewOn=course.free_preview_mode!=="none";const extended=course.free_preview_mode==="introduction_first_lesson"&&course.preview_first_lesson_enabled!==false;const allowed=previewOn&&(lt==="introduction"||(extended&&firstPresentation&&l.id===firstPresentation.id)||(extended&&firstLesson&&l.id===firstLesson.id));return {id:l.id,title:l.title,position:l.position,stage_type:lt,duration_seconds:Number(l.cpd_calculated_time_seconds||0),locked:!allowed,is_free_preview:l.is_free_preview===true};})};
+   });
+   return json({success:true,course,preview_enabled:course.free_preview_mode!=="none",introduction:introLesson?{...introLesson,stage_type:"introduction",blocks}:null,module_presentation:firstPresentation?{...firstPresentation,stage_type:"module_presentation",blocks:presentationBlocks}:null,first_lesson:firstLesson?{...firstLesson,stage_type:"lesson",blocks:firstLessonBlocks}:null,program,privileged,preview_rules:{progress_recorded:false,training_recorded:false,assessment_access:false}});
   }
 
   const userId=await sessionUser(sb,req,String(b.session_token||"")); if(!userId)return json({success:false,error:"AUTH_REQUIRED"},401);
@@ -931,13 +953,21 @@ Deno.serve(async(req)=>{
    const {data,error}=await sb.from("course_modules").update({title,updated_at:new Date().toISOString()}).eq("id",moduleId).select("*").single();if(error)throw error;await log(sb,String(mod.course_id),userId,"module_updated",{module_id:moduleId,title});return json({success:true,module:data});
   }
   if(action==="create_lesson"){
-   const [{data:normalLessons},{data:courseMeta}]=await Promise.all([sb.from("course_lessons").select("id").eq("module_id",b.module_id).eq("is_module_intro",false),sb.from("courses").select("language").eq("id",courseId).maybeSingle()]);const count=(normalLessons||[]).length;const lang=normalizedCourseLanguage(courseMeta?.language);
+   const [{data:normalLessons},{data:courseMeta}]=await Promise.all([sb.from("course_lessons").select("id").eq("module_id",b.module_id).eq("stage_type","lesson"),sb.from("courses").select("language").eq("id",courseId).maybeSingle()]);const count=(normalLessons||[]).length;const lang=normalizedCourseLanguage(courseMeta?.language);
    const {data,error}=await sb.from("course_lessons").insert({course_id:courseId,module_id:b.module_id,title:b.title||`${autoCopy(lang,"lesson")} ${count+1}`,position:count,is_intro:false,is_module_intro:false,stage_type:"lesson"}).select("*").single();if(error)throw error;await log(sb,courseId,userId,"lesson_created",{lesson_id:data.id});return json({success:true,lesson:{...data,has_blocks:false,block_count:0}});
   }
   if(action==="update_lesson"){
-   const lessonId=String(b.lesson_id||"");const title=String(b.title||"").trim();if(!lessonId||!title)return json({success:false,error:"LESSON_ID_AND_TITLE_REQUIRED"},400);
-   const {data:lesson}=await sb.from("course_lessons").select("id,course_id").eq("id",lessonId).maybeSingle();if(!lesson||!(await owns(sb,userId,String(lesson.course_id),"can_manage_lessons")))return json({success:false,error:"FORBIDDEN"},403);
-   const {data,error}=await sb.from("course_lessons").update({title,updated_at:new Date().toISOString()}).eq("id",lessonId).select("*").single();if(error)throw error;await log(sb,String(lesson.course_id),userId,"lesson_updated",{lesson_id:lessonId,title});return json({success:true,lesson:data});
+   const lessonId=String(b.lesson_id||"");if(!lessonId)return json({success:false,error:"LESSON_ID_REQUIRED"},400);
+   const {data:lesson}=await sb.from("course_lessons").select("id,course_id,module_id,stage_type,title").eq("id",lessonId).maybeSingle();if(!lesson||!(await owns(sb,userId,String(lesson.course_id),"can_manage_lessons")))return json({success:false,error:"FORBIDDEN"},403);
+   const updates:any={updated_at:new Date().toISOString()};
+   if(b.title!==undefined){const title=String(b.title||"").trim();if(!title)return json({success:false,error:"LESSON_TITLE_REQUIRED"},400);updates.title=title;}
+   if(b.is_free_preview!==undefined){
+    if(String(lesson.stage_type||"lesson")!=="lesson")return json({success:false,error:"FREE_PREVIEW_ONLY_FOR_LESSONS"},409);
+    const enabled=b.is_free_preview===true;updates.is_free_preview=enabled;
+    if(enabled)await sb.from("course_lessons").update({is_free_preview:false,updated_at:new Date().toISOString()}).eq("course_id",lesson.course_id).eq("stage_type","lesson").neq("id",lessonId);
+   }
+   if(Object.keys(updates).length===1)return json({success:false,error:"NO_LESSON_CHANGES"},400);
+   const {data,error}=await sb.from("course_lessons").update(updates).eq("id",lessonId).select("*").single();if(error)throw error;await log(sb,String(lesson.course_id),userId,"lesson_updated",{lesson_id:lessonId,title:updates.title??lesson.title,is_free_preview:updates.is_free_preview});return json({success:true,lesson:data});
   }
   if(action==="create_module_stage"){
    const moduleId=String(b.module_id||"");const stage=String(b.stage_type||"");
@@ -955,6 +985,7 @@ Deno.serve(async(req)=>{
   if(action==="delete_lesson"){
    const lessonId=String(b.lesson_id||"");const {data:lesson}=await sb.from("course_lessons").select("id,course_id,module_id,stage_type").eq("id",lessonId).maybeSingle();
    if(!lesson||!(await owns(sb,userId,String(lesson.course_id),"can_manage_lessons")))return json({success:false,error:"FORBIDDEN"},403);
+   const {data:deleteCourse}=await sb.from("courses").select("is_published,studio_status").eq("id",lesson.course_id).maybeSingle();if(deleteCourse?.is_published===true)return json({success:false,error:"PUBLISHED_VERSION_IMMUTABLE",message:"Créez une nouvelle version brouillon avant de supprimer une leçon d’une formation publiée."},409);
    if(["introduction","conclusion","final_exam"].includes(String(lesson.stage_type||"")))return json({success:false,error:"STRUCTURAL_STAGE_CANNOT_BE_DELETED"},409);
    const {data:blocks}=await sb.from("lesson_blocks").select("id,content_json,storage_path,bucket_name").eq("lesson_id",lessonId);
    for(const blk of blocks||[]){const uid=String(blk.content_json?.cloudflare_stream_uid||"").trim();if(uid)await deleteStreamVideo(uid).catch(()=>{});if(blk.storage_path&&PRIVATE_COURSE_BUCKET_SET.has(String(blk.bucket_name||"")))await sb.storage.from(String(blk.bucket_name)).remove([String(blk.storage_path)]).catch(()=>{});}
@@ -966,6 +997,7 @@ Deno.serve(async(req)=>{
   if(action==="delete_module"){
    const moduleId=String(b.module_id||"");const {data:mod}=await sb.from("course_modules").select("id,course_id,section_type").eq("id",moduleId).maybeSingle();
    if(!mod||!(await owns(sb,userId,String(mod.course_id),"can_manage_lessons")))return json({success:false,error:"FORBIDDEN"},403);
+   const {data:deleteCourse}=await sb.from("courses").select("is_published,studio_status").eq("id",mod.course_id).maybeSingle();if(deleteCourse?.is_published===true)return json({success:false,error:"PUBLISHED_VERSION_IMMUTABLE",message:"Créez une nouvelle version brouillon avant de supprimer un module d’une formation publiée."},409);
    if(String(mod.section_type||"module")!=="module")return json({success:false,error:"STRUCTURAL_SECTION_CANNOT_BE_DELETED"},409);
    const {data:blocks}=await sb.from("lesson_blocks").select("content_json,storage_path,bucket_name").eq("module_id",moduleId);
    for(const blk of blocks||[]){const uid=String(blk.content_json?.cloudflare_stream_uid||"").trim();if(uid)await deleteStreamVideo(uid).catch(()=>{});if(blk.storage_path&&PRIVATE_COURSE_BUCKET_SET.has(String(blk.bucket_name||"")))await sb.storage.from(String(blk.bucket_name)).remove([String(blk.storage_path)]).catch(()=>{});}
@@ -991,6 +1023,29 @@ Deno.serve(async(req)=>{
   }
   if(action==="delete_block"){
    const {data:blk}=await sb.from("lesson_blocks").select("course_id,lesson_id,content_json,storage_path,bucket_name").eq("id",b.block_id).maybeSingle();if(!blk||!(await owns(sb,userId,blk.course_id,"can_manage_lessons")))return json({success:false,error:"FORBIDDEN"},403);const streamUid=String(blk.content_json?.cloudflare_stream_uid||"").trim();await sb.from("lesson_blocks").delete().eq("id",b.block_id);if(streamUid){await deleteStreamVideo(streamUid).catch(()=>{});const {data:remainingVideos}=await sb.from("lesson_blocks").select("content_json,position").eq("lesson_id",blk.lesson_id).eq("block_type","video").order("position",{ascending:false});const nextUid=String((remainingVideos||[]).map((row:any)=>row?.content_json?.cloudflare_stream_uid).find((value:any)=>String(value||"").trim())||"").trim()||null;await sb.from("course_lessons").update({cloudflare_stream_uid:nextUid,updated_at:new Date().toISOString()}).eq("id",blk.lesson_id);}if(blk.storage_path&&PRIVATE_COURSE_BUCKET_SET.has(String(blk.bucket_name||"")))await sb.storage.from(String(blk.bucket_name)).remove([String(blk.storage_path)]).then(()=>{}).catch(()=>{});await recalculateCourseDuration(sb,String(blk.course_id));await log(sb,blk.course_id,userId,"block_deleted",{block_id:b.block_id,stream_deleted:!!streamUid});return json({success:true});
+  }
+  if(action==="duplicate_block"){
+   const blockId=String(b.block_id||"");const {data:blk}=await sb.from("lesson_blocks").select("*").eq("id",blockId).maybeSingle();if(!blk||!(await owns(sb,userId,String(blk.course_id),"can_manage_lessons")))return json({success:false,error:"FORBIDDEN"},403);
+   const {data:after}=await sb.from("lesson_blocks").select("id,position").eq("lesson_id",blk.lesson_id).gt("position",Number(blk.position||0)).order("position",{ascending:false});
+   for(const row of after||[])await sb.from("lesson_blocks").update({position:Number(row.position||0)+1,updated_at:new Date().toISOString()}).eq("id",row.id);
+   const content={...(blk.content_json||{})};let storagePath:string|null=null,bucketName:string|null=null,fileUrl:any=null,fileName:any=null,fileSize:any=null,fileMime:any=null;
+   const streamUid=String(content.cloudflare_stream_uid||"").trim();
+   if(streamUid){delete content.cloudflare_stream_uid;delete content.url;delete content.provider;fileUrl=null;}
+   else if(blk.storage_path&&PRIVATE_COURSE_BUCKET_SET.has(String(blk.bucket_name||""))){
+    const sourcePath=String(blk.storage_path);const slash=sourcePath.lastIndexOf("/");const prefix=slash>=0?sourcePath.slice(0,slash+1):`${blk.course_id}/`;const base=slash>=0?sourcePath.slice(slash+1):sourcePath;const targetPath=`${prefix}${crypto.randomUUID()}-copy-${base}`;const copyResult=await sb.storage.from(String(blk.bucket_name)).copy(sourcePath,targetPath);if(copyResult.error)throw copyResult.error;storagePath=targetPath;bucketName=String(blk.bucket_name);fileUrl=targetPath;fileName=blk.file_name;fileSize=blk.file_size;fileMime=blk.file_mime;content.url=targetPath;
+   }else{fileUrl=blk.file_url;fileName=blk.file_name;fileSize=blk.file_size;fileMime=blk.file_mime;}
+   const payload:any={course_id:blk.course_id,module_id:blk.module_id,lesson_id:blk.lesson_id,block_type:blk.block_type,position:Number(blk.position||0)+1,title:blk.title,content_json:content,settings_json:blk.settings_json||{},file_url:fileUrl,file_name:fileName,file_size:fileSize,file_mime:fileMime,storage_path:storagePath,bucket_name:bucketName,source_type:"duplicate",source_provenance:{source_block_id:blockId},ai_generated:false,interaction_mode:blk.interaction_mode,assessment_scope:blk.assessment_scope,is_required:blk.is_required,training_passing_score:blk.training_passing_score,rag_enabled:blk.rag_enabled,preview_allowed:blk.preview_allowed,created_by:userId};
+   const {data,error}=await sb.from("lesson_blocks").insert(payload).select("*").single();if(error)throw error;await recalculateCourseDuration(sb,String(blk.course_id));await log(sb,String(blk.course_id),userId,"block_duplicated",{source_block_id:blockId,block_id:data.id,resource_copied:!!storagePath,stream_cleared:!!streamUid});return json({success:true,block:await decorateStudioBlock(sb,data),stream_requires_reupload:!!streamUid});
+  }
+  if(action==="remove_block_resource"){
+   const blockId=String(b.block_id||"");const {data:blk}=await sb.from("lesson_blocks").select("id,course_id,lesson_id,block_type,content_json,storage_path,bucket_name").eq("id",blockId).maybeSingle();if(!blk||!(await owns(sb,userId,String(blk.course_id),"can_manage_lessons")))return json({success:false,error:"FORBIDDEN"},403);
+   const content={...(blk.content_json||{})};const streamUid=String(content.cloudflare_stream_uid||"").trim();
+   if(streamUid)await deleteStreamVideo(streamUid).catch(()=>{});
+   if(blk.storage_path&&PRIVATE_COURSE_BUCKET_SET.has(String(blk.bucket_name||"")))await sb.storage.from(String(blk.bucket_name)).remove([String(blk.storage_path)]).catch(()=>{});
+   for(const key of ["url","provider","cloudflare_stream_uid","scorm_ready","scorm_package_prefix","launch_path","runtime_session_token","runtime_state","sheet","headers","preview_rows"])delete content[key];
+   const {data,error}=await sb.from("lesson_blocks").update({file_url:null,file_name:null,file_size:null,file_mime:null,storage_path:null,bucket_name:null,content_json:content,rag_enabled:false,updated_at:new Date().toISOString()}).eq("id",blockId).select("*").single();if(error)throw error;
+   if(String(blk.block_type)==="video"){const {data:remainingVideos}=await sb.from("lesson_blocks").select("content_json,position").eq("lesson_id",blk.lesson_id).eq("block_type","video").order("position",{ascending:false});const nextUid=String((remainingVideos||[]).map((row:any)=>row?.id===blockId?null:row?.content_json?.cloudflare_stream_uid).find((value:any)=>String(value||"").trim())||"").trim()||null;await sb.from("course_lessons").update({cloudflare_stream_uid:nextUid,updated_at:new Date().toISOString()}).eq("id",blk.lesson_id);}
+   await recalculateCourseDuration(sb,String(blk.course_id));await log(sb,String(blk.course_id),userId,"block_resource_removed",{block_id:blockId,stream_deleted:!!streamUid});return json({success:true,block:await decorateStudioBlock(sb,data)});
   }
   if(action==="reorder_blocks"){
    const ids=b.ordered_ids||[];for(let i=0;i<ids.length;i++)await sb.from("lesson_blocks").update({position:i,updated_at:new Date().toISOString()}).eq("id",ids[i]).eq("lesson_id",b.lesson_id);return json({success:true});

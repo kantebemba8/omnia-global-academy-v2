@@ -27,6 +27,7 @@ interface BlockRendererProps {
   block: Block;
   onQuizAnswer?: (blockId: string, answer: any, correct: boolean) => void;
   onTrainingResult?: (blockId: string, score: number, answer: any, passed: boolean) => void;
+  onFileTrainingSubmit?: (blockId: string, file: File) => Promise<boolean>;
   learnerState?: Record<string, any>;
   onStateChange?: (blockId: string, state: Record<string, any>, completed: boolean) => void;
   isOnline?: boolean;
@@ -55,7 +56,7 @@ function ResourceUnavailable({ block, label }: { block: Block; label: string }) 
 // ══════════════════════════════════════════════════════════════
 // BLOCK RENDERER PRINCIPAL
 // ══════════════════════════════════════════════════════════════
-export function BlockRenderer({ block, onQuizAnswer, onTrainingResult, learnerState, onStateChange, isOnline = true }: BlockRendererProps) {
+export function BlockRenderer({ block, onQuizAnswer, onTrainingResult, onFileTrainingSubmit, learnerState, onStateChange, isOnline = true }: BlockRendererProps) {
   const c = canonicalizeBlockContent(block.block_type, block.content_json);
   const onlineOnlyTypes = new Set(['video', 'audio', 'pdf', 'word', 'download', 'excel', 'scorm', 'embed']);
   if (!isOnline && onlineOnlyTypes.has(block.block_type)) {
@@ -211,14 +212,7 @@ export function BlockRenderer({ block, onQuizAnswer, onTrainingResult, learnerSt
       );
 
     case 'case_study':
-      return (
-        <div className="p-5 rounded-xl my-4 border" style={{ borderColor: '#E4E7EC' }}>
-          <p className="font-bold mb-3" style={{ color: '#002050' }}>📋 Étude de cas</p>
-          {c.context && <div className="mb-3"><p className="text-xs font-bold uppercase tracking-wide mb-1" style={{ color: '#9CA3AF' }}>Contexte</p><p className="text-sm" style={{ color: '#374151' }}>{c.context}</p></div>}
-          {c.data && <div className="mb-3"><p className="text-xs font-bold uppercase tracking-wide mb-1" style={{ color: '#9CA3AF' }}>Données</p><p className="text-sm" style={{ color: '#374151' }}>{c.data}</p></div>}
-          {c.task && <div className="p-3 rounded-lg" style={{ background: '#EFF6FF' }}><p className="text-xs font-bold mb-1" style={{ color: '#1D4ED8' }}>Travail demandé</p><p className="text-sm" style={{ color: '#374151' }}>{c.task}</p></div>}
-        </div>
-      );
+      return <CaseStudyTraining c={c} training={block.interaction_mode === 'training'} threshold={Number(block.training_passing_score || 80)} onResult={(score, answer, passed) => onTrainingResult?.(block.id, score, answer, passed)} />;
 
     case 'correction':
       return (
@@ -239,14 +233,7 @@ export function BlockRenderer({ block, onQuizAnswer, onTrainingResult, learnerSt
       );
 
     case 'exercise':
-      return (
-        <div className="p-5 rounded-xl my-4 border-2" style={{ borderColor: '#002050' }}>
-          <p className="font-bold mb-3" style={{ color: '#002050' }}>✏️ Exercice{c.title ? ` : ${c.title}` : ''}</p>
-          {c.instructions && <p className="text-sm mb-2" style={{ color: '#374151' }}><strong>Consigne :</strong> {c.instructions}</p>}
-          {c.data && <p className="text-sm mb-2" style={{ color: '#374151' }}><strong>Données :</strong> {c.data}</p>}
-          {c.task && <div className="p-3 rounded-lg mt-2" style={{ background: '#F8F9FA' }}><p className="text-sm font-semibold" style={{ color: '#002050' }}>{c.task}</p></div>}
-        </div>
-      );
+      return <ExerciseTraining c={c} training={block.interaction_mode === 'training'} onResult={(score, answer, passed) => onTrainingResult?.(block.id, score, answer, passed)} onFileSubmit={onFileTrainingSubmit ? (file) => onFileTrainingSubmit(block.id, file) : undefined} />;
 
     // ── MÉDIAS ─────────────────────────────────────────────────
     case 'image':
@@ -398,7 +385,7 @@ export function BlockRenderer({ block, onQuizAnswer, onTrainingResult, learnerSt
     case 'chart':
       return <ChartBlock c={c} />;
     case 'assignment_upload':
-      return <div className="rounded-xl border border-dashed p-4"><p className="font-semibold" style={{ color: '#002050' }}>{c.title || 'Travail à remettre'}</p><p className="mt-1 text-sm text-gray-600">{c.instructions || ''}</p><p className="mt-2 text-xs text-gray-500">Formats : {(c.accepted_types || []).join(', ')} · maximum {c.max_size_mb || 10} Mo</p></div>;
+      return <AssignmentTraining c={c} training={block.interaction_mode === 'training'} onFileSubmit={onFileTrainingSubmit ? (file) => onFileTrainingSubmit(block.id, file) : undefined} />;
     case 'rubric':
       return <div className="overflow-x-auto"><table className="w-full border-collapse text-sm"><thead><tr><th className="border p-2 text-left">Critère</th><th className="border p-2 text-left">Description</th><th className="border p-2 text-right">Points</th></tr></thead><tbody>{(c.criteria || []).map((x: any, i: number) => <tr key={i}><td className="border p-2">{x.name}</td><td className="border p-2">{x.description}</td><td className="border p-2 text-right">{x.points}</td></tr>)}</tbody></table></div>;
 
@@ -411,6 +398,8 @@ export function BlockRenderer({ block, onQuizAnswer, onTrainingResult, learnerSt
 
 
 
+function normAnswer(value:string){return String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9\s]/g,' ').replace(/\s+/g,' ').trim()}
+function latexToMathMl(latex:string){const source=String(latex||'').trim();if(!source)return '';const escaped=source.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');return `<math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><mtext>${escaped}</mtext></math>`}
 function similarityScore(expected:string,actual:string){const a=normAnswer(expected),b=normAnswer(actual);if(!a||!b)return 0;const aw=new Set(a.split(' ').filter(Boolean)),bw=new Set(b.split(' ').filter(Boolean));const common=[...aw].filter(x=>bw.has(x)).length;const union=new Set([...aw,...bw]).size||1;const lexical=Math.round(common/union*100);const lengthRatio=Math.round(Math.min(a.length,b.length)/Math.max(a.length,b.length)*100);return Math.round(lexical*.75+lengthRatio*.25)}
 function DictationTraining({c,threshold,onResult}:{c:Record<string,any>;threshold:number;onResult?:(score:number,answer:any,passed:boolean)=>void}){const [value,setValue]=useState(''),[score,setScore]=useState<number|null>(null);const verify=()=>{const s=similarityScore(String(c.transcript||''),value);setScore(s);onResult?.(s,{text:value},s>=threshold)};return <div className="my-4 rounded-xl border p-4" style={{borderColor:'#E4E7EC'}}>{c.audio_url&&<audio className="w-full" controls src={c.audio_url}/>}<textarea value={value} onChange={e=>{setValue(e.target.value);setScore(null)}} className="mt-3 w-full rounded-lg border p-3 text-sm" rows={4} placeholder="Écrivez ce que vous entendez…"/><button type="button" onClick={verify} disabled={!value.trim()||!String(c.transcript||'').trim()} className="mt-3 rounded-lg bg-[#002050] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40">Vérifier</button>{score!==null&&<div className={`mt-2 text-xs font-semibold ${score>=threshold?'text-emerald-700':'text-red-700'}`}>{score}% · {score>=threshold?'Seuil atteint':'À retravailler'}</div>}{score!==null&&<details className="mt-2 text-xs text-slate-500"><summary>Voir le corrigé</summary><p className="mt-2">{c.transcript}</p></details>}</div>}
 function SelfAssessedOralTraining({title,prompt,audios,threshold,onResult}:{title:string;prompt:string;audios:Array<{label?:string;phonetic?:string;url?:string}>;threshold:number;onResult?:(score:number,answer:any,passed:boolean)=>void}){
@@ -437,6 +426,57 @@ function SelfAssessedOralTraining({title,prompt,audios,threshold,onResult}:{titl
     <div className="mt-3 flex gap-2"><button type="button" onClick={()=>choose(100)} disabled={!audioUrl} className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40">Maîtrisé</button><button type="button" onClick={()=>choose(0)} disabled={!audioUrl} className="rounded-lg border px-3 py-1.5 text-xs font-semibold text-slate-600 disabled:opacity-40">À retravailler</button></div>
     {score!==null&&<p className={`mt-2 text-xs font-semibold ${score>=threshold?'text-emerald-700':'text-red-700'}`}>Note d’entraînement : {score}%</p>}
   </div>;
+}
+
+
+function ClozeBlock({c,threshold,onResult}:{c:Record<string,any>;threshold:number;onResult?:(score:number,answer:any,passed:boolean)=>void}){
+  const parts=Array.isArray(c.blanks)?c.blanks:[];const [answers,setAnswers]=useState<Record<string,string>>({});const [score,setScore]=useState<number|null>(null);
+  const verify=()=>{const expected=parts.length?parts.map((x:any,i:number)=>String(x.answer??x.value??'')):[];if(!expected.length)return;let good=0;expected.forEach((exp:string,i:number)=>{if(normAnswer(answers[String(i)]||'')===normAnswer(exp))good++});const s=Math.round(good/expected.length*100);setScore(s);onResult?.(s,{answers},s>=threshold)};
+  const text=String(c.text||c.sentence||'');
+  return <div className="my-4 rounded-xl border p-4" style={{borderColor:'#E4E7EC'}}><p className="font-semibold text-[#002050]">{c.title||'Texte à trous'}</p>{text&&<p className="mt-2 text-sm text-slate-600">{text}</p>}<div className="mt-3 grid gap-2">{parts.map((x:any,i:number)=><label key={i} className="text-xs font-semibold text-slate-600">{x.label||`Réponse ${i+1}`}<input value={answers[String(i)]||''} onChange={e=>{setAnswers(v=>({...v,[String(i)]:e.target.value}));setScore(null)}} className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"/></label>)}</div><button type="button" onClick={verify} disabled={!parts.length} className="mt-3 rounded-lg bg-[#002050] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40">Vérifier</button>{score!==null&&<p className={`mt-2 text-xs font-semibold ${score>=threshold?'text-emerald-700':'text-red-700'}`}>{score}% · {score>=threshold?'Seuil atteint':'À retravailler'}</p>}</div>
+}
+function MatchingBlock({c,threshold,onResult}:{c:Record<string,any>;threshold:number;onResult?:(score:number,answer:any,passed:boolean)=>void}){
+  const pairs=Array.isArray(c.pairs)?c.pairs:[];const rights=pairs.map((x:any)=>String(x.right??x.answer??''));const [answers,setAnswers]=useState<Record<string,string>>({});const [score,setScore]=useState<number|null>(null);
+  const verify=()=>{if(!pairs.length)return;let good=0;pairs.forEach((x:any,i:number)=>{if(normAnswer(answers[String(i)]||'')===normAnswer(String(x.right??x.answer??'')))good++});const s=Math.round(good/pairs.length*100);setScore(s);onResult?.(s,{answers},s>=threshold)};
+  return <div className="my-4 rounded-xl border p-4" style={{borderColor:'#E4E7EC'}}><p className="font-semibold text-[#002050]">{c.title||'Association'}</p><div className="mt-3 grid gap-2">{pairs.map((x:any,i:number)=><div key={i} className="grid items-center gap-2 sm:grid-cols-2"><div className="rounded-lg bg-slate-50 px-3 py-2 text-sm">{x.left??x.prompt}</div><select value={answers[String(i)]||''} onChange={e=>{setAnswers(v=>({...v,[String(i)]:e.target.value}));setScore(null)}} className="rounded-lg border px-3 py-2 text-sm"><option value="">Choisir…</option>{rights.map((r:string,j:number)=><option key={j} value={r}>{r}</option>)}</select></div>)}</div><button type="button" onClick={verify} disabled={!pairs.length} className="mt-3 rounded-lg bg-[#002050] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40">Vérifier</button>{score!==null&&<p className={`mt-2 text-xs font-semibold ${score>=threshold?'text-emerald-700':'text-red-700'}`}>{score}%</p>}</div>
+}
+function SentenceOrderBlock({c,threshold,onResult}:{c:Record<string,any>;threshold:number;onResult?:(score:number,answer:any,passed:boolean)=>void}){
+  const expected=(Array.isArray(c.items)?c.items:Array.isArray(c.words)?c.words:[]).map((x:any)=>String(x.text??x));const [value,setValue]=useState('');const [score,setScore]=useState<number|null>(null);
+  const verify=()=>{const exp=expected.join(' ');const s=similarityScore(exp,value);setScore(s);onResult?.(s,{text:value},s>=threshold)};
+  return <div className="my-4 rounded-xl border p-4" style={{borderColor:'#E4E7EC'}}><p className="font-semibold text-[#002050]">{c.title||'Remettre la phrase dans l’ordre'}</p>{expected.length>0&&<div className="mt-2 flex flex-wrap gap-2">{[...expected].sort().map((x,i)=><span key={i} className="rounded-full bg-slate-100 px-3 py-1 text-xs">{x}</span>)}</div>}<input value={value} onChange={e=>{setValue(e.target.value);setScore(null)}} className="mt-3 w-full rounded-lg border px-3 py-2 text-sm" placeholder="Reconstituez la phrase"/><button type="button" onClick={verify} disabled={!value.trim()||!expected.length} className="mt-3 rounded-lg bg-[#002050] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40">Vérifier</button>{score!==null&&<p className={`mt-2 text-xs font-semibold ${score>=threshold?'text-emerald-700':'text-red-700'}`}>{score}%</p>}</div>
+}
+function ListeningTraining({c,threshold,onResult}:{c:Record<string,any>;threshold:number;onResult?:(score:number,answer:any,passed:boolean)=>void}){
+  const questions=Array.isArray(c.questions)?c.questions:[];const [answers,setAnswers]=useState<Record<string,string>>({});const [score,setScore]=useState<number|null>(null);
+  const verify=()=>{if(!questions.length)return;let gradable=0,good=0;questions.forEach((q:any,i:number)=>{const exp=q.correct_answer??q.answer;if(exp!==undefined&&String(exp)!==''){gradable++;if(normAnswer(answers[String(i)]||'')===normAnswer(String(exp)))good++}});const s=gradable?Math.round(good/gradable*100):100;setScore(s);onResult?.(s,{answers},s>=threshold)};
+  return <div className="my-4 rounded-xl border p-4" style={{borderColor:'#E4E7EC'}}><p className="font-semibold text-[#002050]">{c.title||'Compréhension orale'}</p>{c.audio_url&&<audio className="mt-3 w-full" controls src={c.audio_url}/>}<div className="mt-3 space-y-3">{questions.map((q:any,i:number)=><label key={i} className="block text-xs font-semibold text-slate-600">{q.question||`Question ${i+1}`}<input value={answers[String(i)]||''} onChange={e=>{setAnswers(v=>({...v,[String(i)]:e.target.value}));setScore(null)}} className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"/></label>)}</div><button type="button" onClick={verify} disabled={!questions.length} className="mt-3 rounded-lg bg-[#002050] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40">Valider</button>{score!==null&&<p className={`mt-2 text-xs font-semibold ${score>=threshold?'text-emerald-700':'text-red-700'}`}>{score}%</p>}</div>
+}
+function WrittenTraining({c,threshold,onResult}:{c:Record<string,any>;threshold:number;onResult?:(score:number,answer:any,passed:boolean)=>void}){
+  const [text,setText]=useState('');const [done,setDone]=useState(false);const min=Math.max(1,Number(c.min_words||1));const words=text.trim()?text.trim().split(/\s+/).length:0;const submit=()=>{const s=words>=min?100:0;setDone(true);onResult?.(s,{text,word_count:words},s>=threshold)};
+  return <div className="my-4 rounded-xl border p-4" style={{borderColor:'#E4E7EC'}}><p className="font-semibold text-[#002050]">{c.title||'Expression écrite'}</p>{c.prompt&&<p className="mt-1 text-sm text-slate-600">{c.prompt}</p>}<textarea value={text} onChange={e=>{setText(e.target.value);setDone(false)}} rows={7} className="mt-3 w-full rounded-lg border p-3 text-sm" placeholder="Rédigez votre réponse…"/><div className="mt-2 flex items-center justify-between text-xs text-slate-500"><span>{words} mot(s){min>1?` · minimum ${min}`:''}</span><button type="button" onClick={submit} disabled={!text.trim()} className="rounded-lg bg-[#002050] px-3 py-1.5 font-semibold text-white disabled:opacity-40">Terminer l’entraînement</button></div>{done&&<p className="mt-2 text-xs font-semibold text-emerald-700">Réponse enregistrée comme entraînement.</p>}</div>
+}
+function OpenQuestionTraining({c,threshold,onResult}:{c:Record<string,any>;threshold:number;onResult?:(score:number,answer:any,passed:boolean)=>void}){
+  const [text,setText]=useState('');const [score,setScore]=useState<number|null>(null);const expected=String(c.expected_answer||'').trim();
+  const verify=()=>{const s=expected?similarityScore(expected,text):100;setScore(s);onResult?.(s,{text},s>=threshold)};
+  return <div className="my-4 rounded-xl border p-4" style={{borderColor:'#E4E7EC'}}><p className="font-semibold text-[#002050]">{c.question||c.title||'Question ouverte'}</p>{c.guidance&&<p className="mt-1 text-xs text-slate-500">{c.guidance}</p>}<textarea value={text} onChange={e=>{setText(e.target.value);setScore(null)}} rows={5} className="mt-3 w-full rounded-lg border p-3 text-sm"/><button type="button" onClick={verify} disabled={!text.trim()} className="mt-3 rounded-lg bg-[#002050] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40">{expected?'Vérifier':'Terminer l’entraînement'}</button>{score!==null&&<p className={`mt-2 text-xs font-semibold ${score>=threshold?'text-emerald-700':'text-red-700'}`}>{score}% · {score>=threshold?'Seuil atteint':'À retravailler'}</p>}</div>
+}
+function ChecklistBlock({items,initialState,onChange}:{items:any[];initialState:Record<string,any>;onChange?:(state:Record<string,any>,completed:boolean)=>void}){
+  const [state,setState]=useState<Record<string,any>>(initialState||{});const update=(key:string,val:boolean)=>{const next={...state,[key]:val};setState(next);const required=items.filter(x=>x.required!==false);const completed=required.every((x:any,i:number)=>Boolean(next[String(x.id||items.indexOf(x))]));onChange?.(next,completed)};
+  return <div className="my-4 rounded-xl border p-4" style={{borderColor:'#E4E7EC'}}><div className="space-y-2">{items.map((item:any,i:number)=>{const key=String(item.id||i);return <label key={key} className="flex items-start gap-3 rounded-lg px-2 py-2 hover:bg-slate-50"><input type="checkbox" checked={Boolean(state[key])} onChange={e=>update(key,e.target.checked)} className="mt-0.5"/><span className="text-sm text-slate-700">{item.text||item.label||String(item)}{item.required===false&&<span className="ml-2 text-[10px] text-slate-400">facultatif</span>}</span></label>})}</div></div>
+}
+function CaseStudyTraining({c,training,threshold,onResult}:{c:Record<string,any>;training:boolean;threshold:number;onResult?:(score:number,answer:any,passed:boolean)=>void}){
+  const qs=Array.isArray(c.questions)&&c.questions.length?c.questions:[c.task||'Votre analyse'];const [answers,setAnswers]=useState<Record<string,string>>({});const [done,setDone]=useState(false);
+  const submit=()=>{const complete=qs.every((_:any,i:number)=>String(answers[String(i)]||'').trim().length>0);const score=complete?100:0;setDone(true);onResult?.(score,{answers},score>=threshold)};
+  return <div className="p-5 rounded-xl my-4 border" style={{borderColor:'#E4E7EC'}}><p className="font-bold mb-3" style={{color:'#002050'}}>Étude de cas{c.title?` : ${c.title}`:''}</p>{c.context&&<div className="mb-3"><p className="text-xs font-bold uppercase tracking-wide mb-1 text-slate-400">Contexte</p><p className="text-sm text-slate-700">{c.context}</p></div>}{c.data&&<div className="mb-3"><p className="text-xs font-bold uppercase tracking-wide mb-1 text-slate-400">Données</p><p className="text-sm text-slate-700">{c.data}</p></div>}{c.task&&<div className="rounded-lg bg-blue-50 p-3 text-sm text-slate-700">{c.task}</div>}{training&&<div className="mt-4 space-y-3">{qs.map((q:any,i:number)=><label key={i} className="block text-xs font-semibold text-slate-600">{String(q)}<textarea value={answers[String(i)]||''} onChange={e=>{setAnswers(v=>({...v,[String(i)]:e.target.value}));setDone(false)}} rows={4} className="mt-1 w-full rounded-lg border p-3 text-sm"/></label>)}<button type="button" onClick={submit} className="rounded-lg bg-[#002050] px-3 py-1.5 text-xs font-semibold text-white">Terminer l’étude de cas</button>{done&&<p className="text-xs font-semibold text-emerald-700">Réponse d’entraînement enregistrée.</p>}</div>}</div>
+}
+function ExerciseTraining({c,training,onResult,onFileSubmit}:{c:Record<string,any>;training:boolean;onResult?:(score:number,answer:any,passed:boolean)=>void;onFileSubmit?:(file:File)=>Promise<boolean>}){
+  const [text,setText]=useState('');const [busy,setBusy]=useState(false);const [status,setStatus]=useState('');const uploadRequired=c.learner_upload_required===true;
+  const finishText=()=>{if(!text.trim())return;onResult?.(100,{text},true);setStatus('Entraînement enregistré.')};
+  const upload=async(file:File)=>{if(!onFileSubmit)return;setBusy(true);const ok=await onFileSubmit(file).catch(()=>false);setBusy(false);setStatus(ok?'Fichier remis et entraînement enregistré.':'Échec de la remise du fichier.')};
+  return <div className="p-5 rounded-xl my-4 border-2" style={{borderColor:'#002050'}}><p className="font-bold mb-3 text-[#002050]">Exercice{c.title?` : ${c.title}`:''}</p>{c.instructions&&<p className="text-sm mb-2 text-slate-700"><strong>Consigne :</strong> {c.instructions}</p>}{c.task&&<div className="rounded-lg bg-slate-50 p-3 text-sm font-semibold text-[#002050]">{c.task}</div>}{training&&!uploadRequired&&<><textarea value={text} onChange={e=>setText(e.target.value)} rows={5} className="mt-4 w-full rounded-lg border p-3 text-sm" placeholder="Votre réponse d’entraînement…"/><button type="button" onClick={finishText} disabled={!text.trim()} className="mt-2 rounded-lg bg-[#002050] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40">Terminer l’exercice</button></>}{training&&uploadRequired&&<label className="mt-4 block rounded-xl border border-dashed p-4 text-center text-sm text-slate-600"><input type="file" className="hidden" disabled={busy} accept={(c.accepted_types||[]).map((x:string)=>`.${String(x).replace(/^\\./,'')}`).join(',')} onChange={e=>{const f=e.target.files?.[0];if(f)void upload(f)}}/>{busy?'Envoi en cours…':'Choisir le fichier de réponse'}</label>}{status&&<p className={`mt-2 text-xs font-semibold ${status.startsWith('Échec')?'text-red-700':'text-emerald-700'}`}>{status}</p>}</div>
+}
+function AssignmentTraining({c,training,onFileSubmit}:{c:Record<string,any>;training:boolean;onFileSubmit?:(file:File)=>Promise<boolean>}){
+  const [busy,setBusy]=useState(false);const [status,setStatus]=useState('');const upload=async(file:File)=>{if(!onFileSubmit)return;setBusy(true);const ok=await onFileSubmit(file).catch(()=>false);setBusy(false);setStatus(ok?'Travail remis et entraînement validé.':'Échec de la remise du fichier.')};
+  return <div className="rounded-xl border border-dashed p-4"><p className="font-semibold text-[#002050]">{c.title||'Travail à remettre'}</p><p className="mt-1 text-sm text-gray-600">{c.instructions||''}</p><p className="mt-2 text-xs text-gray-500">Formats : {(c.accepted_types||[]).join(', ')} · maximum {c.max_size_mb||10} Mo</p>{training&&<label className="mt-4 block cursor-pointer rounded-xl bg-slate-50 p-4 text-center text-sm font-semibold text-[#002050]"><input type="file" className="hidden" disabled={busy} accept={(c.accepted_types||[]).map((x:string)=>`.${String(x).replace(/^\\./,'')}`).join(',')} onChange={e=>{const f=e.target.files?.[0];if(f)void upload(f)}}/>{busy?'Envoi en cours…':'Choisir et remettre mon fichier'}</label>}{status&&<p className={`mt-2 text-xs font-semibold ${status.startsWith('Échec')?'text-red-700':'text-emerald-700'}`}>{status}</p>}</div>
 }
 
 function MathFormula({latex,explanation}:{latex:string;explanation?:string}){const math=latexToMathMl(latex);return <div className="rounded-xl border bg-white p-5 text-center" style={{borderColor:'#E4E7EC'}}>{math?<div className="overflow-x-auto text-xl" aria-label={`Formule ${latex}`} dangerouslySetInnerHTML={{__html:math}}/>:<div className="text-sm text-slate-400">Formule non renseignée</div>}{explanation&&<p className="mt-2 text-sm text-slate-600">{explanation}</p>}</div>}
@@ -820,11 +860,12 @@ function InteractiveTableBlock({ headers, rows, style, training = false, trainin
   );
 }
 // ─── Export : Rendu d'une leçon complète ─────────────────────
-export function LessonBlocksRenderer({ blocks, contentText, onQuizAnswer, onTrainingResult, learnerStateByBlock = {}, onStateChange, isOnline = true }: {
+export function LessonBlocksRenderer({ blocks, contentText, onQuizAnswer, onTrainingResult, onFileTrainingSubmit, learnerStateByBlock = {}, onStateChange, isOnline = true }: {
   blocks: Block[];
   contentText?: string;
   onQuizAnswer?: (blockId: string, answer: any, correct: boolean) => void;
   onTrainingResult?: (blockId: string, score: number, answer: any, passed: boolean) => void;
+  onFileTrainingSubmit?: (blockId: string, file: File) => Promise<boolean>;
   learnerStateByBlock?: Record<string, Record<string, any>>;
   onStateChange?: (blockId: string, state: Record<string, any>, completed: boolean) => void;
   isOnline?: boolean;
@@ -846,9 +887,15 @@ export function LessonBlocksRenderer({ blocks, contentText, onQuizAnswer, onTrai
     <div>
       {[...blocks]
         .sort((a, b) => a.position - b.position)
-        .map(block => (
-          <BlockRenderer key={block.id} block={block} onQuizAnswer={onQuizAnswer} onTrainingResult={onTrainingResult} learnerState={learnerStateByBlock[block.id] || {}} onStateChange={onStateChange} isOnline={isOnline} />
-        ))}
+        .map(block => {
+          const wide = ['image','video','gallery','chart','excel','interactive_table','rubric','scorm','columns','timeline'].includes(block.block_type);
+          const extraWide = ['excel','interactive_table','rubric','scorm'].includes(block.block_type);
+          return (
+            <div key={block.id} className={extraWide ? 'mx-auto w-full max-w-6xl' : wide ? 'mx-auto w-full max-w-5xl' : 'mx-auto w-full max-w-3xl'}>
+              <BlockRenderer block={block} onQuizAnswer={onQuizAnswer} onTrainingResult={block.interaction_mode === 'training' ? onTrainingResult : undefined} onFileTrainingSubmit={block.interaction_mode === 'training' ? onFileTrainingSubmit : undefined} learnerState={learnerStateByBlock[block.id] || {}} onStateChange={onStateChange} isOnline={isOnline} />
+            </div>
+          );
+        })}
     </div>
   );
 }

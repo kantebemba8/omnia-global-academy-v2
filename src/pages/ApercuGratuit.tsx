@@ -1,199 +1,52 @@
 import { getSessionToken } from '../lib/session';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, BookOpen, ChevronRight, Lock, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, Menu, ShieldCheck, X } from 'lucide-react';
 import { BlockRenderer } from '../components/BlockRenderer';
 
 const API = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/studio-unified`;
 
-type PreviewBlock = {
-  id: string;
-  block_type: string;
-  position: number;
-  title?: string;
-  content_json: Record<string, unknown>;
-  settings_json?: Record<string, unknown>;
-  file_url?: string;
-  file_name?: string;
-  file_size?: number;
-  file_mime?: string;
-};
-
+type PreviewBlock = { id:string; block_type:string; position:number; title?:string; content_json:Record<string,unknown>; settings_json?:Record<string,unknown>; file_url?:string; file_name?:string; file_size?:number; file_mime?:string; };
+type PreviewStage = { id:string; title:string; stage_type?:string; blocks:PreviewBlock[] };
+type ProgramSection = { id:string; title:string; objective?:string; section_type?:'introduction'|'module'|'conclusion'|'final_exam'; lessons:Array<{id:string;title:string;stage_type?:string;locked:boolean;duration_seconds?:number}> };
 type PreviewPayload = {
-  success: boolean;
-  preview_enabled: boolean;
-  privileged?: boolean;
-  course: {
-    id: string;
-    title: string;
-    short_description?: string;
-    cover_image_url?: string;
-    category?: string;
-    level?: string;
-    sale_mode?: 'free' | 'paid';
-    price_xof?: number;
-    desired_price_amount?: number;
-    sale_currency?: string;
-    current_version?: string;
-  };
-  introduction: null | {
-    id: string;
-    title: string;
-    blocks: PreviewBlock[];
-  };
-  first_lesson: null | {
-    id: string;
-    title: string;
-    blocks: PreviewBlock[];
-  };
-  program: Array<{
-    id: string;
-    title: string;
-    objective?: string;
-    lessons: Array<{ id: string; title: string; locked: boolean }>;
-  }>;
-  error?: string;
+  success:boolean; preview_enabled:boolean; privileged?:boolean;
+  course:{id:string;title:string;short_description?:string;long_description?:string;cover_image_url?:string;category?:string;level?:string;language?:string;target_audience?:string;objectives?:string[]|string;learning_outcomes?:string[]|string;sale_mode?:'free'|'paid';price_xof?:number;desired_price_amount?:number;sale_currency?:string;current_version?:string};
+  introduction:PreviewStage|null; module_presentation:PreviewStage|null; first_lesson:PreviewStage|null; program:ProgramSection[]; error?:string;
 };
 
-export function ApercuGratuit() {
-  const { id: courseId } = useParams<{ id: string }>();
-  const navigate = useNavigate();
-  const [data, setData] = useState<PreviewPayload | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+type PreviewStep = 'intro'|'presentation'|'lesson'|'end';
+const wideTypes = new Set(['image','video','gallery','chart','excel','interactive_table','rubric','scorm','columns','timeline']);
+const extraWideTypes = new Set(['excel','interactive_table','rubric','scorm']);
 
-  useEffect(() => {
-    if (!courseId) return;
-    const sessionToken = getSessionToken() || import.meta.env.VITE_SUPABASE_ANON_KEY || '';
-    fetch(API, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${sessionToken}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'public_course_preview', course_id: courseId }),
-    })
-      .then(async (response) => {
-        const payload = await response.json();
-        if (!response.ok || !payload.success) throw new Error(payload.error || 'Aperçu indisponible');
-        setData(payload);
-      })
-      .catch((reason) => setError(reason instanceof Error ? reason.message : 'Aperçu indisponible'))
-      .finally(() => setLoading(false));
-  }, [courseId]);
+function PreviewBlocks({blocks}:{blocks:PreviewBlock[]}){
+  return <div className="space-y-2">{[...blocks].sort((a,b)=>a.position-b.position).map(block=><div key={block.id} className={extraWideTypes.has(block.block_type)?'mx-auto w-full max-w-6xl':wideTypes.has(block.block_type)?'mx-auto w-full max-w-5xl':'mx-auto w-full max-w-3xl'}><BlockRenderer block={block as any}/></div>)}</div>;
+}
 
-  const totalLessons = useMemo(
-    () => data?.program.reduce((total, module) => total + module.lessons.length, 0) || 0,
-    [data],
-  );
-
-  if (loading) {
-    return <div className="min-h-screen flex items-center justify-center" style={{ background: '#F8F9FA' }}><div className="w-9 h-9 rounded-full border-2 animate-spin" style={{ borderColor: '#002050', borderTopColor: 'transparent' }} /></div>;
-  }
-
-  if (!data || error) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center gap-4 px-5" style={{ background: '#F8F9FA', fontFamily: 'Inter, system-ui, sans-serif' }}>
-        <p className="font-semibold" style={{ color: '#002050' }}>Aperçu indisponible</p>
-        <p className="text-sm text-center" style={{ color: '#6B7280' }}>{error || 'Cette formation ne propose pas encore d’aperçu gratuit.'}</p>
-        <button onClick={() => navigate(`/cours/${courseId}`)} className="px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ background: '#002050' }}>Retour à la formation</button>
-      </div>
-    );
-  }
-
-  const { course, introduction, first_lesson: firstLesson, program } = data;
-  const priceLabel = course.sale_mode === 'free'
-    ? 'Gratuit'
-    : `${Number(course.price_xof ?? course.desired_price_amount ?? 0).toLocaleString('fr-FR')} ${course.sale_currency || 'XOF'}`;
-
-  return (
-    <div className="min-h-screen pb-28" style={{ background: '#F8F9FA', fontFamily: 'Inter, system-ui, sans-serif' }}>
-      <header className="sticky top-0 z-30 border-b" style={{ background: '#FFFFFF', borderColor: '#E4E7EC' }}>
-        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center gap-3">
-          <button onClick={() => navigate(`/cours/${courseId}`)} className="w-9 h-9 rounded-lg border flex items-center justify-center" style={{ borderColor: '#E4E7EC' }} aria-label="Retour">
-            <ArrowLeft size={17} style={{ color: '#002050' }} />
-          </button>
-          <div className="flex-1 min-w-0">
-            <p className="font-semibold text-sm truncate" style={{ color: '#002050' }}>{course.title}</p>
-            <p className="text-xs" style={{ color: '#6B7280' }}>Aperçu gratuit : introduction et première leçon</p>
-          </div>
-          <span className="text-xs font-semibold px-3 py-1.5 rounded-full" style={{ background: '#FFFBEB', color: '#92400E' }}>APERÇU</span>
-        </div>
-      </header>
-
-      <main className="max-w-6xl mx-auto px-4 py-6 grid lg:grid-cols-[minmax(0,1fr)_320px] gap-6">
-        <section className="space-y-5">
-          <div className="rounded-2xl overflow-hidden border bg-white" style={{ borderColor: '#E4E7EC' }}>
-            {course.cover_image_url && <img src={course.cover_image_url} alt="Couverture de la formation" className="w-full aspect-video object-cover" />}
-            <div className="p-5">
-              <div className="flex flex-wrap gap-2 mb-3">
-                {course.category && <span className="text-xs px-2.5 py-1 rounded-full" style={{ background: '#EFF6FF', color: '#1D4ED8' }}>{course.category}</span>}
-                {course.level && <span className="text-xs px-2.5 py-1 rounded-full" style={{ background: '#F3F4F6', color: '#374151' }}>{course.level}</span>}
-                {course.current_version && <span className="text-xs px-2.5 py-1 rounded-full" style={{ background: '#F0FDF4', color: '#166534' }}>Version {course.current_version}</span>}
-              </div>
-              <h1 className="text-2xl font-bold" style={{ color: '#002050' }}>{course.title}</h1>
-              {course.short_description && <p className="text-sm mt-2 leading-relaxed" style={{ color: '#6B7280' }}>{course.short_description}</p>}
-            </div>
-          </div>
-
-          {data.preview_enabled && introduction ? (
-            <>
-              <article className="rounded-2xl border bg-white p-5 md:p-7" style={{ borderColor: '#E4E7EC' }}>
-                <div className="flex items-center gap-2 mb-5"><BookOpen size={18} style={{ color: '#BF8813' }} /><h2 className="font-bold" style={{ color: '#002050' }}>{introduction.title || 'Introduction'}</h2></div>
-                <div className="space-y-2">
-                  {introduction.blocks.map((block) => <BlockRenderer key={block.id} block={block as any} />)}
-                </div>
-              </article>
-              {firstLesson && (
-                <article className="rounded-2xl border bg-white p-5 md:p-7" style={{ borderColor: '#E4E7EC' }}>
-                  <div className="mb-5">
-                    <p className="text-xs font-semibold uppercase tracking-[.12em]" style={{ color: '#1E7A52' }}>Première leçon offerte</p>
-                    <h2 className="mt-1 font-bold" style={{ color: '#002050' }}>{firstLesson.title}</h2>
-                    <p className="mt-1 text-xs" style={{ color: '#6B7280' }}>Les entraînements, évaluations, notes et progression officielle restent verrouillés jusqu’à l’inscription ou l’achat.</p>
-                  </div>
-                  <div className="space-y-2">
-                    {firstLesson.blocks.map((block) => <BlockRenderer key={block.id} block={block as any} />)}
-                  </div>
-                </article>
-              )}
-            </>
-          ) : (
-            <div className="rounded-2xl border bg-white p-10 text-center" style={{ borderColor: '#E4E7EC' }}>
-              <Lock size={28} className="mx-auto mb-3" style={{ color: '#9CA3AF' }} />
-              <p className="font-semibold" style={{ color: '#002050' }}>Aucun aperçu gratuit</p>
-              <p className="text-sm mt-1" style={{ color: '#6B7280' }}>Le contenu est accessible après inscription ou achat.</p>
-            </div>
-          )}
-        </section>
-
-        <aside className="space-y-4">
-          <div className="rounded-2xl border bg-white p-5 sticky top-20" style={{ borderColor: '#E4E7EC' }}>
-            <div className="flex items-center gap-2 mb-4"><ShieldCheck size={17} style={{ color: '#1E7A52' }} /><p className="text-sm font-semibold" style={{ color: '#002050' }}>Ce que vous apprendrez ensuite</p></div>
-            <p className="text-xs mb-4" style={{ color: '#6B7280' }}>{program.length} module{program.length > 1 ? 's' : ''} · {totalLessons} leçon{totalLessons > 1 ? 's' : ''}</p>
-            <div className="space-y-3 max-h-[440px] overflow-y-auto pr-1">
-              {program.map((module, index) => (
-                <div key={module.id} className="rounded-xl border p-3" style={{ borderColor: '#E4E7EC' }}>
-                  <div className="flex items-start gap-2"><Lock size={13} className="mt-0.5 flex-shrink-0" style={{ color: '#9CA3AF' }} /><div><p className="text-xs font-semibold" style={{ color: '#002050' }}>Module {index + 1} — {module.title}</p>{module.objective && <p className="text-xs mt-1" style={{ color: '#6B7280' }}>{module.objective}</p>}</div></div>
-                  {module.lessons.length > 0 && (
-                    <div className="mt-3 space-y-2 pl-5">
-                      {module.lessons.map((lesson, lessonIndex) => (
-                        <div key={lesson.id} className="flex items-start gap-2 text-[11px]" style={{ color: lesson.locked ? '#9CA3AF' : '#1E7A52' }}>
-                          {lesson.locked ? <Lock size={11} className="mt-0.5 shrink-0" /> : <BookOpen size={11} className="mt-0.5 shrink-0" />}
-                          <span><strong>{lessonIndex + 1}.</strong> {lesson.title}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        </aside>
-      </main>
-
-      <div className="fixed bottom-0 left-0 right-0 z-40 border-t" style={{ background: '#002050', borderColor: 'rgba(255,255,255,.1)' }}>
-        <div className="max-w-6xl mx-auto px-4 py-4 flex items-center gap-3">
-          <div className="flex-1 min-w-0"><p className="text-sm font-semibold text-white truncate">Vous avez terminé l’aperçu gratuit</p><p className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,.65)' }}>Débloquez les modules, leçons, évaluations, conclusion et examen final.</p></div>
-          <button onClick={() => navigate(`/cours/${courseId}`)} className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white flex-shrink-0" style={{ background: '#BF8813' }}>{course.sale_mode === 'free' ? "S'inscrire" : `Acheter · ${priceLabel}`}<ChevronRight size={15} /></button>
-        </div>
-      </div>
-    </div>
-  );
+export function ApercuGratuit(){
+  const {id:courseId}=useParams<{id:string}>(); const navigate=useNavigate();
+  const [data,setData]=useState<PreviewPayload|null>(null); const [loading,setLoading]=useState(true); const [error,setError]=useState(''); const [step,setStep]=useState<PreviewStep>('intro'); const [programOpen,setProgramOpen]=useState(false);
+  useEffect(()=>{if(!courseId)return;const sessionToken=getSessionToken()||import.meta.env.VITE_SUPABASE_ANON_KEY||'';fetch(API,{method:'POST',headers:{Authorization:`Bearer ${sessionToken}`,'Content-Type':'application/json'},body:JSON.stringify({action:'public_course_preview',course_id:courseId})}).then(async response=>{const payload=await response.json();if(!response.ok||!payload.success)throw new Error(payload.error||'Aperçu indisponible');setData(payload);}).catch(reason=>setError(reason instanceof Error?reason.message:'Aperçu indisponible')).finally(()=>setLoading(false));},[courseId]);
+  useEffect(()=>{
+    if(!data||loading)return;
+    if(step==='intro'&&!data.introduction){
+      if(data.module_presentation)setStep('presentation');
+      else if(data.first_lesson)setStep('lesson');
+      else setStep('end');
+    }
+  },[data,loading,step]);
+  if(loading)return <div className="min-h-screen flex items-center justify-center bg-slate-50"><div className="h-9 w-9 animate-spin rounded-full border-2" style={{borderColor:'#002050',borderTopColor:'transparent'}}/></div>;
+  if(!data||error)return <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-slate-50 px-5"><p className="font-semibold text-[#002050]">Aperçu indisponible</p><p className="text-center text-sm text-slate-500">{error||'Cette formation ne propose pas encore d’aperçu gratuit.'}</p><button onClick={()=>navigate(`/cours/${courseId}`)} className="rounded-lg bg-[#002050] px-4 py-2 text-sm font-semibold text-white">Retour à la formation</button></div>;
+  const {course,introduction,module_presentation:firstPresentation,first_lesson:firstLesson,program}=data;
+  const priceLabel=course.sale_mode==='free'?'Gratuit':`${Number(course.price_xof??course.desired_price_amount??0).toLocaleString('fr-FR')} ${course.sale_currency||'XOF'}`;
+  const sequence:PreviewStep[]=[...(introduction?['intro' as PreviewStep]:[]),...(firstPresentation?['presentation' as PreviewStep]:[]),...(firstLesson?['lesson' as PreviewStep]:[]),'end'];
+  const goNext=()=>{const i=sequence.indexOf(step);if(i>=0&&i<sequence.length-1)setStep(sequence[i+1]);}; const goPrev=()=>{const i=sequence.indexOf(step);if(i>0)setStep(sequence[i-1]);else navigate(`/cours/${courseId}`);};
+  const currentStage=step==='intro'?introduction:step==='presentation'?firstPresentation:step==='lesson'?firstLesson:null;
+  const labelFor=(section:ProgramSection,index:number)=>section.section_type==='introduction'?'Introduction':section.section_type==='conclusion'?'Conclusion de la formation':section.section_type==='final_exam'?'Examen final':`Module ${program.slice(0,index+1).filter(s=>s.section_type==='module').length}`;
+  return <div className="min-h-screen bg-slate-50 pb-24" style={{fontFamily:'Inter, system-ui, sans-serif'}}>
+    <header className="sticky top-0 z-40 border-b bg-white" style={{borderColor:'#E4E7EC'}}><div className="mx-auto flex max-w-7xl items-center gap-3 px-4 py-3"><button onClick={()=>navigate(`/cours/${courseId}`)} className="flex h-9 w-9 items-center justify-center rounded-lg border" style={{borderColor:'#E4E7EC'}}><ArrowLeft size={17} className="text-[#002050]"/></button><div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold text-[#002050]">{course.title}</p><p className="text-xs text-slate-500">Aperçu avant achat · aucune progression enregistrée</p></div>{<button onClick={()=>setProgramOpen(true)} className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold text-[#002050]"><Menu size={15}/>Programme</button>}<span className="rounded-full bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800">APERÇU</span></div></header>
+    {programOpen&&<div className="fixed inset-0 z-50"><button className="absolute inset-0 bg-black/50" onClick={()=>setProgramOpen(false)}/><aside className="absolute inset-y-0 left-0 w-[88vw] max-w-sm overflow-y-auto bg-white p-4 shadow-2xl"><div className="mb-4 flex items-center justify-between"><h2 className="font-black text-[#002050]">Programme</h2><button onClick={()=>setProgramOpen(false)}><X size={18}/></button></div>{program.map((section,i)=><div key={section.id} className="border-b py-3"><p className="text-[10px] font-black uppercase tracking-[.12em] text-[#BF8813]">{labelFor(section,i)}</p><p className="text-sm font-semibold text-[#002050]">{section.title}</p>{section.section_type==='module'&&<p className="mt-1 text-xs text-slate-400">{section.lessons.filter(l=>(l.stage_type||'lesson')==='lesson').length} leçon(s)</p>}</div>)}</aside></div>}
+    {step==='end'?<main className="mx-auto flex min-h-[65vh] max-w-2xl items-center px-4"><div className="w-full rounded-3xl border bg-white p-8 text-center" style={{borderColor:'#E4E7EC'}}><ShieldCheck size={36} className="mx-auto text-[#BF8813]"/><h1 className="mt-4 text-2xl font-black text-[#002050]">Fin de l’aperçu gratuit</h1><p className="mt-3 text-sm leading-6 text-slate-600">Vous avez découvert l’introduction, la présentation du premier module et la première leçon autorisée. Les entraînements, évaluations, synthèses et la suite restent protégés.</p><button onClick={()=>navigate(`/cours/${courseId}`)} className="mt-6 rounded-xl bg-[#BF8813] px-5 py-3 text-sm font-bold text-white">{course.sale_mode==='free'?"S'inscrire":`Acheter · ${priceLabel}`}</button></div></main>:<main className="mx-auto max-w-7xl px-4 py-7"><div className="mx-auto max-w-3xl"><p className="text-[10px] font-black uppercase tracking-[.16em] text-[#BF8813]">{step==='intro'?'Introduction':step==='presentation'?'Présentation du module':'Première leçon offerte'}</p><h1 className="mt-2 text-2xl font-black text-[#002050]">{currentStage?.title}</h1>{step==='lesson'&&<p className="mt-2 text-xs text-slate-500">Les entraînements et évaluations restent verrouillés avant achat.</p>}</div><div className="mt-6"><PreviewBlocks blocks={currentStage?.blocks||[]}/></div><div className="mx-auto mt-8 flex max-w-3xl items-center justify-between border-t pt-5" style={{borderColor:'#E4E7EC'}}><button onClick={goPrev} className="rounded-xl border px-4 py-2 text-sm font-semibold text-[#002050]">Précédent</button><button onClick={goNext} className="rounded-xl bg-[#002050] px-4 py-2 text-sm font-semibold text-white">{step==='lesson'?'Terminer l’aperçu':'Suivant'}</button></div></main>}
+    <div className="fixed bottom-0 left-0 right-0 z-40 border-t bg-[#002050]"><div className="mx-auto flex max-w-7xl items-center gap-3 px-4 py-3"><div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold text-white">Aperçu avant achat</p><p className="text-xs text-white/60">Programme complet visible · validations protégées</p></div><button onClick={()=>navigate(`/cours/${courseId}`)} className="rounded-xl bg-[#BF8813] px-4 py-2.5 text-sm font-semibold text-white">{course.sale_mode==='free'?"S'inscrire":`Acheter · ${priceLabel}`}</button></div></div>
+  </div>;
 }

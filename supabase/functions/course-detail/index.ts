@@ -97,6 +97,7 @@ Deno.serve(async (req: Request) => {
         duration_seconds: ml.cpd_calculated_time_seconds,
         is_external: ml.is_external,
         is_intro: ml.is_intro, is_module_intro: ml.is_module_intro, is_conclusion: ml.is_conclusion, is_final_exam: ml.is_final_exam, is_required: ml.is_required,
+        stage_type: ml.stage_type || (ml.is_intro ? "introduction" : ml.is_module_intro ? "module_presentation" : ml.is_conclusion ? "conclusion" : ml.is_final_exam ? "final_exam" : "lesson"),
         has_video: !!ml.video_url,
         has_audio: !!ml.audio_url,
       });
@@ -108,7 +109,8 @@ Deno.serve(async (req: Request) => {
     }));
 
     // ── Free preview lesson (full content) ──────────────────────────────────
-    const firstLessonMeta = (modulesWithLessons[0]?.lessons as Record<string, unknown>[])?.[0];
+    const firstRealModule = modulesWithLessons.find((m: any) => String(m.section_type || (m.is_intro ? "introduction" : m.is_conclusion ? "conclusion" : m.is_final_exam ? "final_exam" : "module")) === "module");
+    const firstLessonMeta = ((firstRealModule?.lessons as Record<string, unknown>[]) || []).find((l: any) => String(l.stage_type || "lesson") === "lesson");
     let freePrevLesson: unknown = null;
     let freePrevLessonId: string | null = null;
 
