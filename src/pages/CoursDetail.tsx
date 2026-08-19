@@ -526,7 +526,9 @@ export function CoursDetail() {
                 const mid = mod.id as string;
                 const isOpen = openModules.has(mid);
                 const lessons = (mod.lessons as Record<string, unknown>[]) ?? [];
-                const realLessonCount = lessons.filter((lesson:any) => (lesson.stage_type || (lesson.is_module_intro ? 'module_presentation' : 'lesson')) === 'lesson').length;
+                const sectionType = String(mod.section_type || (mod.is_intro ? 'introduction' : mod.is_conclusion ? 'conclusion' : mod.is_final_exam ? 'final_exam' : 'module'));
+                const displayLessons = sectionType === 'module' ? lessons.filter((lesson:any) => String(lesson.stage_type || (lesson.is_module_intro ? 'module_presentation' : 'lesson')) === 'lesson') : [];
+                const realLessonCount = displayLessons.length;
                 return (
                   <div key={mid} className="rounded-xl overflow-hidden" style={{ border: '1px solid #E4E7EC' }}>
                     <button
@@ -537,7 +539,7 @@ export function CoursDetail() {
                         <span className="text-[10px] font-black uppercase tracking-[.08em] mt-0.5 rounded-lg px-2 py-1" style={{ color: '#8A650F', background:'#FFF7E1' }}>{(mod.section_type || (mod.is_intro ? 'introduction' : mod.is_conclusion ? 'conclusion' : mod.is_final_exam ? 'final_exam' : 'module')) === 'introduction' ? 'Introduction' : (mod.section_type || '') === 'conclusion' || mod.is_conclusion ? 'Conclusion' : (mod.section_type || '') === 'final_exam' || mod.is_final_exam ? 'Examen final' : `Module ${modules.slice(0,mi+1).filter((item:any)=>(item.section_type || (item.is_intro ? 'introduction' : item.is_conclusion ? 'conclusion' : item.is_final_exam ? 'final_exam' : 'module')) === 'module').length}`}</span>
                         <div>
                           <p className="font-semibold text-sm" style={{ color: '#002050' }}>{String(mod.title)}</p>
-                          <p className="text-xs mt-0.5" style={{ color: '#9CA3AF' }}>{realLessonCount} leçon{realLessonCount > 1 ? 's' : ''}</p>
+                          {sectionType === 'module' && <p className="text-xs mt-0.5" style={{ color: '#9CA3AF' }}>{realLessonCount} leçon{realLessonCount > 1 ? 's' : ''}</p>}
                         </div>
                       </div>
                       {isOpen ? <ChevronDown size={18} style={{ color: '#6B7280', flexShrink: 0 }} /> : <ChevronRight size={18} style={{ color: '#6B7280', flexShrink: 0 }} />}
@@ -547,7 +549,7 @@ export function CoursDetail() {
                         {mod.objective && (
                           <p className="px-5 py-3 text-xs" style={{ color: '#6B7280', backgroundColor: '#FAFAFA' }}>Objectif : {String(mod.objective)}</p>
                         )}
-                        {lessons.map((lesson, li) => {
+                        {displayLessons.map((lesson, li) => {
                           const isPreview = lesson.is_free_preview as boolean;
                           const sec = lesson.cpd_calculated_time_seconds as number ?? 0;
                           const mins = sec > 0 ? `${Math.ceil(sec / 60)} min` : '';
@@ -578,7 +580,7 @@ export function CoursDetail() {
         <section>
           <h2 className="font-bold mb-5" style={{ color: '#002050', fontSize: '22px' }}>Votre formateur</h2>
           <div className="flex items-start gap-4 p-5 rounded-xl" style={{ border: '1px solid #E4E7EC' }}>
-            {(creator.avatar_url || creator.logo_url) ? <img src={String(creator.avatar_url || creator.logo_url)} alt="" className="h-16 w-16 rounded-full object-cover" /> : <Monogram name={String(creator.full_name ?? creator.school_name ?? 'Omnia')} size={64} />}
+            {(course.creator_type === 'plateforme' || String(creator.full_name ?? creator.school_name ?? '').toLowerCase().includes('omnia global academy')) ? <img src="/omnia-sidebar-logo.png" alt="Omnia Global Academy" className="h-16 w-16 rounded-xl object-contain bg-white p-1" /> : (creator.avatar_url || creator.logo_url) ? <img src={String(creator.avatar_url || creator.logo_url)} alt="" className="h-16 w-16 rounded-full object-cover" /> : <Monogram name={String(creator.full_name ?? creator.school_name ?? 'Omnia')} size={64} />}
             <div>
               <p className="font-bold" style={{ color: '#002050', fontSize: '17px' }}>
                 {String(creator.full_name ?? creator.school_name ?? 'Omnia Global Academy')}

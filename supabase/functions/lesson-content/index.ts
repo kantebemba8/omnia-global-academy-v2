@@ -121,7 +121,7 @@ Deno.serve(async(req:Request)=>{
   if(req.method!=="GET")return json({error:"METHOD_NOT_ALLOWED"},405);
   const lessonId=url.searchParams.get("lesson_id"),courseId=url.searchParams.get("course_id"),previewMode=String(url.searchParams.get("preview")||"").toLowerCase(),preview=["learner","admin"].includes(previewMode);if(!lessonId||!courseId)return json({error:"lesson_id + course_id requis"},400);
   const previewAllowed=preview&&await canPreviewCourse(sb,userId,courseId);if(preview&&!previewAllowed)return json({error:"PREVIEW_FORBIDDEN"},403);
-  const {data:enroll}=await sb.from("user_enrollments").select("id,enrolled_at").eq("user_id",userId).eq("course_id",courseId).maybeSingle();if(!previewAllowed&&!enroll)return json({error:"NOT_ENROLLED"},403);
+  const enroll=previewAllowed?null:(await sb.from("user_enrollments").select("id,enrolled_at").eq("user_id",userId).eq("course_id",courseId).maybeSingle()).data;if(!previewAllowed&&!enroll)return json({error:"NOT_ENROLLED"},403);
   const {data:course}=await sb.from("courses").select("learning_design_settings").eq("id",courseId).maybeSingle();if(!course)return json({error:"COURSE_NOT_FOUND"},404);
   const design=(course.learning_design_settings||{}) as Record<string,unknown>;
   const {data:lesson}=await sb.from("course_lessons").select("id,title,content_text,video_url,audio_url,lesson_summary,cpd_calculated_time_seconds,cloudflare_stream_uid,position,module_id,is_free_preview,is_external,external_url,is_intro,is_module_intro,is_conclusion,is_final_exam,is_required,stage_type").eq("id",lessonId).maybeSingle();if(!lesson)return json({error:"LESSON_NOT_FOUND"},404);

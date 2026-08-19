@@ -1,6 +1,6 @@
 import { openInternalPreviewUrl } from '../../lib/mobile';
 import MobileBuilderAdvice from '../../components/MobileBuilderAdvice';
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { Component, useState, useEffect, useCallback, useRef, type ReactNode } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { AssessmentPolicyPanel } from '../../components/AssessmentPolicyPanel';
 import { edgeAuthHeaders } from '../../lib/edgeAuth';
@@ -192,6 +192,19 @@ async function api(action: string, body: Record<string, any> = {}) {
   return data;
 }
 
+class BuilderBlockBoundary extends Component<{ children: ReactNode; blockType: string }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() { return { failed: true }; }
+  componentDidCatch(error: unknown) { console.error('Builder block render error', this.props.blockType, error); }
+  componentDidUpdate(prevProps: { blockType: string }) {
+    if (prevProps.blockType !== this.props.blockType && this.state.failed) this.setState({ failed: false });
+  }
+  render() {
+    if (this.state.failed) return <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700"><p className="font-semibold">Ce bloc n’a pas pu être affiché.</p><p className="mt-1 text-xs">Le reste de la formation reste disponible. Modifiez ou rechargez uniquement ce bloc.</p></div>;
+    return this.props.children;
+  }
+}
+
 // ─── Composant principal ──────────────────────────────────────
 export default function StudioConceptionFormation() {
   const navigate = useNavigate();
@@ -217,6 +230,9 @@ export default function StudioConceptionFormation() {
   const [saving, setSaving] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [advancedMode, setAdvancedMode] = useState(false);
+  const [headerCollapsed, setHeaderCollapsed] = useState(() => {
+    try { return localStorage.getItem('oga_studio_header_collapsed') === '1'; } catch { return false; }
+  });
   const [showPreview, setShowPreview] = useState(false);
   const [mobileLibraryOpen, setMobileLibraryOpen] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
@@ -393,16 +409,31 @@ export default function StudioConceptionFormation() {
     await loadBlocks(lesson.id);
   }
 
+  const sectionTypeOf = (m: Module) => m.section_type || (m.is_intro ? 'introduction' : m.is_conclusion ? 'conclusion' : m.is_final_exam ? 'final_exam' : 'module');
+  const stageTypeOf = (l: Lesson) => l.stage_type || (l.is_intro ? 'introduction' : l.is_module_intro ? 'module_presentation' : l.is_conclusion ? 'conclusion' : l.is_final_exam ? 'final_exam' : 'lesson');
+  const moduleRank = (m: Module) => sectionTypeOf(m) === 'introduction' ? -100000 : sectionTypeOf(m) === 'conclusion' ? 100000 : sectionTypeOf(m) === 'final_exam' ? 200000 : Number(m.position || 0);
+  const orderedModules = [...modules].sort((a, b) => moduleRank(a) - moduleRank(b));
+  const builderModules = orderedModules.filter(m => sectionTypeOf(m) !== 'conclusion' && sectionTypeOf(m) !== 'final_exam');
+  const endingSections = orderedModules.filter(m => sectionTypeOf(m) === 'conclusion' || sectionTypeOf(m) === 'final_exam');
+  const setHeaderCollapsedPersisted = (value: boolean) => {
+    setHeaderCollapsed(value);
+    try { localStorage.setItem('oga_studio_header_collapsed', value ? '1' : '0'); } catch {}
+  };
+
   // ─── Ajouter module ───────────────────────────────────────
   async function addModule() {
     if (!course?.id) return;
-    const normalCount = modules.filter(m => !m.is_intro && !m.is_conclusion && !m.is_final_exam).length;
+    const normalCount = modules.filter(m => sectionTypeOf(m) === 'module').length;
     const title = `Module ${normalCount + 1}`;
     const data = await api('create_module', { course_id: course.id, title, objective: '', create_module_introduction: false });
     if (data.success) {
       const introLesson = data.intro_lesson as Lesson | undefined;
       const newMod: Module = { ...data.module, lessons: introLesson ? [introLesson] : [] };
-      setModules(m => [...m, newMod]);
+      setModules(current => {
+        const endings = current.filter(m => sectionTypeOf(m) === 'conclusion' || sectionTypeOf(m) === 'final_exam');
+        const before = current.filter(m => sectionTypeOf(m) !== 'conclusion' && sectionTypeOf(m) !== 'final_exam');
+        return [...before, newMod, ...endings];
+      });
       setCurrentModule(newMod);
       setCurrentLesson(introLesson || null);
       setBlocks([]);
@@ -414,7 +445,7 @@ export default function StudioConceptionFormation() {
   // ─── Ajouter leçon ────────────────────────────────────────
   async function addLesson(mod: Module) {
     if (!course?.id) return;
-    const lessonCount = (mod.lessons || []).filter(l => !l.is_module_intro).length;
+    const lessonCount = (mod.lessons || []).filter(l => stageTypeOf(l) === 'lesson').length;
     const title = `Leçon ${lessonCount + 1}`;
     const data = await api('create_lesson', { course_id: course.id, module_id: mod.id, title });
     if (data.success) {
@@ -933,7 +964,7 @@ export default function StudioConceptionFormation() {
         </div>
 
         {/* Mode simple/avancé */}
-        <div className="hidden md:flex items-center gap-1 mx-3 bg-gray-100 rounded-lg p-1 flex-shrink-0">
+        {!headerCollapsed && <div className="hidden md:flex items-center gap-1 mx-3 bg-gray-100 rounded-lg p-1 flex-shrink-0">
           <button onClick={() => setAdvancedMode(false)}
             className="px-2.5 py-1 rounded-md text-xs font-semibold transition-all"
             style={!advancedMode ? { background: '#002050', color: 'white' } : { color: '#6B7280' }}>
@@ -944,18 +975,21 @@ export default function StudioConceptionFormation() {
             style={advancedMode ? { background: '#002050', color: 'white' } : { color: '#6B7280' }}>
             Mode avancé
           </button>
-        </div>
+        </div>}
 
         {/* Statut */}
-        <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold mr-3 flex-shrink-0" style={{ background: statusCfg.bg, color: statusCfg.color }}>
+        {!headerCollapsed && <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold mr-3 flex-shrink-0" style={{ background: statusCfg.bg, color: statusCfg.color }}>
           <div className="w-2 h-2 rounded-full" style={{ background: statusCfg.dot }} />
           {statusCfg.label}
-        </div>
+        </div>}
 
         {/* Actions */}
         <div className="flex items-center gap-2 flex-shrink-0">
-          <button onClick={loadHistory} className="hidden md:flex items-center gap-1 px-3 py-1.5 rounded-lg border text-xs font-medium" style={{ borderColor: '#E4E7EC', color: '#6B7280' }}>
+          {!headerCollapsed && <button onClick={loadHistory} className="hidden md:flex items-center gap-1 px-3 py-1.5 rounded-lg border text-xs font-medium" style={{ borderColor: '#E4E7EC', color: '#6B7280' }}>
             <History size={13} /> Historique
+          </button>}
+          <button type="button" onClick={() => setHeaderCollapsedPersisted(!headerCollapsed)} className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border text-xs font-medium" style={{ borderColor: '#E4E7EC', color: '#6B7280' }} title={headerCollapsed ? 'Afficher les paramètres du Builder' : 'Réduire les paramètres du Builder'}>
+            {headerCollapsed ? <ChevronDown size={13} /> : <ChevronUp size={13} />}<span className="hidden lg:inline">{headerCollapsed ? 'Afficher' : 'Réduire'}</span>
           </button>
           <button onClick={() => { if (!course.id) { showToast('Enregistrez d’abord le brouillon.', 'error'); return; } setShowRolePreview(true); }} className="flex items-center gap-1 px-3 py-1.5 rounded-lg border text-xs font-medium" style={{ borderColor: '#E4E7EC', color: '#6B7280' }}>
             <Eye size={13} /><span className="hidden sm:inline">Prévisualiser</span>
@@ -1111,6 +1145,7 @@ export default function StudioConceptionFormation() {
           </div>
 
           {/* Navigation structure formation */}
+          {!headerCollapsed && (
           <div className="bg-white border-b flex items-center px-4 py-2 gap-4 flex-shrink-0 overflow-x-auto" style={{ borderColor: '#E4E7EC' }}>
             {/* Infos formation */}
             <div className="flex items-center gap-2 flex-shrink-0">
@@ -1122,7 +1157,7 @@ export default function StudioConceptionFormation() {
             <div className="h-4 w-px bg-gray-200 flex-shrink-0" />
             {/* Modules */}
             <div className="flex items-center gap-2 overflow-x-auto">
-              {modules.map(mod => (
+              {builderModules.map(mod => (
                 <div key={mod.id} className="flex-shrink-0">
                   <input
                     className="w-full bg-transparent text-xs font-semibold mb-1 outline-none border-b border-transparent focus:border-[#BF8813]"
@@ -1135,7 +1170,7 @@ export default function StudioConceptionFormation() {
                       if (currentModule?.id === mod.id) setCurrentModule(m => m ? { ...m, title } : m);
                     }}
                     onBlur={async e => {
-                      const fallback = (mod as any).is_intro ? 'Introduction' : (mod as any).is_conclusion ? 'Conclusion' : (mod as any).is_final_exam ? 'Examen final' : `Module ${Math.max(1, modules.findIndex(m => m.id === mod.id) + 1)}`;
+                      const fallback = (mod as any).is_intro ? 'Introduction' : (mod as any).is_conclusion ? 'Conclusion' : (mod as any).is_final_exam ? 'Examen final' : `Module ${Math.max(1, builderModules.filter(m => sectionTypeOf(m) === 'module').findIndex(m => m.id === mod.id) + 1)}`;
                       const title = e.target.value.trim() || fallback;
                       setModules(ms => ms.map(m => m.id === mod.id ? { ...m, title } : m));
                       if (currentModule?.id === mod.id) setCurrentModule(m => m ? { ...m, title } : m);
@@ -1176,7 +1211,7 @@ export default function StudioConceptionFormation() {
                       )}
                       </span>
                     ))}
-                    {!mod.is_intro && (
+                    {sectionTypeOf(mod) === 'module' && (
                       <>
                         <button onClick={() => setBuilderImportTarget({ type: 'module', id: mod.id })} disabled={locked || !course.id}
                           className="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded-full border border-dashed disabled:opacity-40"
@@ -1198,11 +1233,31 @@ export default function StudioConceptionFormation() {
                 style={{ borderColor: '#002050', color: '#002050' }}>
                 <Plus size={11} /> Module
               </button>
-              <button onClick={async()=>{if(!course.id){const created=await ensureCourseCreated();if(!created)return;} const d=await api('ensure_special_sections',{course_id:courseRef.current.id}); if(d.success){await reloadCourse(courseRef.current.id); showToast('Conclusion prête à construire');}}} disabled={locked} className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg border border-dashed flex-shrink-0 disabled:opacity-40" style={{borderColor:'#BF8813',color:'#92400E'}}><Plus size={11}/> Conclusion</button>
+              {endingSections.map(mod => (
+                <div key={mod.id} className="flex-shrink-0">
+                  <input
+                    className="w-full bg-transparent text-xs font-semibold mb-1 outline-none border-b border-transparent focus:border-[#BF8813]"
+                    style={{ color: currentModule?.id === mod.id ? '#002050' : '#6B7280' }}
+                    value={mod.title}
+                    onClick={e => e.stopPropagation()}
+                    onChange={e => { const title=e.target.value; setModules(ms=>ms.map(m=>m.id===mod.id?{...m,title}:m)); if(currentModule?.id===mod.id)setCurrentModule(m=>m?{...m,title}:m); }}
+                    onBlur={async e => { const fallback=sectionTypeOf(mod)==='conclusion'?'Conclusion de la formation':'Examen final'; const title=e.target.value.trim()||fallback; const result=await api('update_module',{course_id:course.id,module_id:mod.id,title}); if(!result.success){showToast(result.message||result.error||'Le titre n’a pas été enregistré.','error');await reloadCourse(course.id);} else {setModules(ms=>ms.map(m=>m.id===mod.id?{...m,title}:m));} }}
+                    disabled={locked}
+                    aria-label={sectionTypeOf(mod)==='conclusion'?'Titre de la conclusion':'Titre de l’examen final'}
+                  />
+                  <div className="flex gap-1">
+                    {(mod.lessons||[]).map(lesson => (
+                      <button key={lesson.id} onClick={()=>{setShowFinalization(false);selectLesson(mod,lesson);}} className="text-xs px-2 py-0.5 rounded-full border transition-all" style={currentLesson?.id===lesson.id?{background:'#002050',color:'white',borderColor:'#002050'}:{borderColor:'#E4E7EC',color:'#6B7280',background:'white'}}>{lesson.title}</button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+              {endingSections.length < 2 && <button onClick={async()=>{if(!course.id){const created=await ensureCourseCreated();if(!created)return;} const d=await api('ensure_special_sections',{course_id:courseRef.current.id}); if(d.success){await reloadCourse(courseRef.current.id); showToast('Conclusion et examen final prêts à construire');}}} disabled={locked} className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg border border-dashed flex-shrink-0 disabled:opacity-40" style={{borderColor:'#BF8813',color:'#92400E'}}><Plus size={11}/> Conclusion & examen final</button>}
               <button onClick={() => { setShowChecklist(true); if (course?.id) api('validate_checklist', { course_id: course.id }).then(d => setChecklist(d)); }} className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg border flex-shrink-0" style={{background:'white',color:'#1E7A52',borderColor:'#1E7A52'}}><CheckCircle size={11}/> Qualité</button>
               <button onClick={()=>{setShowFinalization(true);setCurrentModule(null);setCurrentLesson(null);setBlocks([]);setSelectedBlock(null);}} className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg border flex-shrink-0" style={showFinalization?{background:'#002050',color:'white',borderColor:'#002050'}:{background:'white',color:'#002050',borderColor:'#002050'}}><ShieldCheck size={11}/> Finalisation</button>
             </div>
           </div>
+          )}
 
 
           {/* Canevas */}
@@ -1471,6 +1526,7 @@ export default function StudioConceptionFormation() {
 
                           {/* Contenu du bloc */}
                           <div className="p-4" style={{ fontFamily: String(block.settings_json?.font_family || 'Inter, system-ui, sans-serif'), fontSize: block.settings_json?.font_scale === 'small' ? '0.875rem' : block.settings_json?.font_scale === 'large' ? '1.075rem' : undefined, textAlign: (block.settings_json?.text_align || 'left') as any }}>
+                            <BuilderBlockBoundary blockType={block.block_type}>
                             <BlockPreview block={block} def={def} locked={locked} mediaAiBusy={mediaAiBusy}
                               defaultLanguage={course?.instruction_language || course?.language || 'fr'}
                               onGenerateTts={(text,targetPath)=>generateTtsForBlock(block,text,targetPath)}
@@ -1480,6 +1536,7 @@ export default function StudioConceptionFormation() {
                                 if (isSelected) setSelectedBlock(b => b ? { ...b, content_json } : b);
                                 await queueBlockUpdate(block.id, { content_json });
                               }} />
+                            </BuilderBlockBoundary>
                           </div>
                         </div>
                       </div>

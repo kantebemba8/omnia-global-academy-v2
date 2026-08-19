@@ -24,7 +24,7 @@ Deno.serve(async(req:Request)=>{
     const userId=sess.user_id;
     const previewAllowed=preview&&await canPreviewCourse(sb,userId,courseId);
     if(preview&&!previewAllowed)return json({error:"PREVIEW_FORBIDDEN"},403);
-    const {data:enroll}=await sb.from("user_enrollments").select("id").eq("user_id",userId).eq("course_id",courseId).maybeSingle();
+    const enroll=previewAllowed?null:(await sb.from("user_enrollments").select("id").eq("user_id",userId).eq("course_id",courseId).maybeSingle()).data;
     if(!previewAllowed&&!enroll)return json({error:"NOT_ENROLLED"},403);
 
     const {data:courseMeta}=await sb.from("courses").select("learning_design_settings").eq("id",courseId).maybeSingle();

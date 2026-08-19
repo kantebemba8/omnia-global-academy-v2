@@ -119,6 +119,32 @@ function previewModulesFromCourseInfo(info: CourseInfoPayload | null): ModuleIte
     })),
   }));
 }
+function normalizeReaderModules(input: any): ModuleItem[] {
+  if (!Array.isArray(input)) return [];
+  const sectionType = (mod:any) => String(mod?.section_type || (mod?.is_intro ? 'introduction' : mod?.is_conclusion ? 'conclusion' : mod?.is_final_exam ? 'final_exam' : 'module'));
+  const stageType = (lesson:any) => String(lesson?.stage_type || (lesson?.is_intro ? 'introduction' : lesson?.is_module_intro ? 'module_presentation' : lesson?.is_conclusion ? 'conclusion' : lesson?.is_final_exam ? 'final_exam' : 'lesson'));
+  const rankModule = (mod:any) => sectionType(mod)==='introduction'?-100000:sectionType(mod)==='conclusion'?100000:sectionType(mod)==='final_exam'?200000:Number(mod?.position||0);
+  const rankLesson = (lesson:any) => stageType(lesson)==='module_presentation'?-10000:stageType(lesson)==='module_summary'?10000:Number(lesson?.position||0);
+  return input.filter(Boolean).map((mod:any) => ({
+    ...mod,
+    module_id: String(mod.module_id ?? mod.id ?? ''),
+    title: String(mod.title ?? ''),
+    position: Number(mod.position || 0),
+    section_type: sectionType(mod) as ModuleItem['section_type'],
+    is_unlocked: mod.is_unlocked !== false,
+    exam_unlocked: mod.exam_unlocked !== false,
+    exam_passed: mod.exam_passed === true,
+    exam_score: mod.exam_score ?? null,
+    exam_attempts: Number(mod.exam_attempts || 0),
+    lessons: (Array.isArray(mod.lessons) ? mod.lessons : []).filter(Boolean).map((lesson:any) => ({
+      ...lesson,
+      lesson_id: String(lesson.lesson_id ?? lesson.id ?? ''), title: String(lesson.title ?? ''), position: Number(lesson.position || 0),
+      stage_type: stageType(lesson) as LessonItem['stage_type'], duration_seconds: Number(lesson.duration_seconds || lesson.cpd_calculated_time_seconds || 0),
+      content_type: lesson.content_type || (lesson.is_external ? 'external' : lesson.has_video || lesson.video_url ? 'video' : lesson.has_audio || lesson.audio_url ? 'audio' : 'text'),
+      is_free: lesson.is_free === true || lesson.is_free_preview === true, is_completed: lesson.is_completed === true, time_spent_seconds: Number(lesson.time_spent_seconds || 0), quiz_passed: lesson.quiz_passed === true, is_unlocked: lesson.is_unlocked !== false,
+    })).sort((a:any,b:any)=>rankLesson(a)-rankLesson(b)),
+  })).sort((a:any,b:any)=>rankModule(a)-rankModule(b));
+}
 
 // ── SimpleMarkdown ────────────────────────────────────────────────────────────
 function renderInline(text: string): React.ReactNode {
@@ -412,7 +438,7 @@ function CourseInfoView({ info, modules, progressPct, preview, previewMode, onSt
               <span className="inline-flex items-center gap-2"><BookOpen size={16} style={{ color: '#E5BE5B' }} />{totalLessons} leçon{totalLessons > 1 ? 's' : ''}</span>
             </div>
             <div className="mt-7 flex items-center gap-3">
-              {avatar ? <img src={avatar} alt="" className="h-11 w-11 rounded-full border-2 border-white/30 object-cover" /> : <span className="flex h-11 w-11 items-center justify-center rounded-full border-2 border-white/20 bg-white/10 text-sm font-black">{initials}</span>}
+              {course.creator_type === 'plateforme' || creatorName.toLowerCase().includes('omnia global academy') ? <img src="/omnia-sidebar-logo.png" alt="Omnia Global Academy" className="h-11 w-11 rounded-xl border border-white/30 bg-white object-contain p-1" /> : avatar ? <img src={avatar} alt="" className="h-11 w-11 rounded-full border-2 border-white/30 object-cover" /> : <span className="flex h-11 w-11 items-center justify-center rounded-full border-2 border-white/20 bg-white/10 text-sm font-black">{initials}</span>}
               <div><p className="text-xs text-slate-300">Créé par</p><p className="font-bold text-white">{creatorName}</p></div>
             </div>
           </div>
@@ -448,7 +474,7 @@ function CourseInfoView({ info, modules, progressPct, preview, previewMode, onSt
           </div>
 
           <aside className="space-y-5 lg:sticky lg:top-24">
-            <section className="rounded-[22px] border bg-white p-5" style={{borderColor:'#E4E7EC'}}><p className="text-xs font-black uppercase tracking-[.15em]" style={{color:'#BF8813'}}>Votre formateur</p><div className="mt-4 flex items-center gap-3">{avatar?<img src={avatar} alt="" className="h-14 w-14 rounded-full object-cover"/>:<span className="flex h-14 w-14 items-center justify-center rounded-full text-sm font-black text-white" style={{background:'#002050'}}>{initials}</span>}<div className="min-w-0"><p className="truncate font-black" style={{color:'#002050'}}>{creatorName}</p><p className="mt-0.5 text-xs font-semibold" style={{color:'#BF8813'}}>{creatorRole}</p></div></div>{creator.bio&&<p className="mt-4 text-sm leading-6 text-slate-500">{String(creator.bio)}</p>}</section>
+            <section className="rounded-[22px] border bg-white p-5" style={{borderColor:'#E4E7EC'}}><p className="text-xs font-black uppercase tracking-[.15em]" style={{color:'#BF8813'}}>Votre formateur</p><div className="mt-4 flex items-center gap-3">{course.creator_type === 'plateforme' || creatorName.toLowerCase().includes('omnia global academy') ? <img src="/omnia-sidebar-logo.png" alt="Omnia Global Academy" className="h-14 w-14 rounded-xl bg-white object-contain p-1"/> : avatar?<img src={avatar} alt="" className="h-14 w-14 rounded-full object-cover"/>:<span className="flex h-14 w-14 items-center justify-center rounded-full text-sm font-black text-white" style={{background:'#002050'}}>{initials}</span>}<div className="min-w-0"><p className="truncate font-black" style={{color:'#002050'}}>{creatorName}</p><p className="mt-0.5 text-xs font-semibold" style={{color:'#BF8813'}}>{creatorRole}</p></div></div>{creator.bio&&<p className="mt-4 text-sm leading-6 text-slate-500">{String(creator.bio)}</p>}</section>
             <section className="rounded-[22px] border p-5" style={{borderColor:'#DDE5EF',background:'#F8FAFC'}}><div className="flex items-start gap-3"><Sparkles size={18} className="mt-0.5 shrink-0" style={{color:'#BF8813'}}/><div><p className="font-bold" style={{color:'#002050'}}>Parcours clair</p><p className="mt-1 text-xs leading-5 text-slate-500">Consultez d’abord les informations et le programme. Le bouton principal vous fait ensuite entrer dans l’Introduction puis dans les modules.</p></div></div></section>
           </aside>
         </div>
@@ -539,7 +565,7 @@ export function CoursLecteur() {
         if (!cancelled) {
           setCourseInfo(data);
           if (isPreview) {
-            const fallback = previewModulesFromCourseInfo(data);
+            const fallback = normalizeReaderModules(previewModulesFromCourseInfo(data));
             if (fallback.length) {
               setModules(current => current.length ? current : fallback);
               setFinalUnlocked(true);
@@ -554,7 +580,7 @@ export function CoursLecteur() {
   }, [courseId, sessionToken, isPreview, previewMode]);
 
   const applyProgressSnapshot = useCallback((snapshot: CourseProgressSnapshot) => {
-    setModules(snapshot.modules);
+    setModules(normalizeReaderModules(snapshot.modules));
     setFinalUnlocked(snapshot.finalUnlocked);
     setProgressPct(snapshot.progressPct);
   }, []);
@@ -572,7 +598,7 @@ export function CoursLecteur() {
         const message = data.message || data.error || 'Progression indisponible';
         if (isPreview) {
           setProgressError(message);
-          const fallback = previewModulesFromCourseInfo(courseInfo);
+          const fallback = normalizeReaderModules(previewModulesFromCourseInfo(courseInfo));
           if (fallback.length) {
             setModules(fallback);
             setFinalUnlocked(true);
@@ -587,7 +613,7 @@ export function CoursLecteur() {
       setProgressError('');
 
       const snapshot: CourseProgressSnapshot = {
-        modules: data.modules ?? [],
+        modules: normalizeReaderModules(data.modules ?? []),
         finalUnlocked: data.final_validation_unlocked ?? false,
         progressPct: data.progress?.percent ?? 0,
         savedAt: new Date().toISOString(),
@@ -605,7 +631,7 @@ export function CoursLecteur() {
     } catch (error) {
       if (isPreview) {
         setProgressError(error instanceof Error ? error.message : 'Le service de progression de prévisualisation est indisponible.');
-        const fallback = previewModulesFromCourseInfo(courseInfo);
+        const fallback = normalizeReaderModules(previewModulesFromCourseInfo(courseInfo));
         if (fallback.length) {
           setModules(fallback);
           setFinalUnlocked(true);
@@ -704,8 +730,10 @@ export function CoursLecteur() {
           throw new Error(data.message || data.error || 'Chargement impossible');
         }
         if (cancelled) return;
-        setLessonData(data);
-        if (data.lesson.content_type === 'video' && !dataSaver) signVideo(currentLessonId);
+        if (!data?.lesson) throw new Error('La leçon renvoyée est incomplète.');
+        const normalizedLessonData = { ...data, progress: data.progress || { time_spent_seconds: 0, quiz_passed: true, is_completed: false }, blocks: Array.isArray(data.blocks) ? data.blocks : [], training: data.training || { required_count: 0, passed_count: 0, passed: true } };
+        setLessonData(normalizedLessonData);
+        if (normalizedLessonData.lesson.content_type === 'video' && !dataSaver) signVideo(currentLessonId);
       } catch (error) {
         if (accessDenied && isOnline) {
           if (!cancelled) {
@@ -772,7 +800,7 @@ export function CoursLecteur() {
   const { timeSpent, cpdTimeReached, isActive } = useCpdTimer({
     lessonId: isPreview ? null : currentLessonId, courseId: isPreview ? null : (courseId ?? null),
     requiredSeconds: lessonData?.required_seconds ?? 0,
-    initialSpent: lessonData?.progress.time_spent_seconds ?? 0,
+    initialSpent: lessonData?.progress?.time_spent_seconds ?? 0,
     sessionToken,
     onTimeReached: () => {
       if (isPreview || !isOnline || !currentLessonId || !courseId || !sessionToken) return;
@@ -794,6 +822,15 @@ export function CoursLecteur() {
   const goToLesson = (id: string) => { setReaderStarted(true); setCurrentLessonId(id); navigate(`/cours/${courseId}/apprendre/${id}${previewRouteQuery}`, { replace: true }); };
 
   const handleNext = () => {
+    const moduleNow = modules.find(m => m.lessons.some(l => l.lesson_id === currentLessonId));
+    const trainingPassed = !lessonData?.training?.required_count || lessonData.training.passed === true;
+    const moduleExamPassed = lesson?.stage_type !== 'module_summary' || !moduleNow?.exam_required || moduleNow.exam_passed === true;
+    const canAdvance = isPreview || (effectiveCpd && trainingPassed && quizPassed && moduleExamPassed);
+    if (!canAdvance) {
+      const reason = !effectiveCpd ? `Temps pédagogique requis : ${fmtTime(Math.max(0, Number(lessonData?.required_seconds || 0) - timeSpent))} restant.` : !trainingPassed ? 'Terminez les entraînements obligatoires avant de continuer.' : !quizPassed ? 'Réussissez l’évaluation obligatoire de cette leçon.' : 'Réussissez l’évaluation obligatoire du module avant de continuer.';
+      setResilientMessage(reason);
+      return;
+    }
     const nextId = lessonData?.next_lesson_id ?? findNext(modules, currentLessonId ?? '');
     if (nextId) goToLesson(nextId);
     setShowSummary(false);
@@ -1383,7 +1420,10 @@ export function CoursLecteur() {
               {lesson && (
                 <div className="mt-10 flex items-center justify-between gap-3 border-t pt-5" style={{borderColor:'#E4E7EC'}}>
                   <button type="button" disabled={!previousReaderLesson} onClick={()=>previousReaderLesson&&goToLesson(previousReaderLesson.lesson_id)} className="rounded-xl border px-4 py-2.5 text-sm font-bold disabled:opacity-30" style={{borderColor:'#CBD5E1',color:'#002050'}}>← Précédent</button>
-                  <button type="button" disabled={!nextReaderLesson || nextReaderLesson.is_unlocked===false} onClick={()=>nextReaderLesson&&goToLesson(nextReaderLesson.lesson_id)} className="rounded-xl px-5 py-2.5 text-sm font-black text-white disabled:opacity-30" style={{background:'#002050'}}>{lesson.stage_type === 'module_presentation' ? 'Commencer le module →' : lesson.stage_type === 'module_summary' ? 'Module suivant →' : lesson.stage_type === 'introduction' ? 'Continuer →' : 'Suivant →'}</button>
+                  <div className="text-right">
+                    <button type="button" disabled={!nextReaderLesson || nextReaderLesson.is_unlocked===false || (!isPreview && (!effectiveCpd || (!!lessonData?.training?.required_count && lessonData.training.passed !== true) || !quizPassed || (lesson.stage_type === 'module_summary' && !!currentMod?.exam_required && currentMod.exam_passed !== true)))} onClick={handleNext} className="rounded-xl px-5 py-2.5 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-30" style={{background:'#002050'}}>{lesson.stage_type === 'module_presentation' ? 'Commencer le module →' : lesson.stage_type === 'module_summary' ? 'Module suivant →' : lesson.stage_type === 'introduction' ? 'Continuer →' : 'Suivant →'}</button>
+                    {!isPreview && nextReaderLesson && (!effectiveCpd || (!!lessonData?.training?.required_count && lessonData.training.passed !== true) || !quizPassed || (lesson.stage_type === 'module_summary' && !!currentMod?.exam_required && currentMod.exam_passed !== true)) && <p className="mt-1 max-w-xs text-xs text-slate-500">{!effectiveCpd ? `${fmtTime(Math.max(0, Number(lessonData?.required_seconds || 0) - timeSpent))} de temps pédagogique restant` : (!!lessonData?.training?.required_count && lessonData.training.passed !== true) ? 'Entraînement obligatoire à terminer' : !quizPassed ? 'Évaluation obligatoire à réussir' : 'Évaluation du module à réussir'}</p>}
+                  </div>
                 </div>
               )}
         {/* AI Panel */}

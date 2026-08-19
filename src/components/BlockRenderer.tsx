@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { Component, useState, type ReactNode } from 'react';
 import {
   Star, Info, AlertTriangle, Lightbulb, BookOpen, CheckCircle,
   Download, Play, FileText, Table, Layers, ChevronDown, ChevronUp,
@@ -859,6 +859,17 @@ function InteractiveTableBlock({ headers, rows, style, training = false, trainin
     </div>
   );
 }
+class BlockRenderBoundary extends Component<{ children: ReactNode; blockType: string }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() { return { failed: true }; }
+  componentDidCatch(error: unknown) { console.error('Learner block render error', this.props.blockType, error); }
+  componentDidUpdate(prevProps: { blockType: string }) { if (prevProps.blockType !== this.props.blockType && this.state.failed) this.setState({ failed: false }); }
+  render() {
+    if (this.state.failed) return <div className="my-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700"><p className="font-semibold">Ce contenu n’a pas pu être affiché.</p><p className="mt-1 text-xs">Le reste de la leçon reste accessible. Rechargez ce bloc ou signalez la ressource au créateur.</p></div>;
+    return this.props.children;
+  }
+}
+
 // ─── Export : Rendu d'une leçon complète ─────────────────────
 export function LessonBlocksRenderer({ blocks, contentText, onQuizAnswer, onTrainingResult, onFileTrainingSubmit, learnerStateByBlock = {}, onStateChange, isOnline = true }: {
   blocks: Block[];
@@ -892,7 +903,7 @@ export function LessonBlocksRenderer({ blocks, contentText, onQuizAnswer, onTrai
           const extraWide = ['excel','interactive_table','rubric','scorm'].includes(block.block_type);
           return (
             <div key={block.id} className={extraWide ? 'mx-auto w-full max-w-6xl' : wide ? 'mx-auto w-full max-w-5xl' : 'mx-auto w-full max-w-3xl'}>
-              <BlockRenderer block={block} onQuizAnswer={onQuizAnswer} onTrainingResult={block.interaction_mode === 'training' ? onTrainingResult : undefined} onFileTrainingSubmit={block.interaction_mode === 'training' ? onFileTrainingSubmit : undefined} learnerState={learnerStateByBlock[block.id] || {}} onStateChange={onStateChange} isOnline={isOnline} />
+              <BlockRenderBoundary blockType={block.block_type}><BlockRenderer block={block} onQuizAnswer={onQuizAnswer} onTrainingResult={block.interaction_mode === 'training' ? onTrainingResult : undefined} onFileTrainingSubmit={block.interaction_mode === 'training' ? onFileTrainingSubmit : undefined} learnerState={learnerStateByBlock[block.id] || {}} onStateChange={onStateChange} isOnline={isOnline} /></BlockRenderBoundary>
             </div>
           );
         })}

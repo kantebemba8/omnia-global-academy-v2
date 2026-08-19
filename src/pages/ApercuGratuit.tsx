@@ -2,7 +2,7 @@ import { getSessionToken } from '../lib/session';
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Menu, ShieldCheck, X } from 'lucide-react';
-import { BlockRenderer } from '../components/BlockRenderer';
+import { LessonBlocksRenderer } from '../components/BlockRenderer';
 
 const API = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/studio-unified`;
 
@@ -16,11 +16,8 @@ type PreviewPayload = {
 };
 
 type PreviewStep = 'intro'|'presentation'|'lesson'|'end';
-const wideTypes = new Set(['image','video','gallery','chart','excel','interactive_table','rubric','scorm','columns','timeline']);
-const extraWideTypes = new Set(['excel','interactive_table','rubric','scorm']);
-
 function PreviewBlocks({blocks}:{blocks:PreviewBlock[]}){
-  return <div className="space-y-2">{[...blocks].sort((a,b)=>a.position-b.position).map(block=><div key={block.id} className={extraWideTypes.has(block.block_type)?'mx-auto w-full max-w-6xl':wideTypes.has(block.block_type)?'mx-auto w-full max-w-5xl':'mx-auto w-full max-w-3xl'}><BlockRenderer block={block as any}/></div>)}</div>;
+  return <LessonBlocksRenderer blocks={blocks as any[]} />;
 }
 
 export function ApercuGratuit(){

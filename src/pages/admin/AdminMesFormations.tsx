@@ -324,7 +324,7 @@ export default function AdminMesFormations() {
                         </button>
                       )}
 
-                      <button onClick={() => navigate(`/cours/${f.id}?preview=visitor`)}
+                      <button onClick={() => setPreviewTarget(f)}
                         className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border"
                         style={{ borderColor: '#BF8813', color: '#8A650F' }}>
                         <Eye size={12} /> Prévisualiser
@@ -350,7 +350,23 @@ export default function AdminMesFormations() {
             {filtered.length} formation{filtered.length > 1 ? 's' : ''} affichée{filtered.length > 1 ? 's' : ''} sur {formations.length} au total
           </p>
         )}
-        {deleteTarget && (
+                {previewTarget && (
+          <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/45 p-4" onClick={() => setPreviewTarget(null)}>
+            <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
+              <div className="flex items-start justify-between gap-4">
+                <div><p className="text-xs font-bold uppercase tracking-wider text-amber-700">Prévisualisation</p><h3 className="mt-1 text-lg font-bold text-[#002050]">{previewTarget.title}</h3><p className="mt-1 text-sm text-slate-500">Choisissez exactement l’expérience à contrôler.</p></div>
+                <button onClick={() => setPreviewTarget(null)} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100" aria-label="Fermer"><XCircle size={18}/></button>
+              </div>
+              <div className="mt-5 grid gap-3">
+                <button onClick={() => navigate(`/cours/${previewTarget.id}?preview=visitor`)} className="rounded-xl border p-4 text-left hover:bg-amber-50" style={{borderColor:'#BF8813'}}><p className="font-bold text-[#002050]">Visiteur avant achat</p><p className="mt-1 text-xs text-slate-500">La vraie page publique et le parcours gratuit avant inscription.</p></button>
+                <button onClick={() => navigate(`/cours/${previewTarget.id}/apprendre?preview=learner`)} className="rounded-xl border border-slate-200 p-4 text-left hover:bg-slate-50"><p className="font-bold text-[#002050]">Apprenant après achat</p><p className="mt-1 text-xs text-slate-500">Le vrai lecteur apprenant, sans créer d’inscription ni de progression.</p></button>
+                <button onClick={() => navigate(`/cours/${previewTarget.id}/apprendre?preview=admin`)} className="rounded-xl border border-slate-200 p-4 text-left hover:bg-slate-50"><p className="font-bold text-[#002050]">Administration OGA</p><p className="mt-1 text-xs text-slate-500">Contrôle libre de toutes les étapes sans écriture apprenant.</p></button>
+              </div>
+            </div>
+          </div>
+        )}
+
+{deleteTarget && (
           <div className="fixed inset-0 z-[100] bg-black/30 flex items-center justify-center p-4">
             <div className="w-full max-w-md bg-white rounded-xl border border-gray-200 shadow-xl p-5">
               <h3 className="text-lg font-black" style={{ color: '#002050' }}>Supprimer définitivement ce brouillon ?</h3>
