@@ -6,7 +6,7 @@ import { AdminLayout } from '../../components/AdminLayout';
 import {
   BookOpen, PlusCircle, Edit2, Eye, RefreshCw, FileUp,
   Clock, CheckCircle, AlertCircle, Archive,
-  BarChart2, Send, XCircle, Trash2
+  BarChart2, Send, XCircle, Trash2, ChevronDown, MapPin
 } from 'lucide-react';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
@@ -54,6 +54,7 @@ export default function AdminMesFormations() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; title: string } | null>(null);
   const [previewTarget, setPreviewTarget] = useState<Formation | null>(null);
+  const [createMenuOpen, setCreateMenuOpen] = useState(false);
 
   const token = () => getSessionToken() || '';
 
@@ -149,16 +150,67 @@ export default function AdminMesFormations() {
               style={{ borderColor: '#BF8813', color: '#9A6D0F' }}>
               <FileUp size={15} /> Importer un fichier
             </button>
-            <button onClick={() => navigate('/formations/presentiel/nouvelle')}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold border bg-white"
-              style={{ borderColor: '#0B817A', color: '#0B817A' }}>
-              Formation présentielle
-            </button>
-            <button onClick={() => navigate('/admin/studio/new')}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold text-white"
-              style={{ background: '#002050' }}>
-              <PlusCircle size={15} /> Créer une formation
-            </button>
+            <div className="relative">
+              <button
+                onClick={() => setCreateMenuOpen(v => !v)}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold text-white"
+                style={{ background: '#002050' }}
+                aria-haspopup="menu"
+                aria-expanded={createMenuOpen}
+              >
+                <PlusCircle size={15} /> Créer une formation <ChevronDown size={14} />
+              </button>
+
+              {createMenuOpen && (
+                <>
+                  <button
+                    type="button"
+                    aria-label="Fermer le menu de création"
+                    className="fixed inset-0 z-40 cursor-default"
+                    onClick={() => setCreateMenuOpen(false)}
+                  />
+                  <div
+                    className="absolute right-0 z-50 mt-2 w-72 overflow-hidden rounded-2xl border bg-white shadow-xl"
+                    style={{ borderColor: '#E4E7EC' }}
+                    role="menu"
+                  >
+                    <button
+                      type="button"
+                      className="flex w-full items-start gap-3 px-4 py-3 text-left hover:bg-slate-50"
+                      onClick={() => {
+                        setCreateMenuOpen(false);
+                        navigate('/admin/studio/new');
+                      }}
+                      role="menuitem"
+                    >
+                      <BookOpen size={18} className="mt-0.5 shrink-0" style={{ color: '#002050' }} />
+                      <span>
+                        <span className="block text-sm font-bold" style={{ color: '#002050' }}>Formation en ligne</span>
+                        <span className="mt-0.5 block text-xs text-slate-500">Ouvrir le Builder avec modules, leçons et contenus numériques.</span>
+                      </span>
+                    </button>
+
+                    <div className="h-px bg-slate-100" />
+
+                    <button
+                      type="button"
+                      className="flex w-full items-start gap-3 px-4 py-3 text-left hover:bg-slate-50"
+                      onClick={() => {
+                        setCreateMenuOpen(false);
+                        navigate('/formations/presentiel/nouvelle');
+                      }}
+                      role="menuitem"
+                    >
+                      <MapPin size={18} className="mt-0.5 shrink-0" style={{ color: '#0B817A' }} />
+                      <span>
+                        <span className="block text-sm font-bold" style={{ color: '#0B817A' }}>Formation présentielle</span>
+                        <span className="mt-0.5 block text-xs text-slate-500">Créer directement la fiche puis les dates, lieux, places et inscriptions.</span>
+                      </span>
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         </div>
 
