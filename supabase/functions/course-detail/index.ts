@@ -47,7 +47,7 @@ Deno.serve(async (req: Request) => {
       "total_students, language, subtitles_available, prerequisites, target_audience, learning_outcomes, course_intro_title, course_intro_summary, " +
       "objectives, creator_type, creator_id, establishment_id, " +
       "total_duration_seconds, is_published, learning_design_settings, free_preview_mode, preview_first_lesson_enabled, " +
-      "lesson_passing_score, module_passing_score, final_passing_score, is_catalog_active, is_current_catalog_version";
+      "lesson_passing_score, module_passing_score, final_passing_score, is_catalog_active, is_current_catalog_version, training_delivery_mode";
 
     let courseQuery = supabase.from("courses").select(courseSelect).eq("id", courseId);
     if (previewRequested && viewerId) {

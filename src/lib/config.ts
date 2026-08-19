@@ -10,6 +10,8 @@ export const ENDPOINTS ={
   catalogueList: `${API_BASE_URL}/catalogue-list`,
   courseDetail: `${API_BASE_URL}/course-detail`,
   courseEnroll: `${API_BASE_URL}/course-enroll`,
+  courseSessions: `${API_BASE_URL}/course-sessions`,
+  studioUnified: `${API_BASE_URL}/studio-unified`,
   // Module 5 — lecteur
   lessonContent: `${API_BASE_URL}/lesson-content`,
   heartbeat: `${API_BASE_URL}/heartbeat`,

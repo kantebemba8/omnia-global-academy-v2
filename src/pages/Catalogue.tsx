@@ -131,6 +131,19 @@ function FilterSidebar({ params, update, reset }: FilterSidebarProps) {
         </div>
       </FilterSection>
 
+      <FilterSection title="Mode de formation">
+        <div className="flex flex-col gap-1">
+          {[{v:'online',l:'En ligne'},{v:'in_person',l:'Présentiel'},{v:'hybrid',l:'Hybride'}].map(opt => (
+            <label key={opt.v} className="flex items-center gap-2 cursor-pointer py-1">
+              <input type="radio" name="mode_formation" checked={get('mode_formation')===opt.v}
+                onChange={() => update('mode_formation', get('mode_formation')===opt.v ? null : opt.v)}
+                style={{ accentColor:'#002050' }} />
+              <span className="text-sm" style={{ color:'#374151' }}>{opt.l}</span>
+            </label>
+          ))}
+        </div>
+      </FilterSection>
+
       {/* Price */}
       <FilterSection title="Prix">
         <div className="flex flex-col gap-1">

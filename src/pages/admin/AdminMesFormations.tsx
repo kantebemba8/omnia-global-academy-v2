@@ -149,6 +149,11 @@ export default function AdminMesFormations() {
               style={{ borderColor: '#BF8813', color: '#9A6D0F' }}>
               <FileUp size={15} /> Importer un fichier
             </button>
+            <button onClick={() => navigate('/formations/presentiel/nouvelle')}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold border bg-white"
+              style={{ borderColor: '#0B817A', color: '#0B817A' }}>
+              Formation présentielle
+            </button>
             <button onClick={() => navigate('/admin/studio/new')}
               className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold text-white"
               style={{ background: '#002050' }}>
@@ -324,6 +329,12 @@ export default function AdminMesFormations() {
                           {deletingId === f.id ? 'Suppression…' : 'Supprimer'}
                         </button>
                       )}
+
+                      <button onClick={() => navigate(`/formations/${f.id}/sessions`)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border"
+                        style={{ borderColor: '#0B817A', color: '#0B817A' }}>
+                        Sessions
+                      </button>
 
                       <button onClick={() => navigate(`/cours/${f.id}/apprendre?preview=admin`)}
                         className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border"

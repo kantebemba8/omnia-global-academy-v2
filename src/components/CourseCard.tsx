@@ -25,6 +25,7 @@ export interface CourseCardData {
   duration_label?: string | null;
   total_duration_seconds?: number;
   external_click_count?: number;
+  training_delivery_mode?: 'online' | 'in_person' | 'hybrid';
 }
 
 const LEVEL_COLORS: Record<string, string> = {
@@ -136,6 +137,11 @@ export function CourseCard({ course, variant = 'grid' }: CourseCardProps) {
         )}
         {isExternal && (
           <span className="absolute left-2 top-2 inline-flex items-center gap-1 rounded-full bg-white px-2 py-1 text-xs font-bold shadow" style={{ color: '#002050' }}><ExternalLink size={12} />Externe</span>
+        )}
+        {!isExternal && course.training_delivery_mode && course.training_delivery_mode !== 'online' && (
+          <span className="absolute bottom-2 right-2 rounded-full px-2 py-0.5 text-xs font-bold text-white" style={{ backgroundColor: course.training_delivery_mode === 'hybrid' ? '#7C3AED' : '#0B817A' }}>
+            {course.training_delivery_mode === 'hybrid' ? 'HYBRIDE' : 'PRÉSENTIEL'}
+          </span>
         )}
         {!isExternal && course.is_free && (
           <span className="absolute bottom-2 left-2 rounded-full px-2 py-0.5 text-xs font-bold" style={{ backgroundColor: '#1E7A52', color: '#FFF' }}>GRATUIT</span>

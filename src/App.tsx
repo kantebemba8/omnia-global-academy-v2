@@ -36,6 +36,8 @@ const SupprimerCompte = lazy(() => import('./pages/SupprimerCompte').then((modul
 const CompteSupprime = lazy(() => import('./pages/CompteSupprime').then((module) => ({ default: module.CompteSupprime })));
 const LegalDocumentPage = lazy(() => import('./pages/LegalDocumentPage'));
 const Catalogue = lazy(() => import('./pages/Catalogue').then((module) => ({ default: module.Catalogue })));
+const FormationSessions = lazy(() => import('./pages/FormationSessions'));
+const FormationPresentielCreate = lazy(() => import('./pages/FormationPresentielCreate'));
 const FormationsHome = lazy(() => import('./pages/formations/FormationsHome'));
 const FormationsSectionHub = lazy(() => import('./pages/formations/FormationsSectionHub'));
 const ExternalCourseAccess = lazy(() => import('./pages/ExternalCourseAccess'));
@@ -801,6 +803,8 @@ export default function App() {
         {/* Espace Professeur */}
         <Route path="/professeur/dashboard" element={<Navigate to="/home?role=professeur" replace />} />
         <Route path="/professeur/courses" element={<ProfesseurMesFormations />} />
+        <Route path="/formations/:courseId/sessions" element={<FormationSessions />} />
+        <Route path="/formations/presentiel/nouvelle" element={<FormationPresentielCreate />} />
         <Route path="/professeur/courses/new" element={<ProfessorCourseStart />} />
         <Route path="/professeur/assessment-center" element={<ProfesseurAssessmentCenter />} />
         <Route path="/professeur/jurys" element={<ProfesseurJuries />} />

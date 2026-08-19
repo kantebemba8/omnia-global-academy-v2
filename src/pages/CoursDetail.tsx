@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ChevronDown, ChevronRight, Lock, PlayCircle, Volume2, FileText, Check, Ear, BookOpen, Mic, PenLine, AlertTriangle, BadgeCheck, Building2, ExternalLink, Eye, Radio, Video, ShieldCheck } from 'lucide-react';
+import { ChevronDown, ChevronRight, Lock, PlayCircle, Volume2, FileText, Check, Ear, BookOpen, Mic, PenLine, AlertTriangle, BadgeCheck, Building2, ExternalLink, Eye, Radio, Video, ShieldCheck, MapPin, CalendarDays, Users } from 'lucide-react';
 import { AdaptiveFormationsLayout } from '../components/formations/FormationsRoleLayout';
 import { CourseCard, type CourseCardData } from '../components/CourseCard';
 import { useAuth } from '../hooks/useAuth';
@@ -58,6 +58,8 @@ export function CoursDetail() {
   const [enrollMsg, setEnrollMsg] = useState('');
   const [similar, setSimilar] = useState<CourseCardData[]>([]);
   const [aboutOpen, setAboutOpen] = useState(false);
+  const [trainingSessions, setTrainingSessions] = useState<any[]>([]);
+  const [sessionAction, setSessionAction] = useState<string | null>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -70,6 +72,8 @@ export function CoursDetail() {
       .then(d => {
         setDetail(d);
         setIsEnrolled(d.is_enrolled ?? false);
+        fetch(`${ENDPOINTS.courseSessions}?course_id=${encodeURIComponent(String(id))}`, { headers: { Authorization: `Bearer ${ANON_KEY}` } })
+          .then(r => r.json()).then(s => setTrainingSessions(Array.isArray(s.sessions) ? s.sessions : [])).catch(() => setTrainingSessions([]));
         // Open first module by default
         const firstMod = (d.modules as Record<string,unknown>[])?.[0];
         if (firstMod?.id) setOpenModules(new Set([firstMod.id as string]));
@@ -108,6 +112,25 @@ export function CoursDetail() {
     } finally {
       setEnrolling(false);
     }
+  };
+
+
+  const registerTrainingSession = async (session: any) => {
+    if (!sessionToken) { navigate(`/connexion?redirect=${encodeURIComponent(`/cours/${id}`)}`); return; }
+    setSessionAction(session.id);
+    try {
+      const r = await fetch(ENDPOINTS.courseSessions, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionToken}`, 'x-omnia-session-token': sessionToken },
+        body: JSON.stringify({ action: 'register', session_id: session.id }),
+      });
+      const d = await r.json();
+      if (!r.ok || d.success === false) throw new Error(d.message || d.error || 'Inscription impossible');
+      if (d.payment_required) navigate(`/paiement/${id}?session_id=${session.id}`);
+      else if (d.waitlisted) setEnrollMsg("La session est complète : vous avez été ajouté à la liste d'attente.");
+      else setEnrollMsg('Inscription à la session confirmée.');
+    } catch (e) { setEnrollMsg(e instanceof Error ? e.message : 'Erreur'); }
+    finally { setSessionAction(null); }
   };
 
   if (loading) return <AdaptiveFormationsLayout><div style={{ fontFamily: 'Inter, system-ui, sans-serif' }}><SkeletonHero /></div></AdaptiveFormationsLayout>;
@@ -164,6 +187,7 @@ export function CoursDetail() {
   const totalReviews = Number(course.total_reviews || 0);
   const totalStudents = Number(course.total_students || 0);
   const priceXof = Number(course.price_xof || 0);
+  const trainingMode = String(course.training_delivery_mode || 'online');
 
   // Purchase card CTA
   const renderCTA = () => {
@@ -515,6 +539,34 @@ export function CoursDetail() {
             </ul>
           </section>
         )}
+
+
+      {trainingMode !== 'online' && (
+        <section className="mx-auto max-w-7xl px-5 sm:px-6 py-8">
+          <div className="mb-4">
+            <p className="text-xs font-black uppercase tracking-widest" style={{color:'#0B817A'}}>{trainingMode === 'hybrid' ? 'Formation hybride' : 'Formation présentielle'}</p>
+            <h2 className="mt-1 text-xl font-black" style={{color:'#002050'}}>Choisir une session</h2>
+            <p className="mt-1 text-sm text-slate-500">Inscrivez-vous à la date et au lieu qui vous conviennent. Une formation 100 % présentielle ne nécessite pas de Builder.</p>
+          </div>
+          <div className="grid gap-4 md:grid-cols-2">
+            {trainingSessions.map((s:any) => (
+              <article key={s.id} className="rounded-2xl border bg-white p-5" style={{borderColor:'#E4E7EC'}}>
+                <div className="flex items-start justify-between gap-3"><div><h3 className="font-black" style={{color:'#002050'}}>{s.title}</h3><p className="mt-1 text-xs font-semibold" style={{color:'#0B817A'}}>{s.delivery_mode === 'hybrid' ? 'Hybride' : 'Présentiel'} · {s.status === 'full' ? 'Complet' : 'Inscriptions ouvertes'}</p></div><span className="text-sm font-black" style={{color:'#BF8813'}}>{s.is_free ? 'Gratuit' : `${Number(s.price_xof || 0).toLocaleString('fr-FR')} XOF`}</span></div>
+                <div className="mt-4 space-y-2 text-sm text-slate-600">
+                  <p className="flex items-center gap-2"><CalendarDays size={16}/>{new Date(s.starts_at).toLocaleString('fr-FR')} → {new Date(s.ends_at).toLocaleString('fr-FR')}</p>
+                  <p className="flex items-center gap-2"><MapPin size={16}/>{[s.venue,s.address,s.city,s.country].filter(Boolean).join(' · ') || 'Lieu à confirmer'}</p>
+                  <p className="flex items-center gap-2"><Users size={16}/>{s.registered_count || 0}{s.capacity ? ` / ${s.capacity}` : ''} inscrit(s){s.places_remaining != null ? ` · ${s.places_remaining} place(s) restante(s)` : ''}</p>
+                </div>
+                <button type="button" disabled={sessionAction===s.id} onClick={() => registerTrainingSession(s)} className="mt-4 w-full rounded-xl py-2.5 text-sm font-bold text-white disabled:opacity-50" style={{background:'#002050'}}>
+                  {sessionAction===s.id ? 'Inscription…' : s.places_remaining===0 ? "Rejoindre la liste d’attente" : s.is_free ? "S’inscrire à cette session" : "Réserver / payer cette session"}
+                </button>
+              </article>
+            ))}
+          </div>
+          {!trainingSessions.length && <div className="rounded-xl border border-dashed px-5 py-8 text-center text-sm text-slate-500">Aucune session publiée pour le moment.</div>}
+          {enrollMsg && <p className="mt-3 text-sm font-semibold" style={{color:'#0B817A'}}>{enrollMsg}</p>}
+        </section>
+      )}
 
         {/* Programme */}
         {modules.length > 0 && (

@@ -137,6 +137,7 @@ Deno.serve(async (req: Request) => {
     const minRating = p("note_min");
     const cpdOnly = p("cpd_only");
     const creatorType = p("creator_type");
+    const deliveryMode = p("mode_formation");
     const subtitles = p("sous_titres");
     const groupLicense = p("groupe_license");
     const sort = p("tri") || "pertinence";
@@ -146,7 +147,7 @@ Deno.serve(async (req: Request) => {
     let internalQuery = sb
       .from("courses")
       .select(
-        "id,title,short_description,cover_image_url,category,level,price_xof,is_free,cpd_hours,cpd_accredited,average_rating,total_reviews,total_students,creator_type,language,subtitles_available,total_duration_seconds,creator_id,establishment_id,created_at",
+        "id,title,short_description,cover_image_url,category,level,price_xof,is_free,cpd_hours,cpd_accredited,average_rating,total_reviews,total_students,creator_type,language,subtitles_available,total_duration_seconds,creator_id,establishment_id,created_at,training_delivery_mode",
       )
       .eq("is_published", true)
       .eq("is_catalog_active", true)
@@ -159,6 +160,7 @@ Deno.serve(async (req: Request) => {
     if (level) internalQuery = internalQuery.eq("level", level);
     if (cpdOnly === "true") internalQuery = internalQuery.eq("cpd_accredited", true);
     if (creatorType && creatorType !== "external") internalQuery = internalQuery.eq("creator_type", creatorType);
+    if (deliveryMode && ["online","in_person","hybrid"].includes(deliveryMode)) internalQuery = internalQuery.eq("training_delivery_mode", deliveryMode);
     if (subtitles === "true") internalQuery = internalQuery.eq("subtitles_available", true);
     if (groupLicense === "true") internalQuery = internalQuery.eq("has_group_license", true);
     if (minRating) internalQuery = internalQuery.gte("average_rating", parseFloat(minRating));

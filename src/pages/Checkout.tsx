@@ -1,7 +1,7 @@
 import { getOmniaPlatform, isNativeApp, redirectToWebPayment, startNativeStorePurchase } from '../lib/mobile';
 import { getSessionToken } from '../lib/session';
 import { useEffect, useState, useCallback } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { Navbar } from '../components/Navbar';
 import { ENDPOINTS } from '../lib/config';
 import { edgeAuthHeaders } from '../lib/edgeAuth';
@@ -38,6 +38,9 @@ function fmt(n: number) { return n.toLocaleString('fr-FR'); }
 export default function Checkout() {
   const { courseId } = useParams<{ courseId: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const trainingSessionId = searchParams.get('session_id');
+  const [trainingSession, setTrainingSession] = useState<any>(null);
 
   const [course, setCourse] = useState<CourseInfo | null>(null);
   const [loading, setLoading] = useState(true);
@@ -57,6 +60,13 @@ export default function Checkout() {
       .then(d => { setCourse(d.course ?? null); setLoading(false); })
       .catch(() => setLoading(false));
   }, [courseId, navigate]);
+
+  useEffect(() => {
+    if (!courseId || !trainingSessionId) return;
+    fetch(`${ENDPOINTS.courseSessions}?course_id=${encodeURIComponent(courseId)}`)
+      .then(r => r.json()).then(d => setTrainingSession((d.sessions || []).find((s:any) => s.id === trainingSessionId) || null))
+      .catch(() => setTrainingSession(null));
+  }, [courseId, trainingSessionId]);
 
   useEffect(() => {
     if (!courseId) return;
@@ -95,6 +105,7 @@ export default function Checkout() {
         headers: edgeAuthHeaders(),
         body: JSON.stringify({
           course_id: courseId,
+          training_session_id: trainingSessionId || undefined,
           coupon_code: couponResult?.valid ? couponInput.trim() : undefined,
           payment_channel: nativeStore ? 'native_store' : 'web',
           platform: nativeStore ? getOmniaPlatform() : undefined,
@@ -135,7 +146,7 @@ export default function Checkout() {
   };
 
   const nativeStore = isNativeApp();
-  const originalPrice = course?.price_xof ?? 0;
+  const originalPrice = trainingSession ? Number(trainingSession.price_xof || 0) : (course?.price_xof ?? 0);
   const discountXof = couponResult?.valid ? (couponResult.discount_xof ?? 0) : 0;
   const finalPrice = couponResult?.valid ? (couponResult.final_price_xof ?? originalPrice) : originalPrice;
 

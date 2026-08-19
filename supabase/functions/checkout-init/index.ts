@@ -102,7 +102,7 @@ Deno.serve(async (req: Request) => {
     if (!user) return new Response(JSON.stringify({ error: "UNAUTHORIZED" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
     const body = await req.json();
-    const { course_id, coupon_code, license_code } = body;
+    const { course_id, coupon_code, license_code, training_session_id } = body;
     if (!course_id) return new Response(JSON.stringify({ error: "MISSING_COURSE_ID" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
     const { data: course } = await sb.from("courses")
@@ -112,16 +112,30 @@ Deno.serve(async (req: Request) => {
       return new Response(JSON.stringify({ error: "COURSE_NOT_FOUND" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
+    let trainingSession: any = null;
+    if (training_session_id) {
+      const { data: session, error: sessionError } = await sb.from("course_training_sessions")
+        .select("*").eq("id", training_session_id).eq("course_id", course_id).maybeSingle();
+      if (sessionError) throw sessionError;
+      if (!session || !["published","registration_open"].includes(String(session.status))) {
+        return new Response(JSON.stringify({ error: "SESSION_NOT_OPEN" }), { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+      if (session.registration_deadline && new Date(session.registration_deadline).getTime() < Date.now()) {
+        return new Response(JSON.stringify({ error: "REGISTRATION_CLOSED" }), { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+      trainingSession = session;
+    }
+
     if (course.creator_id === user.id) {
       return new Response(JSON.stringify({ error: "SELF_PURCHASE_FORBIDDEN", message: "Vous ne pouvez pas acheter votre propre formation." }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     const { data: enrolled } = await sb.from("user_enrollments").select("id").eq("user_id", user.id).eq("course_id", course_id).maybeSingle();
-    if (enrolled) {
+    if (enrolled && !trainingSession) {
       return new Response(JSON.stringify({ error: "ALREADY_ENROLLED", message: "Vous êtes déjà inscrit à cette formation." }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    let originalPrice = course.price_xof || 0;
+    let originalPrice = trainingSession ? Number(trainingSession.price_xof || 0) : (course.price_xof || 0);
     let discountXof = 0;
     let finalPrice = originalPrice;
     let couponId: string | null = null;
@@ -178,7 +192,7 @@ Deno.serve(async (req: Request) => {
           if (license.price_per_seat_xof === 0) {
             const orderNum = generateOrderNumber();
             await sb.from("orders").insert({
-              order_number: orderNum, user_id: user.id, course_id,
+              order_number: orderNum, user_id: user.id, course_id, training_session_id: trainingSession?.id || null,
               original_price_xof: originalPrice, discount_xof: originalPrice,
               final_price_xof: 0, license_id: license.id,
               payment_status: "completed", payment_gateway: "free",
@@ -196,16 +210,21 @@ Deno.serve(async (req: Request) => {
     }
 
     // Free course
-    if (course.is_free || finalPrice === 0) {
+    if ((trainingSession ? trainingSession.is_free : course.is_free) || finalPrice === 0) {
       const orderNum = generateOrderNumber();
       const { data: freeOrder } = await sb.from("orders").insert({
-        order_number: orderNum, user_id: user.id, course_id,
+        order_number: orderNum, user_id: user.id, course_id, training_session_id: trainingSession?.id || null,
         original_price_xof: originalPrice, discount_xof: discountXof, final_price_xof: 0,
         coupon_id: couponId, coupon_code: couponCodeApplied, license_id: licenseIdApplied,
         payment_status: "completed", payment_gateway: "free",
         paid_at: new Date().toISOString(),
       }).select("id").single();
-      await sb.from("user_enrollments").insert({ user_id: user.id, course_id, enrolled_at: new Date().toISOString() });
+      await sb.from("user_enrollments").upsert({ user_id: user.id, course_id, enrolled_at: new Date().toISOString() }, { onConflict: "user_id,course_id", ignoreDuplicates: true });
+      if (trainingSession) {
+        await sb.from("course_training_registrations").upsert({
+          session_id: trainingSession.id, course_id, user_id: user.id, status: "registered", payment_status: "free", registered_at: new Date().toISOString()
+        }, { onConflict: "session_id,user_id" });
+      }
       await consumeTrainingInclusion(sb, user.id, commerceBenefit.entitlementId, course_id);
       if (couponId && freeOrder) {
         await sb.from("coupons").update({ used_count: (await sb.from("coupons").select("used_count").eq("id", couponId).single().then(r => r.data?.used_count || 0)) + 1 }).eq("id", couponId);
@@ -232,6 +251,7 @@ Deno.serve(async (req: Request) => {
       .select("id,order_number,fedapay_transaction_id,gateway_reference,payment_gateway")
       .eq("user_id", user.id)
       .eq("course_id", course_id)
+      .eq("training_session_id", trainingSession?.id || null)
       .eq("payment_status", "pending")
       .eq("payment_gateway", paymentProvider)
       .eq("final_price_xof", finalPrice)
@@ -300,7 +320,7 @@ Deno.serve(async (req: Request) => {
       ? await sha256hex(`${user.id}:${course_id}:${requestedIdempotency}`)
       : await sha256hex(`${user.id}:${course_id}:${crypto.randomUUID()}`);
     const { data: order, error: orderErr } = await sb.from("orders").insert({
-      order_number: orderNum, user_id: user.id, course_id,
+      order_number: orderNum, user_id: user.id, course_id, training_session_id: trainingSession?.id || null,
       original_price_xof: originalPrice, discount_xof: discountXof, final_price_xof: finalPrice,
       coupon_id: couponId, coupon_code: couponCodeApplied, license_id: licenseIdApplied,
       payment_status: "pending", payment_gateway: paymentProvider,
@@ -341,7 +361,7 @@ Deno.serve(async (req: Request) => {
           lastname,
           ...(user.phone_number && user.country_code ? { phone_number: { number: user.phone_number, country: user.country_code } } : {}),
         },
-        custom_metadata: { order_id: order.id, order_number: order.order_number, user_id: user.id, course_id },
+        custom_metadata: { order_id: order.id, order_number: order.order_number, user_id: user.id, course_id, training_session_id: trainingSession?.id || null },
       }),
     });
 

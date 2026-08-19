@@ -100,6 +100,17 @@ export async function settlePlatformOrder(
   });
   if (error) throw error;
   const result = { ...(data || {}), resource_type: "course" } as SettlementResult;
+  if (order.training_session_id) {
+    await sb.from("course_training_registrations").upsert({
+      session_id: order.training_session_id,
+      course_id: order.course_id,
+      user_id: order.user_id,
+      status: "paid",
+      payment_status: "paid",
+      order_id: order.id,
+      registered_at: new Date().toISOString(),
+    }, { onConflict: "session_id,user_id" });
+  }
   await notifyProfessorSale(sb, result, order);
   return result;
 }

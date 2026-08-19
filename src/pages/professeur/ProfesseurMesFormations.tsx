@@ -163,7 +163,7 @@ export function ProfesseurMesFormations() {
               <p className="text-xs font-black uppercase tracking-[0.16em] text-[#5966C5]">Portfolio pédagogique</p>
               <h1 className="mt-2 max-w-2xl text-3xl font-black tracking-[-0.04em] text-[#002050] sm:text-4xl">Pilotez chaque formation comme un produit pédagogique vivant.</h1>
               <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-500">Brouillon, validation, publication et suivi restent visibles au même endroit. Le Studio sert à concevoir ; ce portfolio sert à décider quoi faire ensuite.</p>
-              <Link to="/professeur/courses/new" className="mt-6 inline-flex items-center gap-2 rounded-xl bg-[#002050] px-4 py-2.5 text-sm font-black text-white shadow-sm"><PlusCircle className="h-4 w-4" /> Nouvelle formation</Link>
+              <div className="mt-6 flex flex-wrap gap-2"><Link to="/professeur/courses/new" className="inline-flex items-center gap-2 rounded-xl bg-[#002050] px-4 py-2.5 text-sm font-black text-white shadow-sm"><PlusCircle className="h-4 w-4" /> Nouvelle formation en ligne</Link><Link to="/formations/presentiel/nouvelle" className="inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-black" style={{borderColor:"#0B817A",color:"#0B817A"}}>Formation présentielle</Link></div>
             </div>
             <div className="bg-[#101B4B] p-6 text-white sm:p-8">
               <p className="text-[10px] font-black uppercase tracking-[0.15em] text-[#AEB7F7]">Cycle de production</p>
@@ -247,6 +247,7 @@ export function ProfesseurMesFormations() {
                         <button type="button" onClick={() => toggleCatalogue(f)} className="py-2 px-2.5 text-xs font-semibold rounded-lg border" style={{ borderColor: f.is_catalog_active === false ? '#1E7A52' : '#64748B', color: f.is_catalog_active === false ? '#1E7A52' : '#475569' }}>
                           {f.is_catalog_active === false ? 'Activer' : 'Désactiver'}
                         </button>
+                        <button type="button" onClick={() => navigate(`/formations/${f.id}/sessions`)} className="py-2 px-2.5 text-xs font-semibold rounded-lg border" style={{ borderColor: '#0B817A', color: '#0B817A' }}>Présentiel / Sessions</button>
                         <button type="button" onClick={() => setLiveCourse(f)} className="py-2 px-2.5 text-xs font-semibold rounded-lg border flex items-center gap-1" style={{ borderColor: '#0B817A', color: '#0B817A' }} title="Ajouter ou retirer un Live, Replay ou vidéo complémentaire"><Radio className="w-3.5 h-3.5"/> Live/Replays</button>
                         <button type="button" onClick={() => createMajorVersion(f)} className="py-2 px-2.5 text-xs font-semibold rounded-lg border" style={{ borderColor: '#BF8813', color: '#8A650F' }} title="Créer une nouvelle version pédagogique sans modifier les apprenants de la version actuelle">Nouvelle version</button>
                       </>)}
