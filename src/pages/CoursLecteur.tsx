@@ -21,12 +21,15 @@ interface LessonItem {
   content_type: 'video' | 'audio' | 'text' | 'external'; duration_seconds: number;
   is_free: boolean; is_completed: boolean; time_spent_seconds: number; quiz_passed: boolean;
   is_unlocked?: boolean; is_external?: boolean;
+  is_intro?: boolean; is_module_intro?: boolean; is_conclusion?: boolean; is_final_exam?: boolean;
+  stage_type?: 'introduction' | 'module_presentation' | 'lesson' | 'module_summary' | 'conclusion' | 'final_exam';
 }
 interface ModuleItem {
   module_id: string; title: string; position: number; description?: string;
   lessons: LessonItem[]; exam_unlocked: boolean; exam_passed: boolean;
   exam_score: number | null; exam_attempts: number; is_unlocked: boolean;
   is_intro?: boolean; is_conclusion?: boolean; is_final_exam?: boolean; is_required?: boolean;
+  section_type?: 'introduction' | 'module' | 'conclusion' | 'final_exam';
 }
 interface LessonContent {
   id: string; title: string; content_type: 'video' | 'audio' | 'text' | 'external';
@@ -320,7 +323,7 @@ function CourseInfoView({ info, modules, progressPct, preview, previewMode, onSt
   const course = info?.course || {};
   const creator = info?.creator || {};
   const [aboutOpen, setAboutOpen] = useState(false);
-  const totalLessons = modules.reduce((sum, mod) => sum + mod.lessons.length, 0);
+  const totalLessons = modules.reduce((sum, mod) => sum + mod.lessons.filter(l => (l.stage_type || 'lesson') === 'lesson').length, 0);
   const totalModules = modules.filter(mod => !mod.is_intro && !mod.is_conclusion && !mod.is_final_exam).length;
   const duration = Number(course.total_duration_seconds || 0);
   const durationLabel = duration > 0
@@ -396,7 +399,7 @@ function CourseInfoView({ info, modules, progressPct, preview, previewMode, onSt
             {Array.isArray(course.objectives) && course.objectives.length > 0 && <section className="rounded-[22px] border bg-white p-5 sm:p-7" style={{ borderColor:'#E4E7EC' }}><div className="flex items-center gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-xl" style={{background:'#ECFDF5',color:'#1E7A52'}}><Target size={19}/></span><div><p className="text-xs font-black uppercase tracking-[.15em]" style={{color:'#1E7A52'}}>Objectifs</p><h2 className="text-xl font-black" style={{color:'#002050'}}>Ce que vous saurez faire</h2></div></div><div className="mt-5 grid gap-3 sm:grid-cols-2">{course.objectives.map((item:any,index:number)=><div key={index} className="flex items-start gap-3 rounded-xl bg-slate-50 p-3.5"><CheckCircle size={17} className="mt-0.5 shrink-0" style={{color:'#1E7A52'}}/><span className="text-sm leading-6 text-slate-700">{String(item)}</span></div>)}</div></section>}
 
             <section className="rounded-[22px] border bg-white p-5 sm:p-7" style={{ borderColor:'#E4E7EC' }}>
-              <div className="flex flex-wrap items-end justify-between gap-3"><div><p className="text-xs font-black uppercase tracking-[.15em]" style={{ color:'#BF8813' }}>Programme</p><h2 className="mt-1 text-2xl font-black tracking-[-.02em]" style={{ color:'#002050' }}>Contenu de la formation</h2></div><p className="text-xs font-semibold text-slate-400">{modules.length} étape{modules.length>1?'s':''} · {totalLessons} leçon{totalLessons>1?'s':''}</p></div>
+              <div className="flex flex-wrap items-end justify-between gap-3"><div><p className="text-xs font-black uppercase tracking-[.15em]" style={{ color:'#BF8813' }}>Programme</p><h2 className="mt-1 text-2xl font-black tracking-[-.02em]" style={{ color:'#002050' }}>Contenu de la formation</h2></div><p className="text-xs font-semibold text-slate-400">{totalModules} module{totalModules>1?'s':''} · {totalLessons} leçon{totalLessons>1?'s':''}</p></div>
               <div className="mt-5 space-y-3">{modules.map((mod, mi) => <details key={mod.module_id} open={mi < 2 || !!mod.is_intro} className="group overflow-hidden rounded-xl border" style={{ borderColor:'#E4E7EC' }}>
                 <summary className="flex cursor-pointer list-none items-center gap-3 bg-slate-50 px-4 py-3.5"><span className="rounded-lg px-2 py-1 text-[10px] font-black uppercase tracking-[.08em]" style={{background:'#FFF7E1',color:'#8A650F'}}>{stageLabel(mod,mi)}</span><span className="min-w-0 flex-1 font-bold" style={{color:'#002050'}}>{mod.title}</span><span className="text-xs text-slate-400">{mod.lessons.length} leçon{mod.lessons.length>1?'s':''}</span><ChevronDown size={16} className="text-slate-400 transition group-open:rotate-180"/></summary>
                 {mod.description&&<p className="border-t px-4 py-3 text-xs leading-5 text-slate-500" style={{borderColor:'#EEF1F5'}}>{mod.description}</p>}
@@ -906,6 +909,10 @@ export function CoursLecteur() {
   const learnerStateByBlock = useMemo(() => Object.fromEntries((lessonData?.block_states || []).map(item => [item.block_id, item.state_json || {}])), [lessonData?.block_states]);
 
   const currentMod = modules.find(m => m.lessons.some(l => l.lesson_id === currentLessonId));
+  const orderedReaderLessons = modules.flatMap(m => m.lessons);
+  const currentReaderIndex = orderedReaderLessons.findIndex(l => l.lesson_id === currentLessonId);
+  const previousReaderLesson = currentReaderIndex > 0 ? orderedReaderLessons[currentReaderIndex - 1] : null;
+  const nextReaderLesson = currentReaderIndex >= 0 && currentReaderIndex < orderedReaderLessons.length - 1 ? orderedReaderLessons[currentReaderIndex + 1] : null;
 
   if (progressLoading) return (
     <div className="min-h-screen flex items-center justify-center">
@@ -917,7 +924,7 @@ export function CoursLecteur() {
     <div className="min-h-screen bg-slate-50 px-4 py-10"><div className="mx-auto max-w-2xl rounded-2xl border bg-white p-6" style={{borderColor:'#FCA5A5'}}><div className="flex gap-3"><AlertCircle size={20} className="mt-0.5 shrink-0 text-red-600"/><div><h1 className="font-black text-[#002050]">Prévisualisation indisponible</h1><p className="mt-2 text-sm text-slate-600">{progressError || courseInfoError}</p><p className="mt-3 text-xs text-slate-500">Aucune redirection vers la page publique n’a été effectuée : cette erreur indique maintenant la cause réelle du contrôle de prévisualisation.</p></div></div></div></div>
   );
 
-  if (!readerStarted) return <CourseInfoView info={courseInfo} modules={modules} progressPct={progressPct} preview={isPreview} previewMode={previewMode} onStart={() => setReaderStarted(true)} onSelectLesson={goToLesson} />;
+  if (!readerStarted) return <CourseInfoView info={courseInfo} modules={modules} progressPct={progressPct} preview={isPreview} previewMode={previewMode} onStart={() => { const first = modules.flatMap(m=>m.lessons).find(l=>l.stage_type==='introduction'||l.is_intro) || modules.flatMap(m=>m.lessons)[0]; if(first) goToLesson(first.lesson_id); else setReaderStarted(true); }} onSelectLesson={goToLesson} />;
 
   return (
     <div className="oga-course-reader-shell flex flex-col" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
@@ -935,7 +942,7 @@ export function CoursLecteur() {
         <button
           type="button"
           onClick={() => setProgramOpen(true)}
-          className="md:hidden inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 hover:bg-white/10 transition-colors"
+          className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 hover:bg-white/10 transition-colors"
           aria-label="Ouvrir le programme de la formation"
           aria-expanded={programOpen}
         >
@@ -1015,7 +1022,7 @@ export function CoursLecteur() {
       {/* Body */}
       <div className="flex flex-1 overflow-hidden">
         {/* Sidebar */}
-        <aside className="hidden md:flex flex-col flex-shrink-0" style={{ width: 280 }}>
+        {programOpen && <aside className="hidden md:flex flex-col flex-shrink-0 border-r bg-white" style={{ width: 280, borderColor:'#E4E7EC' }}>
           <CourseSidebar modules={modules} currentLessonId={currentLessonId}
             onSelectLesson={goToLesson}
             onGoExam={(modId) => navigate(`/cours/${courseId}/examen-module/${modId}${previewRouteQuery}`)}
@@ -1023,7 +1030,7 @@ export function CoursLecteur() {
             finalUnlocked={finalUnlocked}
             isOnline={isOnline}
             offlineLessonIds={offlineLessonSet} />
-        </aside>
+        </aside>}
 
         {/* Content */}
         <main className="flex-1 overflow-y-auto" style={{ backgroundColor: '#FFFFFF' }}>
@@ -1260,6 +1267,12 @@ export function CoursLecteur() {
           )}
         </main>
 
+              {lesson && (
+                <div className="mt-10 flex items-center justify-between gap-3 border-t pt-5" style={{borderColor:'#E4E7EC'}}>
+                  <button type="button" disabled={!previousReaderLesson} onClick={()=>previousReaderLesson&&goToLesson(previousReaderLesson.lesson_id)} className="rounded-xl border px-4 py-2.5 text-sm font-bold disabled:opacity-30" style={{borderColor:'#CBD5E1',color:'#002050'}}>← Précédent</button>
+                  <button type="button" disabled={!nextReaderLesson || nextReaderLesson.is_unlocked===false} onClick={()=>nextReaderLesson&&goToLesson(nextReaderLesson.lesson_id)} className="rounded-xl px-5 py-2.5 text-sm font-black text-white disabled:opacity-30" style={{background:'#002050'}}>Suivant →</button>
+                </div>
+              )}
         {/* AI Panel */}
         {aiOpen && (
           <aside className="hidden lg:flex flex-col flex-shrink-0" style={{ width: 320, borderLeft: '1px solid #E4E7EC' }}>

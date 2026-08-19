@@ -396,9 +396,9 @@ export default function StudioConceptionFormation() {
   // ─── Ajouter module ───────────────────────────────────────
   async function addModule() {
     if (!course?.id) return;
-    const normalCount = modules.filter(m => !m.is_intro).length;
+    const normalCount = modules.filter(m => !m.is_intro && !m.is_conclusion && !m.is_final_exam).length;
     const title = `Module ${normalCount + 1}`;
-    const data = await api('create_module', { course_id: course.id, title, objective: '', create_module_introduction: true });
+    const data = await api('create_module', { course_id: course.id, title, objective: '', create_module_introduction: false });
     if (data.success) {
       const introLesson = data.intro_lesson as Lesson | undefined;
       const newMod: Module = { ...data.module, lessons: introLesson ? [introLesson] : [] };
@@ -427,6 +427,38 @@ export default function StudioConceptionFormation() {
     } else {
       showToast(data.message || data.error || 'Impossible de créer la leçon.', 'error');
     }
+  }
+
+  async function addModuleStage(mod: Module, stageType: 'module_presentation' | 'module_summary') {
+    if (!course?.id) return;
+    const data = await api('create_module_stage', { course_id: course.id, module_id: mod.id, stage_type: stageType });
+    if (data.success) {
+      const lesson = data.lesson as Lesson;
+      const nextModule = { ...mod, lessons: [...(mod.lessons || []).filter(l => l.id !== lesson.id), lesson].sort((a,b)=>a.position-b.position) };
+      setModules(ms => ms.map(m => m.id === mod.id ? nextModule : m));
+      await selectLesson(nextModule, lesson);
+    } else showToast(data.message || data.error || 'Impossible de créer cette étape.', 'error');
+  }
+
+  async function deleteLesson(mod: Module, lesson: Lesson) {
+    if (!course?.id || locked) return;
+    if (!window.confirm(`Supprimer « ${lesson.title} » et tous ses contenus ? Cette action est définitive pour ce brouillon.`)) return;
+    const data = await api('delete_lesson', { course_id: course.id, lesson_id: lesson.id });
+    if (!data.success) { showToast(data.message || data.error || 'Suppression impossible.', 'error'); return; }
+    const nextModule = { ...mod, lessons: (mod.lessons || []).filter(l => l.id !== lesson.id) };
+    setModules(ms => ms.map(m => m.id === mod.id ? nextModule : m));
+    if (currentLesson?.id === lesson.id) { setCurrentLesson(null); setBlocks([]); }
+    showToast('Étape supprimée');
+  }
+
+  async function deleteModule(mod: Module) {
+    if (!course?.id || locked || mod.is_intro || mod.is_conclusion || mod.is_final_exam) return;
+    if (!window.confirm(`Supprimer le module « ${mod.title} », ses leçons, sa synthèse et tous leurs contenus ?`)) return;
+    const data = await api('delete_module', { course_id: course.id, module_id: mod.id });
+    if (!data.success) { showToast(data.message || data.error || 'Suppression du module impossible.', 'error'); return; }
+    setModules(ms => ms.filter(m => m.id !== mod.id));
+    if (currentModule?.id === mod.id) { setCurrentModule(null); setCurrentLesson(null); setBlocks([]); }
+    showToast('Module supprimé');
   }
 
   // ─── Ajouter bloc ─────────────────────────────────────────
@@ -1112,9 +1144,17 @@ export default function StudioConceptionFormation() {
                     disabled={locked}
                     aria-label="Titre du module"
                   />
+                  {!mod.is_intro && !mod.is_conclusion && !mod.is_final_exam && (
+                    <div className="mb-1 flex items-center gap-1">
+                      <button type="button" onClick={() => addModuleStage(mod, 'module_presentation')} disabled={locked} className="text-[10px] px-2 py-0.5 rounded-full border" style={{borderColor:'#BF8813',color:'#92400E'}}>Présentation</button>
+                      <button type="button" onClick={() => addModuleStage(mod, 'module_summary')} disabled={locked} className="text-[10px] px-2 py-0.5 rounded-full border" style={{borderColor:'#1E7A52',color:'#1E7A52'}}>Synthèse</button>
+                      <button type="button" onClick={() => deleteModule(mod)} disabled={locked} className="rounded-full p-1 text-red-600 hover:bg-red-50" title="Supprimer ce module"><Trash2 size={11}/></button>
+                    </div>
+                  )}
                   <div className="flex gap-1">
-                    {(mod.lessons || []).map(lesson => (
-                      <button key={lesson.id}
+                    {(currentModule?.id === mod.id || mod.is_intro || mod.is_conclusion || mod.is_final_exam) && (mod.lessons || []).map(lesson => (
+                      <span key={lesson.id} className="inline-flex items-center gap-0.5">
+                      <button
                         onClick={() => { setShowFinalization(false); selectLesson(mod, lesson); }}
                         className="text-xs px-2 py-0.5 rounded-full border transition-all"
                         title={lesson.is_module_intro ? 'Présentation facultative du module' : lesson.title}
@@ -1123,6 +1163,10 @@ export default function StudioConceptionFormation() {
                           : { borderColor: lesson.is_module_intro ? '#BF8813' : '#E4E7EC', color: lesson.is_module_intro ? '#92400E' : '#6B7280', background: lesson.is_module_intro ? '#FFFBEB' : 'white' }}>
                         {lesson.title}
                       </button>
+                      {!mod.is_intro && !mod.is_conclusion && !mod.is_final_exam && (
+                        <button type="button" onClick={() => deleteLesson(mod, lesson)} disabled={locked} className="rounded-full p-0.5 text-red-500 hover:bg-red-50" title="Supprimer cette étape"><Trash2 size={10}/></button>
+                      )}
+                      </span>
                     ))}
                     {!mod.is_intro && (
                       <>

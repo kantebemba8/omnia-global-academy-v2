@@ -9,14 +9,14 @@ export type CourseCurriculum = {
 export async function loadCourseCurriculum(sb: any, courseId: string): Promise<CourseCurriculum> {
   const { data: modules, error: moduleError } = await sb
     .from("course_modules")
-    .select("id,title,objective,position,is_intro,is_conclusion,is_final_exam,is_required")
+    .select("id,title,objective,position,is_intro,is_conclusion,is_final_exam,is_required,section_type")
     .eq("course_id", courseId)
     .order("position");
   if (moduleError) throw moduleError;
 
   const { data: lessons, error: lessonError } = await sb
     .from("course_lessons")
-    .select("id,course_id,module_id,title,position,cpd_calculated_time_seconds,is_free_preview,is_external,video_url,audio_url,is_intro,is_module_intro,is_conclusion,is_final_exam,is_required")
+    .select("id,course_id,module_id,title,position,cpd_calculated_time_seconds,is_free_preview,is_external,video_url,audio_url,is_intro,is_module_intro,is_conclusion,is_final_exam,is_required,stage_type")
     .eq("course_id", courseId)
     .order("position");
   if (lessonError) throw lessonError;

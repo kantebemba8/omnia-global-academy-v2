@@ -35,6 +35,27 @@ Deno.serve(async(req:Request)=>{
     const lessons=curriculum.lessons;
     const orderedLessons=curriculum.orderedLessons;
     if(curriculum.orphanLessonIds.length)console.warn("course-progress orphan lessons",courseId,curriculum.orphanLessonIds);
+
+    // Une prévisualisation Créateur/Admin doit reproduire le vrai curriculum sans
+    // dépendre d'une inscription, d'une progression ou de tentatives apprenant.
+    if(previewAllowed){
+      const previewModules=(modules??[]).map((mod:any)=>({
+        module_id:mod.id,title:mod.title,position:mod.position,description:mod.objective??null,
+        is_required:mod.is_required!==false,is_unlocked:true,is_completed:false,
+        is_intro:!!mod.is_intro,is_conclusion:!!mod.is_conclusion,is_final_exam:!!mod.is_final_exam,
+        section_type:mod.section_type|| (mod.is_intro?"introduction":mod.is_conclusion?"conclusion":mod.is_final_exam?"final_exam":"module"),
+        exam_required:false,exam_unlocked:true,exam_passed:false,exam_score:null,exam_attempts:0,
+        lessons:(lessons??[]).filter((l:any)=>l.module_id===mod.id).sort((a:any,b:any)=>a.position-b.position).map((lesson:any)=>({
+          lesson_id:lesson.id,title:lesson.title,position:lesson.position,
+          content_type:lesson.is_external?"external":(lesson.video_url?"video":lesson.audio_url?"audio":"text"),
+          duration_seconds:lesson.cpd_calculated_time_seconds??0,is_free:lesson.is_free_preview===true,
+          is_required:lesson.is_required!==false,is_completed:false,time_spent_seconds:0,quiz_passed:false,is_unlocked:true,
+          is_intro:!!lesson.is_intro,is_module_intro:!!lesson.is_module_intro,is_conclusion:!!lesson.is_conclusion,is_final_exam:!!lesson.is_final_exam,
+          stage_type:lesson.stage_type||(lesson.is_intro?"introduction":lesson.is_module_intro?"module_presentation":lesson.is_conclusion?"conclusion":lesson.is_final_exam?"final_exam":"lesson")
+        }))
+      }));
+      return json({modules:previewModules,preview:true,preview_mode:previewMode,final_validation_unlocked:true,final_validation:null,progress:{total_lessons:0,completed_lessons:0,percent:0}});
+    }
     const lessonUnlock:Record<string,boolean>={};
     const {data:lessonProgress}=previewAllowed?{data:[]} : await sb.from("user_lesson_progress").select("lesson_id,time_spent_seconds,quiz_passed,is_completed").eq("user_id",userId).eq("course_id",courseId);
     const {data:assessments}=await sb.from("course_assessments").select("id,scope,module_id,lesson_id,passing_score,required").eq("course_id",courseId).eq("is_active",true);
@@ -50,14 +71,14 @@ Deno.serve(async(req:Request)=>{
     const enriched=(modules??[]).map((mod:any,index:number)=>{
       const moduleLessons=(lessons??[]).filter((l:any)=>l.module_id===mod.id).sort((a:any,b:any)=>a.position-b.position).map((lesson:any)=>{
         const assessment=assessmentFor("lesson",lesson.id);const passedAttempt=assessment?passedByAssessment[assessment.id]:null;const p=progressMap[lesson.id];
-        return {lesson_id:lesson.id,title:lesson.title,position:lesson.position,content_type:lesson.is_external?"external":(lesson.video_url?"video":lesson.audio_url?"audio":"text"),duration_seconds:lesson.cpd_calculated_time_seconds??0,is_free:lesson.is_free_preview===true,is_required:lesson.is_required!==false,is_completed:p?.is_completed??false,time_spent_seconds:p?.time_spent_seconds??0,quiz_passed:!!passedAttempt||!!p?.quiz_passed,is_unlocked:lessonUnlock[lesson.id]!==false};
+        return {lesson_id:lesson.id,title:lesson.title,position:lesson.position,content_type:lesson.is_external?"external":(lesson.video_url?"video":lesson.audio_url?"audio":"text"),duration_seconds:lesson.cpd_calculated_time_seconds??0,is_free:lesson.is_free_preview===true,is_required:lesson.is_required!==false,is_completed:p?.is_completed??false,time_spent_seconds:p?.time_spent_seconds??0,quiz_passed:!!passedAttempt||!!p?.quiz_passed,is_unlocked:lessonUnlock[lesson.id]!==false,is_intro:!!lesson.is_intro,is_module_intro:!!lesson.is_module_intro,is_conclusion:!!lesson.is_conclusion,is_final_exam:!!lesson.is_final_exam,stage_type:lesson.stage_type||(lesson.is_intro?"introduction":lesson.is_module_intro?"module_presentation":lesson.is_conclusion?"conclusion":lesson.is_final_exam?"final_exam":"lesson")};
       });
       const assessment=assessmentFor("module",mod.id);const passedAttempt=assessment?passedByAssessment[assessment.id]:null;const latest=assessment?latestByAssessment[assessment.id]:null;
       const normalLessons=moduleLessons.filter((l:any)=>!(lessons??[]).find((raw:any)=>raw.id===l.lesson_id)?.is_module_intro);
       const mandatoryLessons=normalLessons.filter((l:any)=>l.is_required!==false);
       let previousPassed=true;const previous=(modules??[]).slice(0,index).reverse().find((m:any)=>!m.is_intro&&!m.is_conclusion&&!m.is_final_exam&&m.is_required!==false);if(previous){const prevLessons=(lessons??[]).filter((l:any)=>l.module_id===previous.id&&l.is_required!==false&&!l.is_module_intro);const prevLessonsPassed=prevLessons.every((l:any)=>Boolean(progressMap[l.id]?.is_completed));const previousAssessment=assessmentFor("module",previous.id);const prevAssessmentPassed=!previousAssessment||previousAssessment.required===false||Boolean(passedByAssessment[previousAssessment.id]);previousPassed=prevLessonsPassed&&prevAssessmentPassed;}
       const moduleCompleted=mandatoryLessons.every((l:any)=>l.is_completed)&&(!assessment||assessment.required===false||Boolean(passedAttempt));
-      return {module_id:mod.id,title:mod.title,position:mod.position,description:mod.objective??null,is_required:mod.is_required!==false,lessons:moduleLessons,exam_required:Boolean(assessment?.required),exam_unlocked:previewAllowed||(!!assessment&&mandatoryLessons.length>0&&mandatoryLessons.every((l:any)=>l.is_completed)),exam_passed:!!passedAttempt,exam_score:passedAttempt?.score??latest?.score??null,exam_attempts:latest?.attempt_number??0,is_completed:moduleCompleted,is_unlocked:previewAllowed||mod.is_intro||index===0||previousPassed,is_intro:!!mod.is_intro,is_conclusion:!!mod.is_conclusion,is_final_exam:!!mod.is_final_exam};
+      return {module_id:mod.id,title:mod.title,position:mod.position,description:mod.objective??null,is_required:mod.is_required!==false,lessons:moduleLessons,exam_required:Boolean(assessment?.required),exam_unlocked:previewAllowed||(!!assessment&&mandatoryLessons.length>0&&mandatoryLessons.every((l:any)=>l.is_completed)),exam_passed:!!passedAttempt,exam_score:passedAttempt?.score??latest?.score??null,exam_attempts:latest?.attempt_number??0,is_completed:moduleCompleted,is_unlocked:previewAllowed||mod.is_intro||index===0||previousPassed,is_intro:!!mod.is_intro,is_conclusion:!!mod.is_conclusion,is_final_exam:!!mod.is_final_exam,section_type:mod.section_type||(mod.is_intro?"introduction":mod.is_conclusion?"conclusion":mod.is_final_exam?"final_exam":"module")};
     });
 
     const requiredModules=enriched.filter((m:any)=>!m.is_intro&&!m.is_conclusion&&!m.is_final_exam&&m.is_required!==false);const allModulesPassed=requiredModules.every((m:any)=>m.is_completed===true);
