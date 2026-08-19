@@ -247,7 +247,7 @@ export function CoursDetail() {
 
             {(creator.full_name || creator.school_name) && (
               <div className="mt-5 flex items-center gap-3">
-                {(creator.avatar_url || creator.logo_url) ? <img src={String(creator.avatar_url || creator.logo_url)} alt="" className="h-11 w-11 rounded-full border-2 border-white/30 object-cover" /> : <Monogram name={String(creator.full_name || creator.school_name || 'Omnia')} size={44} />}
+                {(course.creator_type === 'plateforme' || String(creator.full_name ?? creator.school_name ?? '').toLowerCase().includes('omnia global academy')) ? <img src="/omnia-sidebar-logo.png" alt="Omnia Global Academy" className="h-11 w-11 rounded-xl border border-white/30 bg-white p-1 object-contain" /> : (creator.avatar_url || creator.logo_url) ? <img src={String(creator.avatar_url || creator.logo_url)} alt="" className="h-11 w-11 rounded-full border-2 border-white/30 object-cover" /> : <Monogram name={String(creator.full_name || creator.school_name || 'Omnia')} size={44} />}
                 <div><p className="text-xs" style={{ color:'rgba(255,255,255,.55)' }}>Créé par</p><p className="text-sm font-bold text-white">{String(creator.full_name || creator.school_name)}</p>{creator.expertise_domain&&<p className="text-xs" style={{color:'#E5BE5B'}}>{String(creator.expertise_domain)}</p>}</div>
               </div>
             )}
@@ -546,8 +546,8 @@ export function CoursDetail() {
                     </button>
                     {isOpen && (
                       <div style={{ borderTop: '1px solid #F0F0F0' }}>
-                        {mod.objective && (
-                          <p className="px-5 py-3 text-xs" style={{ color: '#6B7280', backgroundColor: '#FAFAFA' }}>Objectif : {String(mod.objective)}</p>
+                        {mod.objective && sectionType(mod) === 'module' && (
+                          <p className="px-5 py-3 text-xs" style={{ color: '#6B7280', backgroundColor: '#FAFAFA' }}>{String(mod.objective)}</p>
                         )}
                         {displayLessons.map((lesson, li) => {
                           const isPreview = lesson.is_free_preview as boolean;

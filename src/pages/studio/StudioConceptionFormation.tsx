@@ -2152,10 +2152,11 @@ function BlockPreview({ block, def, locked, onChange, onGenerateTts, onGenerateS
 }
 
 // ─── Panneau réglages du bloc ─────────────────────────────────
-function BlockSettings({ block, locked, onUpdate, onAI, courseId, moduleId, lessonId }: {
+function BlockSettings({ block, locked, onUpdate, onAI, onRemoveResource, courseId, moduleId, lessonId }: {
   block: Block; locked: boolean;
   onUpdate: (updates: Partial<Block>) => void;
   onAI: (action: string, prompt: string) => void;
+  onRemoveResource: () => void;
   courseId: string; moduleId: string; lessonId: string;
 }) {
   const c = block.content_json;
@@ -2532,14 +2533,11 @@ function BlockSettings({ block, locked, onUpdate, onAI, courseId, moduleId, less
             </div>
           )}
 
-          {/* Option téléchargeable */}
-          {['pdf', 'word', 'excel', 'download'].includes(block.block_type) && (
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input type="checkbox" checked={c.downloadable !== false}
-                onChange={e => onUpdate({ content_json: { ...c, downloadable: e.target.checked } })}
-                style={{ accentColor: '#002050' }} disabled={locked} />
-              <span className="text-sm" style={{ color: '#374151' }}>Autoriser le téléchargement</span>
-            </label>
+          {/* Le téléchargement est une capacité explicite du bloc Téléchargement uniquement. */}
+          {block.block_type === 'download' && (
+            <div className="rounded-xl border px-3 py-2 text-xs" style={{ borderColor: '#E4E7EC', background: '#F8FAFC', color: '#475569' }}>
+              Cette ressource sera téléchargeable par l’apprenant parce qu’elle utilise le bloc « Téléchargement ».
+            </div>
           )}
           {(resourceRagCapable || previewProtectedResource) && (
             <div className="space-y-2 rounded-xl border p-3" style={{ borderColor: '#E4E7EC' }}>

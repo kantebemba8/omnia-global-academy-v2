@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { CheckCircle, Circle, PlayCircle, Volume2, FileText, ChevronDown, ChevronRight, X, Bot, ArrowLeft, ClipboardList, Trophy, Send, AlertCircle, ExternalLink, WifiOff, Database, ShieldCheck, Gauge, RefreshCw, Menu, Target, Clock3, Layers3, Sparkles } from 'lucide-react';
+import { CheckCircle, Circle, PlayCircle, Volume2, FileText, ChevronDown, ChevronRight, X, Bot, ArrowLeft, ClipboardList, Trophy, Send, AlertCircle, ExternalLink, WifiOff, Database, ShieldCheck, Gauge, RefreshCw, Menu, Target, Clock3, Layers3, Sparkles, BookOpen } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { useCpdTimer } from '../hooks/useCpdTimer';
 import { ENDPOINTS } from '../lib/config';
@@ -1093,7 +1093,7 @@ export function CoursLecteur() {
         {user && (
           <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
             style={{ backgroundColor: '#BF8813', color: '#FFFFFF' }}>
-            {user.full_name.split(' ').slice(0, 2).map(n => n[0]).join('').toUpperCase()}
+            {String(user.full_name || user.email || 'U').split(' ').slice(0, 2).map(n => n[0]).join('').toUpperCase()}
           </div>
         )}
       </header>
@@ -1172,7 +1172,7 @@ export function CoursLecteur() {
             </div>
           ) : (
             <div className="w-full px-4 py-6">
-              <div className="mx-auto max-w-3xl">
+              <div className="mx-auto max-w-5xl">
                 {progressError && isPreview && <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800">Le service de progression de preview a signalé : {progressError}. Le curriculum de contrôle a été chargé depuis Info formation.</div>}
                 {lesson.stage_type === 'module_presentation' && currentMod ? (
                   <div className="mb-6 rounded-3xl border p-6 sm:p-8" style={{borderColor:'#E4E7EC',background:'linear-gradient(135deg,#F8FAFC,#FFF7E1)'}}>
@@ -1195,7 +1195,7 @@ export function CoursLecteur() {
                 )}
               </div>
 
-              <div className="mx-auto mb-5 max-w-3xl rounded-2xl border p-4" style={{ borderColor: '#E4E7EC', backgroundColor: '#F8FAFC' }}>
+              <div className="mx-auto mb-5 max-w-5xl rounded-2xl border p-4" style={{ borderColor: '#E4E7EC', backgroundColor: '#F8FAFC' }}>
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="flex items-center gap-2 text-xs font-semibold" style={{ color: isOnline ? '#1E7A52' : '#B45309' }}>
                     {isOnline ? <ShieldCheck size={15}/> : <WifiOff size={15}/>}
@@ -1274,7 +1274,7 @@ export function CoursLecteur() {
               {lesson.content_type === 'video' && !(lesson.is_external) && !dataSaver && isOnline && (
                 <div
                   ref={videoContainerRef}
-                  className="rounded-2xl overflow-hidden mb-5"
+                  className="mx-auto max-w-5xl rounded-2xl overflow-hidden mb-5"
                   style={{ aspectRatio: '16/9', backgroundColor: '#000', userSelect: 'none', WebkitUserSelect: 'none' } as React.CSSProperties}
                   onContextMenu={(e) => e.preventDefault()}
                 >
@@ -1287,19 +1287,19 @@ export function CoursLecteur() {
                 </div>
               )}
               {lesson.content_type === 'video' && !(lesson.is_external) && (dataSaver || !isOnline) && (
-                <div className="rounded-2xl border p-5 mb-5" style={{ borderColor: '#BF8813', backgroundColor: '#FFFBEB' }}>
+                <div className="mx-auto max-w-5xl rounded-2xl border p-5 mb-5" style={{ borderColor: '#BF8813', backgroundColor: '#FFFBEB' }}>
                   <div className="flex items-center gap-2 font-bold text-sm" style={{ color: '#002050' }}><Gauge size={16}/>Lecture vidéo suspendue pour économiser les données</div>
                   <p className="mt-2 text-xs text-slate-600">Utilisez le texte, la transcription ou la piste audio lorsqu’elle est disponible. Désactivez l’économie de données pour reprendre la vidéo.</p>
                   {lesson.audio_url && isOnline && <audio controls controlsList="nodownload" preload="metadata" className="mt-3 w-full" src={lesson.audio_url} />}
                 </div>
               )}
               {lesson.content_type === 'audio' && lesson.audio_url && (
-                <div className="rounded-2xl p-5 mb-5" style={{ border: '1px solid #E4E7EC', backgroundColor: '#F8F9FA' }}>
+                <div className="mx-auto max-w-5xl rounded-2xl p-5 mb-5" style={{ border: '1px solid #E4E7EC', backgroundColor: '#F8F9FA' }}>
                   <audio controls controlsList="nodownload" preload="metadata" className="w-full"><source src={lesson.audio_url} /></audio>
                 </div>
               )}
              {lesson.content_type === 'text' && !lesson.has_blocks && lesson.text_content && (
-                <div className="rounded-2xl p-6 mb-5" style={{ border: '1px solid #E4E7EC' }}>
+                <div className="mx-auto max-w-5xl rounded-2xl p-6 mb-5" style={{ border: '1px solid #E4E7EC' }}>
                   <SimpleMarkdown text={lesson.text_content} />
                 </div>
               )}
@@ -1389,7 +1389,7 @@ export function CoursLecteur() {
 
               {/* Summary after quiz */}
               {showSummary && lesson.lesson_summary && (
-                <div className="rounded-2xl p-5 mb-5" style={{ backgroundColor: '#F8F9FA', borderLeft: '4px solid #BF8813' }}>
+                <div className="mx-auto max-w-5xl rounded-2xl p-5 mb-5" style={{ backgroundColor: '#F8F9FA', borderLeft: '4px solid #BF8813' }}>
                   <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: '#BF8813' }}>Résumé de la leçon</p>
                   <p className="text-sm leading-relaxed mb-4" style={{ color: '#374151' }}>{lesson.lesson_summary}</p>
                   {lessonData?.next_lesson_id && (isOnline || offlineLessonSet.has(lessonData.next_lesson_id)) && (

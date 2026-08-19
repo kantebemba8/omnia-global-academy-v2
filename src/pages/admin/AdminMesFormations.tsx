@@ -53,6 +53,7 @@ export default function AdminMesFormations() {
   const [toast, setToast] = useState('');
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; title: string } | null>(null);
+  const [previewTarget, setPreviewTarget] = useState<Formation | null>(null);
 
   const token = () => getSessionToken() || '';
 

@@ -47,7 +47,7 @@ function ResourceUnavailable({ block, label }: { block: Block; label: string }) 
       <WifiOff size={18} className="mt-0.5 shrink-0 text-amber-700" />
       <div>
         <p className="text-sm font-semibold text-amber-900">{label} indisponible</p>
-        <p className="mt-1 text-xs text-amber-700">{block.file_name ? `${block.file_name} n’a pas pu être chargé.` : 'La ressource n’a pas d’URL exploitable. Vérifiez son téléversement dans le Builder.'}</p>
+        <p className="mt-1 text-xs text-amber-700">{'La ressource n’a pas d’URL exploitable. Vérifiez son téléversement dans le Builder.'}</p>
       </div>
     </div>
   );
@@ -244,8 +244,7 @@ export function BlockRenderer({ block, onQuizAnswer, onTrainingResult, onFileTra
             src={block.file_url || c.url}
             alt={c.alt || c.caption || ''}
             loading="lazy"
-            className="w-full rounded-xl object-cover"
-            style={{ maxHeight: '400px' }}
+            className="h-auto w-full rounded-xl object-contain"
           />
           {(c.caption || block.title) && (
             <figcaption className="text-xs text-center mt-2" style={{ color: '#9CA3AF' }}>
@@ -266,7 +265,7 @@ export function BlockRenderer({ block, onQuizAnswer, onTrainingResult, onFileTra
           {(block.title || c.description) && (
             <p className="text-sm font-semibold mb-2" style={{ color: '#7C3AED' }}>{block.title || c.description}</p>
           )}
-          <audio controls className="w-full" style={{ accentColor: '#7C3AED' }}>
+          <audio controls controlsList="nodownload" className="w-full" style={{ accentColor: '#7C3AED' }}>
             <source src={c.url || block.file_url} />
             Votre navigateur ne supporte pas l'audio.
           </audio>
@@ -281,8 +280,9 @@ export function BlockRenderer({ block, onQuizAnswer, onTrainingResult, onFileTra
 
     case 'pdf':
     case 'word':
+      return <DocumentViewBlock block={block} />;
     case 'download':
-      return <FileDownloadBlock block={block} />;
+      return <DownloadOnlyBlock block={block} />;
 
     case 'excel':
       return <ExcelBlock block={block} />;
@@ -378,7 +378,7 @@ export function BlockRenderer({ block, onQuizAnswer, onTrainingResult, onFileTra
       return c.url ? <div className="overflow-hidden rounded-xl border"><iframe src={c.url} title={c.title || 'Contenu intégré'} className="h-80 w-full" loading="lazy" /></div> : <p className="text-sm text-gray-400">Aucun contenu intégré.</p>;
     case 'gallery': {
       const images = (c.images || []).filter((img: any) => String(img?.url || '').trim());
-      return images.length ? <div className="grid grid-cols-2 gap-3 md:grid-cols-3">{images.map((img: any, i: number) => <figure key={i}><img src={img.url} alt={img.alt || ''} className="h-36 w-full rounded-lg object-cover" />{img.caption && <figcaption className="mt-1 text-xs text-gray-500">{img.caption}</figcaption>}</figure>)}</div> : <ResourceUnavailable block={block} label="Galerie" />;
+      return images.length ? <div className="grid grid-cols-2 gap-3 md:grid-cols-3">{images.map((img: any, i: number) => <figure key={i}><img src={img.url} alt={img.alt || ''} className="h-auto w-full rounded-lg object-contain" />{img.caption && <figcaption className="mt-1 text-xs text-gray-500">{img.caption}</figcaption>}</figure>)}</div> : <ResourceUnavailable block={block} label="Galerie" />;
     }
     case 'formula':
       return <MathFormula latex={c.latex || ''} explanation={c.explanation || ''} />;
@@ -513,7 +513,7 @@ function VideoBlock({ url, eco, title }: { url: string; eco: boolean; title?: st
             frameBorder="0" allowFullScreen allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" />
         </div>
       ) : (
-        <video controls className="w-full" style={{ maxHeight: '400px' }}>
+        <video controls controlsList="nodownload" className="w-full" style={{ maxHeight: '70vh' }}>
           <source src={url} />
         </video>
       )}
@@ -521,31 +521,52 @@ function VideoBlock({ url, eco, title }: { url: string; eco: boolean; title?: st
   );
 }
 
-function FileDownloadBlock({ block }: { block: Block }) {
+function DocumentViewBlock({ block }: { block: Block }) {
   const c = block.content_json;
   const url = block.file_url || c.url || '';
-  if (!url) return <ResourceUnavailable block={block} label={block.block_type === 'pdf' ? 'PDF' : block.block_type === 'word' ? 'Document Word' : 'Fichier'} />;
-
-  const icons: Record<string, { icon: typeof FileText; color: string }> = {
-    pdf:      { icon: FileText, color: '#DC2626' },
-    word:     { icon: FileText, color: '#1D4ED8' },
-    download: { icon: Download, color: '#374151' },
-  };
-  const cfg = icons[block.block_type] || icons.download;
-  const Icon = cfg.icon;
-
+  if (!url) return <ResourceUnavailable block={block} label={block.block_type === 'pdf' ? 'PDF' : 'Document Word'} />;
+  const title = String(c.title || block.title || (block.block_type === 'pdf' ? 'Document PDF' : 'Document Word'));
+  if (block.block_type === 'pdf') {
+    return (
+      <section className="my-4 overflow-hidden rounded-xl border" style={{ borderColor: '#E4E7EC' }}>
+        <div className="flex items-center gap-2 px-4 py-3" style={{ background: '#F8F9FA' }}>
+          <FileText size={16} style={{ color: '#DC2626' }} />
+          <span className="text-sm font-semibold" style={{ color: '#002050' }}>{title}</span>
+        </div>
+        <iframe src={`${url}#toolbar=0&navpanes=0`} title={title} className="h-[70vh] min-h-[520px] w-full bg-white" />
+      </section>
+    );
+  }
   return (
-    <div className="flex items-center gap-4 p-4 rounded-xl my-4" style={{ background: '#F8F9FA', border: '1px solid #E4E7EC' }}>
-      <div className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: `${cfg.color}15` }}>
-        <Icon size={22} style={{ color: cfg.color }} />
+    <section className="my-4 rounded-xl border p-4" style={{ borderColor: '#E4E7EC', background: '#F8F9FA' }}>
+      <div className="flex items-center gap-3">
+        <FileText size={22} style={{ color: '#1D4ED8' }} />
+        <div>
+          <p className="text-sm font-semibold" style={{ color: '#002050' }}>{title}</p>
+          {c.description && <p className="mt-1 text-xs text-slate-500">{c.description}</p>}
+          <p className="mt-1 text-xs text-slate-400">Document protégé · téléchargement désactivé</p>
+        </div>
       </div>
-      <div className="flex-1 min-w-0">
-        <p className="font-semibold text-sm truncate" style={{ color: '#002050' }}>{c.title || block.file_name || 'Document'}</p>
-        {c.description && <p className="text-xs mt-0.5 truncate" style={{ color: '#6B7280' }}>{c.description}</p>}
-        {block.file_size && <p className="text-xs mt-0.5" style={{ color: '#9CA3AF' }}>{fmtSize(block.file_size)}</p>}
+    </section>
+  );
+}
+
+function DownloadOnlyBlock({ block }: { block: Block }) {
+  const c = block.content_json;
+  const url = block.file_url || c.url || '';
+  if (!url) return <ResourceUnavailable block={block} label="Téléchargement" />;
+  const title = String(c.title || block.title || 'Ressource à télécharger');
+  return (
+    <div className="my-4 flex items-center gap-4 rounded-xl border p-4" style={{ background: '#F8F9FA', borderColor: '#E4E7EC' }}>
+      <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl" style={{ background: '#37415115' }}>
+        <Download size={22} style={{ color: '#374151' }} />
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-semibold" style={{ color: '#002050' }}>{title}</p>
+        {c.description && <p className="mt-0.5 text-xs" style={{ color: '#6B7280' }}>{c.description}</p>}
       </div>
       <a href={url} target="_blank" rel="noopener noreferrer" download
-        className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold flex-shrink-0"
+        className="flex flex-shrink-0 items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold"
         style={{ background: '#002050', color: 'white' }}>
         <Download size={14} /> Télécharger
       </a>
@@ -564,13 +585,8 @@ function ExcelBlock({ block }: { block: Block }) {
       <div className="flex items-center justify-between px-4 py-2.5" style={{ background: '#1E7A52' }}>
         <div className="flex items-center gap-2">
           <Table size={16} color="white" />
-          <span className="font-semibold text-sm text-white">{c.title || block.file_name || 'Tableau Excel'}</span>
+          <span className="font-semibold text-sm text-white">{c.title || block.title || 'Tableau'}</span>
         </div>
-        {url && (
-          <a href={url} download className="flex items-center gap-1 text-xs text-white opacity-80 hover:opacity-100">
-            <Download size={12} /> Télécharger
-          </a>
-        )}
       </div>
       {rows.length > 0 ? (
         <div className="overflow-x-auto">
@@ -899,10 +915,8 @@ export function LessonBlocksRenderer({ blocks, contentText, onQuizAnswer, onTrai
       {[...blocks]
         .sort((a, b) => a.position - b.position)
         .map(block => {
-          const wide = ['image','video','gallery','chart','excel','interactive_table','rubric','scorm','columns','timeline'].includes(block.block_type);
-          const extraWide = ['excel','interactive_table','rubric','scorm'].includes(block.block_type);
           return (
-            <div key={block.id} className={extraWide ? 'mx-auto w-full max-w-6xl' : wide ? 'mx-auto w-full max-w-5xl' : 'mx-auto w-full max-w-3xl'}>
+            <div key={block.id} className="mx-auto w-full max-w-5xl">
               <BlockRenderBoundary blockType={block.block_type}><BlockRenderer block={block} onQuizAnswer={onQuizAnswer} onTrainingResult={block.interaction_mode === 'training' ? onTrainingResult : undefined} onFileTrainingSubmit={block.interaction_mode === 'training' ? onFileTrainingSubmit : undefined} learnerState={learnerStateByBlock[block.id] || {}} onStateChange={onStateChange} isOnline={isOnline} /></BlockRenderBoundary>
             </div>
           );

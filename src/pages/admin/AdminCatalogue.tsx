@@ -80,6 +80,11 @@ const EMPTY_EXTERNAL: ExternalCourse = {
   registration_deadline: '', registration_url: '', contact_name: '', contact_email: '', contact_phone: '', contact_address: '', price_xof: 0, delivery_methods: [], private_access_url: '', access_code_mode: 'none', provider_access_code: '',
 };
 const STATUS: Record<string, string> = { draft: 'Brouillon', pending_validation: 'En validation', changes_requested: 'Modifications demandées', rejected: 'Refusée', validated: 'Validée', published: 'Publiée', archived: 'Archivée' };
+const assistedOrCertificationVisible = (course: Course) => {
+  const assisted = String(course.assisted_status || '').trim();
+  if (assisted) return !['cancelled', 'rejected', 'none'].includes(assisted.toLowerCase());
+  return course.certification_requested === true && course.studio_status !== 'draft';
+};
 
 async function call(action: string, payload: Record<string, unknown> = {}) {
   const response = await fetch(API, { method: 'POST', headers: edgeAuthHeaders(), body: JSON.stringify({ action, ...payload }) });
@@ -224,7 +229,7 @@ export default function AdminCatalogue() {
     let list = rows;
     if (tab === 'ready') list = list.filter(x => x.studio_status === 'validated' && !x.is_published);
     else if (tab === 'published') list = list.filter(x => x.is_published || x.studio_status === 'published');
-    else if (tab === 'assisted') list = list.filter(x => x.assisted_status || x.certification_requested);
+    else if (tab === 'assisted') list = list.filter(assistedOrCertificationVisible);
     if (query) list = list.filter(x => `${x.title} ${x.category || ''} ${x.level || ''}`.toLowerCase().includes(query));
     return list;
   }, [rows, externalRows, tab, q]);
@@ -233,7 +238,7 @@ export default function AdminCatalogue() {
     ready: rows.filter(x => x.studio_status === 'validated' && !x.is_published).length,
     published: rows.filter(x => x.is_published || x.studio_status === 'published').length,
     all: rows.length,
-    assisted: rows.filter(x => x.assisted_status || x.certification_requested).length,
+    assisted: rows.filter(assistedOrCertificationVisible).length,
     external: externalRows.length,
   };
 
