@@ -284,7 +284,7 @@ export function AssessmentEngine({
   }
 
   if (!assessment) {
-    return <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">L’évaluation obligatoire n’a pas encore été configurée par le créateur.</div>;
+    return null;
   }
 
   const latest = assessment.latest_attempt;

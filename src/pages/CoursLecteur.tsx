@@ -228,7 +228,7 @@ function DicteeAudioExercise({ texteReference, audioUrl }: { texteReference: str
 }
 
 // ── Sidebar ───────────────────────────────────────────────────────────────────
-function CourseSidebar({ modules, currentLessonId, onSelectLesson, onGoExam, onGoFinal, finalUnlocked, isOnline, offlineLessonIds }: {
+function CourseSidebar({ modules, currentLessonId, onSelectLesson, onGoExam, onGoFinal, finalUnlocked, isOnline, offlineLessonIds, dataSaver, onToggleDataSaver }: {
   modules: ModuleItem[];
   currentLessonId: string | null;
   onSelectLesson: (id: string) => void;
@@ -237,6 +237,8 @@ function CourseSidebar({ modules, currentLessonId, onSelectLesson, onGoExam, onG
   finalUnlocked: boolean;
   isOnline: boolean;
   offlineLessonIds: ReadonlySet<string>;
+  dataSaver: boolean;
+  onToggleDataSaver: () => void;
 }) {
   const [open, setOpen] = useState<Set<string>>(() => new Set(modules.filter(m => (m.section_type || 'module') === 'module').map(module => module.module_id)));
   useEffect(() => {
@@ -298,7 +300,13 @@ function CourseSidebar({ modules, currentLessonId, onSelectLesson, onGoExam, onG
   };
 
   return (
-    <div className="h-full overflow-y-auto" style={{ backgroundColor: '#FAFAFA', borderRight: '1px solid #E4E7EC' }}>
+    <div className="h-full overflow-y-auto" style={{ backgroundColor: '#FAFAFA' }}>
+      <div className="border-b p-3" style={{borderColor:'#E4E7EC'}}>
+        <button type="button" onClick={onToggleDataSaver} className="flex w-full items-center justify-between rounded-xl border px-3 py-2.5 text-left text-xs font-bold" style={{borderColor:dataSaver?'#BF8813':'#D1D5DB',background:dataSaver?'#FFFBEB':'#FFF',color:'#002050'}}>
+          <span className="inline-flex items-center gap-2"><Gauge size={14}/>Économiseur de données</span>
+          <span className="text-[10px] uppercase" style={{color:dataSaver?'#8A650F':'#64748B'}}>{dataSaver?'Actif':'Inactif'}</span>
+        </button>
+      </div>
       <div className="py-3">
         {modules.map(module => {
           const type = module.section_type || (module.is_intro ? 'introduction' : module.is_conclusion ? 'conclusion' : module.is_final_exam ? 'final_exam' : 'module');
@@ -1100,14 +1108,14 @@ export function CoursLecteur() {
 
       {/* Programme mobile */}
       {programOpen && (
-        <div className="fixed inset-0 z-[120] md:hidden" role="dialog" aria-modal="true" aria-label="Programme de la formation">
+        <div className="fixed inset-0 z-[120]" role="dialog" aria-modal="true" aria-label="Programme de la formation">
           <button
             type="button"
             className="absolute inset-0 bg-black/55"
             onClick={() => setProgramOpen(false)}
             aria-label="Fermer le programme"
           />
-          <aside className="absolute inset-y-0 left-0 flex w-[88vw] max-w-sm flex-col bg-white shadow-2xl">
+          <aside className="absolute inset-y-0 left-0 flex w-[88vw] max-w-[420px] flex-col bg-white shadow-2xl">
             <div className="flex h-14 items-center justify-between border-b px-4" style={{ borderColor: '#E4E7EC' }}>
               <div>
                 <p className="text-xs font-bold uppercase tracking-[.12em]" style={{ color: '#BF8813' }}>Formation</p>
@@ -1141,6 +1149,8 @@ export function CoursLecteur() {
                 finalUnlocked={finalUnlocked}
                 isOnline={isOnline}
                 offlineLessonIds={offlineLessonSet}
+                dataSaver={dataSaver}
+                onToggleDataSaver={() => setDataSaver(v => !v)}
               />
             </div>
           </aside>
@@ -1149,17 +1159,6 @@ export function CoursLecteur() {
 
       {/* Body */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Sidebar */}
-        {programOpen && <aside className="hidden md:flex flex-col flex-shrink-0 border-r bg-white" style={{ width: 280, borderColor:'#E4E7EC' }}>
-          <CourseSidebar modules={modules} currentLessonId={currentLessonId}
-            onSelectLesson={goToLesson}
-            onGoExam={(modId) => navigate(`/cours/${courseId}/examen-module/${modId}${previewRouteQuery}`)}
-            onGoFinal={() => navigate(`/cours/${courseId}/validation-finale${previewRouteQuery}`)}
-            finalUnlocked={finalUnlocked}
-            isOnline={isOnline}
-            offlineLessonIds={offlineLessonSet} />
-        </aside>}
-
         {/* Content */}
         <main className="flex-1 overflow-y-auto" style={{ backgroundColor: '#FFFFFF' }}>
           {lessonLoading ? (
@@ -1195,28 +1194,7 @@ export function CoursLecteur() {
                 )}
               </div>
 
-              <div className="mx-auto mb-5 max-w-5xl rounded-2xl border p-4" style={{ borderColor: '#E4E7EC', backgroundColor: '#F8FAFC' }}>
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div className="flex items-center gap-2 text-xs font-semibold" style={{ color: isOnline ? '#1E7A52' : '#B45309' }}>
-                    {isOnline ? <ShieldCheck size={15}/> : <WifiOff size={15}/>}
-                    {isOnline ? `Connexion disponible${network.connectionType === 'cellular' ? ' — réseau mobile' : network.connectionType === 'wifi' ? ' — Wi-Fi' : ''}` : 'Mode hors connexion'}
-                    {usingLocalProgram && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-amber-800">programme local</span>}
-                    {usingLocalCopy && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-amber-800">copie locale</span>}
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <button onClick={() => setDataSaver(v => !v)} className="inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-bold" style={{ borderColor: dataSaver ? '#BF8813' : '#D1D5DB', color: '#002050', background: dataSaver ? '#FFFBEB' : '#FFF' }}>
-                      <Gauge size={14}/>{dataSaver ? 'Économie de données active' : 'Activer l’économie de données'}
-                    </button>
-                    {!isPreview && isOnline && (
-                      <button disabled={resilientBusy} onClick={saveCurrentLessonForResilientAccess} className="inline-flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-bold text-white disabled:opacity-50" style={{ backgroundColor: '#002050' }}>
-                        {resilientBusy ? <RefreshCw size={14} className="animate-spin"/> : <Database size={14}/>}Conserver cette leçon
-                      </button>
-                    )}
-                  </div>
-                </div>
-                <p className="mt-2 text-xs leading-relaxed text-slate-500">Le stockage local concerne uniquement les contenus autorisés. Les vidéos et fichiers téléchargeables ne sont jamais enregistrés librement.</p>
-                {resilientMessage && <p className="mt-2 text-xs font-semibold" style={{ color: resilientMessage.includes('impossible') || resilientMessage.includes('refusé') || resilientMessage.includes('pas disponible') ? '#B91C1C' : '#1E7A52' }}>{resilientMessage}</p>}
-              </div>
+              {resilientMessage && <div className="mx-auto mb-4 max-w-5xl rounded-xl border px-4 py-3 text-xs font-semibold" style={{borderColor:'#E4E7EC',color:resilientMessage.includes('impossible') || resilientMessage.includes('refusé') || resilientMessage.includes('pas disponible') ? '#B91C1C' : '#1E7A52'}}>{resilientMessage}</div>}
 
               {(lesson.is_external || lesson.content_type === 'external') && lesson.external_url && (
                 <div className="rounded-2xl p-6 mb-5 border-2 text-center space-y-4"
@@ -1399,33 +1377,10 @@ export function CoursLecteur() {
                 </div>
               )}
 
-              {/* Next shortcuts */}
-              {isCompleted && !showSummary && (
-                <div className="flex gap-3 mt-2">
-                  {lessonData?.next_lesson_id && (isOnline || offlineLessonSet.has(lessonData.next_lesson_id)) && (
-                    <button onClick={handleNext} className="px-5 py-2.5 rounded-xl font-semibold text-sm text-white hover:opacity-85"
-                      style={{ backgroundColor: '#002050' }}>Étape suivante →</button>
-                  )}
-                  {lesson.stage_type === 'module_summary' && isOnline && currentMod?.exam_unlocked && !currentMod.exam_passed && (
-                    <button onClick={() => navigate(`/cours/${courseId}/examen-module/${currentMod.module_id}${previewRouteQuery}`)}
-                      className="px-5 py-2.5 rounded-xl font-semibold text-sm hover:opacity-85"
-                      style={{ border: '1.5px solid #BF8813', color: '#BF8813' }}>Passer l'examen du module</button>
-                  )}
-                </div>
-              )}
             </div>
           )}
         </main>
 
-              {lesson && (
-                <div className="mt-10 flex items-center justify-between gap-3 border-t pt-5" style={{borderColor:'#E4E7EC'}}>
-                  <button type="button" disabled={!previousReaderLesson} onClick={()=>previousReaderLesson&&goToLesson(previousReaderLesson.lesson_id)} className="rounded-xl border px-4 py-2.5 text-sm font-bold disabled:opacity-30" style={{borderColor:'#CBD5E1',color:'#002050'}}>← Précédent</button>
-                  <div className="text-right">
-                    <button type="button" disabled={!nextReaderLesson || nextReaderLesson.is_unlocked===false || (!isPreview && (!effectiveCpd || (!!lessonData?.training?.required_count && lessonData.training.passed !== true) || !quizPassed || (lesson.stage_type === 'module_summary' && !!currentMod?.exam_required && currentMod.exam_passed !== true)))} onClick={handleNext} className="rounded-xl px-5 py-2.5 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-30" style={{background:'#002050'}}>{lesson.stage_type === 'module_presentation' ? 'Commencer le module →' : lesson.stage_type === 'module_summary' ? 'Module suivant →' : lesson.stage_type === 'introduction' ? 'Continuer →' : 'Suivant →'}</button>
-                    {!isPreview && nextReaderLesson && (!effectiveCpd || (!!lessonData?.training?.required_count && lessonData.training.passed !== true) || !quizPassed || (lesson.stage_type === 'module_summary' && !!currentMod?.exam_required && currentMod.exam_passed !== true)) && <p className="mt-1 max-w-xs text-xs text-slate-500">{!effectiveCpd ? `${fmtTime(Math.max(0, Number(lessonData?.required_seconds || 0) - timeSpent))} de temps pédagogique restant` : (!!lessonData?.training?.required_count && lessonData.training.passed !== true) ? 'Entraînement obligatoire à terminer' : !quizPassed ? 'Évaluation obligatoire à réussir' : 'Évaluation du module à réussir'}</p>}
-                  </div>
-                </div>
-              )}
         {/* AI Panel */}
         {aiOpen && (
           <aside className="hidden lg:flex flex-col flex-shrink-0" style={{ width: 320, borderLeft: '1px solid #E4E7EC' }}>
@@ -1522,6 +1477,18 @@ export function CoursLecteur() {
           </aside>
         )}
       </div>
+
+      {lesson && (
+        <footer className="flex-shrink-0 border-t bg-white px-4 py-3" style={{borderColor:'#E4E7EC'}}>
+          <div className="mx-auto flex max-w-5xl items-center justify-between gap-3">
+            <button type="button" disabled={!previousReaderLesson} onClick={()=>previousReaderLesson&&goToLesson(previousReaderLesson.lesson_id)} className="rounded-xl border px-4 py-2.5 text-sm font-bold disabled:opacity-30" style={{borderColor:'#CBD5E1',color:'#002050'}}>← Précédent</button>
+            <div className="text-right">
+              <button type="button" disabled={!nextReaderLesson || nextReaderLesson.is_unlocked===false || (!isPreview && (!effectiveCpd || (!!lessonData?.training?.required_count && lessonData.training.passed !== true) || !quizPassed || (lesson.stage_type === 'module_summary' && !!currentMod?.exam_required && currentMod.exam_passed !== true)))} onClick={handleNext} className="rounded-xl px-5 py-2.5 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-30" style={{background:'#002050'}}>{lesson.stage_type === 'module_presentation' ? 'Commencer le module →' : lesson.stage_type === 'module_summary' ? 'Module suivant →' : lesson.stage_type === 'introduction' ? 'Continuer →' : 'Suivant →'}</button>
+              {!isPreview && nextReaderLesson && (!effectiveCpd || (!!lessonData?.training?.required_count && lessonData.training.passed !== true) || !quizPassed || (lesson.stage_type === 'module_summary' && !!currentMod?.exam_required && currentMod.exam_passed !== true)) && <p className="mt-1 max-w-xs text-xs text-slate-500">{!effectiveCpd ? `${fmtTime(Math.max(0, Number(lessonData?.required_seconds || 0) - timeSpent))} de temps pédagogique restant` : (!!lessonData?.training?.required_count && lessonData.training.passed !== true) ? 'Entraînement obligatoire à terminer' : !quizPassed ? 'Évaluation obligatoire à réussir' : 'Évaluation du module à réussir'}</p>}
+            </div>
+          </div>
+        </footer>
+      )}
 
     </div>
   );
