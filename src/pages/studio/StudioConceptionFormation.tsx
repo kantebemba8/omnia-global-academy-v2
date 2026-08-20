@@ -1928,31 +1928,45 @@ function RichTextEditor({ value, onChange, locked, placeholder, headingLevel, la
 }
 
 function RichListEditor({ items, ordered, locked, onChange, placeholder, language = 'fr' }: { items:string[]; ordered?:boolean; locked:boolean; onChange:(items:string[])=>void; placeholder:string; language?:string }) {
-  const list = items?.length ? items : [''];
+  const list=Array.isArray(items)?items:[];
   function update(index:number, html:string){ const next=[...list]; next[index]=html; onChange(next); }
   function add(){ onChange([...list,'']); }
-  function remove(index:number){ const next=list.filter((_,i)=>i!==index); onChange(next.length?next:['']); }
-  return <div className="space-y-2">{list.map((item,index)=><div key={index} className="grid grid-cols-[28px_1fr_auto] items-start gap-2">
-    <span className="pt-3 text-sm font-bold" style={{color:'#002050'}}>{ordered?`${index+1}.`:'•'}</span>
-    <RichTextEditor value={item||''} locked={locked} language={language} placeholder={placeholder} onChange={html=>update(index,html)}/>
-    {!locked&&<button type="button" onClick={()=>remove(index)} className="mt-2 rounded p-2 hover:bg-red-50" title="Supprimer"><X size={14} className="text-red-600"/></button>}
-  </div>)}{!locked&&<button type="button" onClick={add} className="text-xs font-semibold px-3 py-2 rounded-lg border" style={{borderColor:'#BF8813',color:'#92400E'}}>+ Ajouter un élément</button>}</div>;
+  function remove(index:number){ onChange(list.filter((_,i)=>i!==index)); }
+  return <div className="space-y-2">
+    {list.map((item,index)=><div key={index} className="grid grid-cols-[28px_auto_1fr] items-start gap-2">
+      <span className="pt-3 text-sm font-bold" style={{color:'#002050'}}>{ordered?`${index+1}.`:'•'}</span>
+      {!locked&&<button type="button" onClick={()=>remove(index)} className="mt-2 rounded p-2 hover:bg-red-50" title="Supprimer ce champ"><X size={14} className="text-red-600"/></button>}
+      <RichTextEditor value={item||''} locked={locked} language={language} placeholder={placeholder} onChange={html=>update(index,html)}/>
+    </div>)}
+    {!locked&&<button type="button" onClick={add} className="text-xs font-semibold px-3 py-2 rounded-lg border" style={{borderColor:'#BF8813',color:'#92400E'}}>+ Ajouter un élément</button>}
+  </div>;
 }
 
 function EditableItems({ items, ordered, locked, onChange, placeholder, language = 'fr' }: { items: string[]; ordered?: boolean; locked: boolean; onChange: (items: string[]) => void; placeholder: string; language?: string }) {
-  const list = items?.length ? items : [''];
+  const list=Array.isArray(items)?items:[];
   const refs = useRef<Array<HTMLInputElement | null>>([]);
   function update(index: number, value: string) { const next=[...list]; next[index]=value; onChange(next); }
-  function addAfter(index: number) { const next=[...list]; next.splice(index+1,0,''); onChange(next); setTimeout(()=>refs.current[index+1]?.focus(),0); }
-  function remove(index: number) { if(list.length===1){onChange(['']);return;} const next=list.filter((_,i)=>i!==index); onChange(next); setTimeout(()=>refs.current[Math.max(0,index-1)]?.focus(),0); }
-  return <div className="space-y-2">{list.map((item,index)=><div key={index} className="flex items-start gap-2">
-    <span className="mt-2 text-sm font-semibold min-w-[20px]" style={{color:'#002050'}}>{ordered?`${index+1}.`:'•'}</span>
-    <input ref={el=>{refs.current[index]=el}} className="flex-1 px-3 py-2 border rounded-lg text-sm focus:outline-none focus:border-[#002050]" style={{borderColor:'#E4E7EC'}} value={item} placeholder={placeholder} disabled={locked} spellCheck lang={language}
-      onChange={e=>update(index,e.target.value)} onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();addAfter(index)} if(e.key==='Backspace'&&!item){e.preventDefault();remove(index)}}}/>
-    {!locked&&<button type="button" onClick={()=>remove(index)} className="mt-1 p-1.5 rounded hover:bg-red-50" title="Supprimer la ligne"><X size={13} style={{color:'#DC2626'}}/></button>}
-  </div>)}
-  {!locked&&<button type="button" onClick={()=>addAfter(list.length-1)} className="text-xs font-semibold px-3 py-2 rounded-lg border" style={{borderColor:'#BF8813',color:'#92400E'}}>+ Ajouter une ligne</button>}
-  </div>
+  function addAfter(index?: number) {
+    const next=[...list];
+    const target=typeof index==='number'?index+1:next.length;
+    next.splice(target,0,'');
+    onChange(next);
+    setTimeout(()=>refs.current[target]?.focus(),0);
+  }
+  function remove(index: number) {
+    const next=list.filter((_,i)=>i!==index);
+    onChange(next);
+    setTimeout(()=>refs.current[Math.max(0,index-1)]?.focus(),0);
+  }
+  return <div className="space-y-2">
+    {list.map((item,index)=><div key={index} className="grid grid-cols-[24px_auto_1fr] items-start gap-2">
+      <span className="mt-2 text-sm font-semibold" style={{color:'#002050'}}>{ordered?`${index+1}.`:'•'}</span>
+      {!locked&&<button type="button" onClick={()=>remove(index)} className="mt-1 p-1.5 rounded hover:bg-red-50" title="Supprimer ce champ"><X size={13} style={{color:'#DC2626'}}/></button>}
+      <input ref={el=>{refs.current[index]=el}} className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:border-[#002050]" style={{borderColor:'#E4E7EC'}} value={item} placeholder={placeholder} disabled={locked} spellCheck lang={language}
+        onChange={e=>update(index,e.target.value)} onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();addAfter(index)} if(e.key==='Backspace'&&!item){e.preventDefault();remove(index)}}}/>
+    </div>)}
+    {!locked&&<button type="button" onClick={()=>addAfter()} className="text-xs font-semibold px-3 py-2 rounded-lg border" style={{borderColor:'#BF8813',color:'#92400E'}}>+ Ajouter une ligne</button>}
+  </div>;
 }
 
 function PedagogicalEditor({ c, locked, onChange, kind, language = 'fr' }: { c: Record<string,any>; locked:boolean; onChange:(c:Record<string,any>)=>void; kind:string; language?:string }) {
@@ -2009,15 +2023,15 @@ function BlockPreview({ block, def, locked, onChange, onGenerateTts, onGenerateS
         <RichTextEditor value={c.html||c.content||''} locked={locked} language={defaultLanguage} placeholder="Contenu de l'encadré..." onChange={html=>onChange({...c,html,content:stripHtml(html)})}/>
       </div>
     );
-    case 'bullet_list': return <RichListEditor items={c.items || ['']} locked={locked} language={defaultLanguage} onChange={items=>onChange({...c,items})} placeholder="Élément de la liste" />;
-    case 'numbered_list': return <RichListEditor ordered items={c.items || ['']} locked={locked} language={defaultLanguage} onChange={items=>onChange({...c,items})} placeholder="Étape de la liste" />;
+    case 'bullet_list': return <RichListEditor items={Array.isArray(c.items)?c.items:[]} locked={locked} language={defaultLanguage} onChange={items=>onChange({...c,items})} placeholder="Élément de la liste" />;
+    case 'numbered_list': return <RichListEditor ordered items={Array.isArray(c.items)?c.items:[]} locked={locked} language={defaultLanguage} onChange={items=>onChange({...c,items})} placeholder="Étape de la liste" />;
     case 'objective': case 'example': case 'summary': case 'important': case 'correction': return <PedagogicalEditor c={c} locked={locked} onChange={onChange} kind={block.block_type} />;
     case 'definition': return <div className="space-y-2"><input className={inputCls} style={style} value={c.title||''} onChange={e=>onChange({...c,title:e.target.value})} placeholder="Titre du bloc (facultatif)" disabled={locked}/><input className={inputCls} style={style} value={c.term||''} onChange={e=>onChange({...c,term:e.target.value})} placeholder="Terme à définir" disabled={locked}/><RichTextEditor value={c.definition||''} locked={locked} language={defaultLanguage} placeholder="Définition..." onChange={definition=>onChange({...c,definition})}/><RichTextEditor value={c.example||''} locked={locked} language={defaultLanguage} placeholder="Exemple facultatif..." onChange={example=>onChange({...c,example})}/></div>;
-    case 'case_study': return <div className="space-y-2"><input className={inputCls} style={style} value={c.title||''} onChange={e=>onChange({...c,title:e.target.value})} placeholder="Titre de l’étude de cas" disabled={locked}/><textarea className={inputCls} style={style} rows={3} value={c.context||''} onChange={e=>onChange({...c,context:e.target.value})} placeholder="Contexte" disabled={locked}/><textarea className={inputCls} style={style} rows={3} value={c.data||''} onChange={e=>onChange({...c,data:e.target.value})} placeholder="Données et informations disponibles" disabled={locked}/><textarea className={inputCls} style={style} rows={3} value={c.task||''} onChange={e=>onChange({...c,task:e.target.value})} placeholder="Travail demandé" disabled={locked}/><EditableItems items={c.questions||['']} locked={locked} onChange={questions=>onChange({...c,questions})} placeholder="Question d’analyse" /></div>;
+    case 'case_study': return <div className="space-y-2"><input className={inputCls} style={style} value={c.title||''} onChange={e=>onChange({...c,title:e.target.value})} placeholder="Titre de l’étude de cas" disabled={locked}/><textarea className={inputCls} style={style} rows={3} value={c.context||''} onChange={e=>onChange({...c,context:e.target.value})} placeholder="Contexte" disabled={locked}/><textarea className={inputCls} style={style} rows={3} value={c.data||''} onChange={e=>onChange({...c,data:e.target.value})} placeholder="Données et informations disponibles" disabled={locked}/><textarea className={inputCls} style={style} rows={3} value={c.task||''} onChange={e=>onChange({...c,task:e.target.value})} placeholder="Travail demandé" disabled={locked}/><EditableItems items={Array.isArray(c.questions)?c.questions:[]} locked={locked} onChange={questions=>onChange({...c,questions})} placeholder="Question d’analyse" /></div>;
     case 'remember': return (
       <div className="p-3 rounded-lg" style={{ background: 'rgba(191,136,19,0.08)', border: '1px solid #BF881330' }}>
         <div className="flex items-center gap-1.5 mb-2"><Star size={13} style={{ color: '#BF8813' }} /><input className="text-xs font-bold bg-transparent outline-none flex-1" style={{color:'#BF8813'}} value={c.title||'À retenir'} onChange={e=>onChange({...c,title:e.target.value})} disabled={locked}/></div>
-        <RichListEditor items={c.points||['']} locked={locked} language={defaultLanguage} onChange={points=>onChange({...c,points})} placeholder="Point clé à retenir" />
+        <RichListEditor items={Array.isArray(c.points)?c.points:[]} locked={locked} language={defaultLanguage} onChange={points=>onChange({...c,points})} placeholder="Point clé à retenir" />
       </div>
     );
     case 'open_question': return <div className="space-y-2"><textarea className={inputCls} style={style} rows={3} value={c.question||''} onChange={e=>onChange({...c,question:e.target.value})} placeholder="Question posée à l’apprenant" disabled={locked}/><textarea className={inputCls} style={style} rows={2} value={c.guidance||''} onChange={e=>onChange({...c,guidance:e.target.value})} placeholder="Consignes ou éléments attendus" disabled={locked}/><textarea className={inputCls} style={style} rows={3} value={c.expected_answer||''} onChange={e=>onChange({...c,expected_answer:e.target.value})} placeholder="Réponse de référence pour le correcteur" disabled={locked}/><input type="number" className={inputCls} style={style} value={c.points||10} onChange={e=>onChange({...c,points:Number(e.target.value)})} min={0} placeholder="Points" disabled={locked}/></div>;

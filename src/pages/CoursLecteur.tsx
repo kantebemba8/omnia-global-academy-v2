@@ -332,7 +332,7 @@ function CourseSidebar({ modules, currentLessonId, onSelectLesson, onGoExam, onG
                 <span className="flex-1">
                   <span className="block text-[10px] font-black uppercase tracking-[.12em]" style={{color:'#BF8813'}}>{sectionLabel(module)}</span>
                   <span className="block text-xs font-bold" style={{color:'#002050'}}>{module.title}</span>
-                  <span className="block text-[10px] text-slate-400">{realLessons.length} leçon{realLessons.length > 1 ? 's' : ''}</span>
+                  {sectionType(module) === 'module' && <span className="block text-[10px] text-slate-400">{realLessons.length} leçon{realLessons.length > 1 ? 's' : ''}</span>}
                 </span>
                 {open.has(module.module_id) ? <ChevronDown size={14} style={{ color: '#9CA3AF' }} /> : <ChevronRight size={14} style={{ color: '#9CA3AF' }} />}
               </button>
@@ -474,7 +474,7 @@ function CourseInfoView({ info, modules, progressPct, preview, previewMode, onSt
             <section className="rounded-[22px] border bg-white p-5 sm:p-7" style={{ borderColor:'#E4E7EC' }}>
               <div className="flex flex-wrap items-end justify-between gap-3"><div><p className="text-xs font-black uppercase tracking-[.15em]" style={{ color:'#BF8813' }}>Programme</p><h2 className="mt-1 text-2xl font-black tracking-[-.02em]" style={{ color:'#002050' }}>Contenu de la formation</h2></div><p className="text-xs font-semibold text-slate-400">{totalModules} module{totalModules>1?'s':''} · {totalLessons} leçon{totalLessons>1?'s':''}</p></div>
               <div className="mt-5 space-y-3">{modules.map((mod, mi) => <details key={mod.module_id} open={mi < 2 || !!mod.is_intro} className="group overflow-hidden rounded-xl border" style={{ borderColor:'#E4E7EC' }}>
-                <summary className="flex cursor-pointer list-none items-center gap-3 bg-slate-50 px-4 py-3.5"><span className="rounded-lg px-2 py-1 text-[10px] font-black uppercase tracking-[.08em]" style={{background:'#FFF7E1',color:'#8A650F'}}>{stageLabel(mod,mi)}</span><span className="min-w-0 flex-1 font-bold" style={{color:'#002050'}}>{mod.title}</span><span className="text-xs text-slate-400">{mod.lessons.filter(l => (l.stage_type || 'lesson') === 'lesson').length} leçon{mod.lessons.filter(l => (l.stage_type || 'lesson') === 'lesson').length>1?'s':''}</span><ChevronDown size={16} className="text-slate-400 transition group-open:rotate-180"/></summary>
+                <summary className="flex cursor-pointer list-none items-center gap-3 bg-slate-50 px-4 py-3.5"><span className="rounded-lg px-2 py-1 text-[10px] font-black uppercase tracking-[.08em]" style={{background:'#FFF7E1',color:'#8A650F'}}>{stageLabel(mod,mi)}</span><span className="min-w-0 flex-1 font-bold" style={{color:'#002050'}}>{mod.title}</span>{sectionType(mod) === 'module' && <span className="text-xs text-slate-400">{mod.lessons.filter(l => (l.stage_type || 'lesson') === 'lesson').length} leçon{mod.lessons.filter(l => (l.stage_type || 'lesson') === 'lesson').length>1?'s':''}</span>}<ChevronDown size={16} className="text-slate-400 transition group-open:rotate-180"/></summary>
                 {(mod.section_type || (mod.is_intro ? 'introduction' : mod.is_conclusion ? 'conclusion' : mod.is_final_exam ? 'final_exam' : 'module')) === 'module' && mod.description && <p className="border-t px-4 py-3 text-xs leading-5 text-slate-500" style={{borderColor:'#EEF1F5'}}>{mod.description}</p>}
                 <div className="divide-y" style={{borderColor:'#EEF1F5'}}>{mod.lessons.map((lesson, li) => <button key={lesson.lesson_id} type="button" onClick={() => (preview || lesson.is_unlocked !== false) ? onSelectLesson(lesson.lesson_id) : undefined} className="flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-45" disabled={!preview && lesson.is_unlocked === false}><span className="flex h-7 min-w-7 shrink-0 items-center justify-center rounded-full bg-slate-100 px-2 text-[10px] font-black" style={{color:'#002050'}}>{lesson.stage_type === 'module_presentation' ? 'Intro' : lesson.stage_type === 'module_summary' ? 'Synth.' : lesson.stage_type === 'introduction' ? 'Intro' : lesson.stage_type === 'conclusion' ? 'Fin' : lesson.stage_type === 'final_exam' ? 'Exam' : mod.lessons.filter((candidate, idx) => idx <= li && (candidate.stage_type || 'lesson') === 'lesson').length}</span><span className="min-w-0 flex-1 text-sm font-medium text-slate-700">{lesson.title}</span>{lesson.duration_seconds > 0 && <span className="text-xs text-slate-400">{Math.max(1,Math.round(lesson.duration_seconds/60))} min</span>}{!preview&&lesson.is_unlocked===false&&<span className="text-xs text-slate-400">Verrouillée</span>}</button>)}</div>
               </details>)}</div>
@@ -1043,6 +1043,16 @@ export function CoursLecteur() {
   }, [isOnline, currentLessonId, courseId, sessionToken, isPreview, previewQuery]);
 
   const learnerStateByBlock = useMemo(() => Object.fromEntries((lessonData?.block_states || []).map(item => [item.block_id, item.state_json || {}])), [lessonData?.block_states]);
+  const completedInteractionBlockIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const attempt of lessonData?.training?.latest_attempts || []) {
+      if (attempt?.block_id) ids.add(String(attempt.block_id));
+    }
+    for (const state of lessonData?.block_states || []) {
+      if (state?.completed && state?.block_id) ids.add(String(state.block_id));
+    }
+    return Array.from(ids);
+  }, [lessonData?.training?.latest_attempts, lessonData?.block_states]);
 
   const currentMod = modules.find(m => m.lessons.some(l => l.lesson_id === currentLessonId));
   const orderedReaderLessons = modules.flatMap(m => m.lessons);
@@ -1287,6 +1297,8 @@ export function CoursLecteur() {
                     onTrainingResult={submitTrainingResult}
                     onFileTrainingSubmit={submitTrainingFile}
                     learnerStateByBlock={learnerStateByBlock}
+                    completedInteractionBlockIds={completedInteractionBlockIds}
+                    revealAllCorrections={isPreview}
                     onStateChange={saveBlockState}
                   />
                 </div>

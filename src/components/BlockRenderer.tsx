@@ -488,9 +488,33 @@ function ChecklistBlock({items,initialState,onChange}:{items:any[];initialState:
   return <div className="my-4 rounded-xl border p-4" style={{borderColor:'#E4E7EC'}}><div className="space-y-2">{items.map((item:any,i:number)=>{const key=String(item.id||i);return <label key={key} className="flex items-start gap-3 rounded-lg px-2 py-2 hover:bg-slate-50"><input type="checkbox" checked={Boolean(state[key])} onChange={e=>update(key,e.target.checked)} className="mt-0.5"/><span className="text-sm text-slate-700">{item.text||item.label||String(item)}{item.required===false&&<span className="ml-2 text-[10px] text-slate-400">facultatif</span>}</span></label>})}</div></div>
 }
 function CaseStudyTraining({c,training,threshold,onResult}:{c:Record<string,any>;training:boolean;threshold:number;onResult?:(score:number,answer:any,passed:boolean)=>void}){
-  const qs=Array.isArray(c.questions)&&c.questions.length?c.questions:[c.task||'Votre analyse'];const [answers,setAnswers]=useState<Record<string,string>>({});const [done,setDone]=useState(false);
-  const submit=()=>{const complete=qs.every((_:any,i:number)=>String(answers[String(i)]||'').trim().length>0);const score=complete?100:0;setDone(true);onResult?.(score,{answers},score>=threshold)};
-  return <div className="p-5 rounded-xl my-4 border" style={{borderColor:'#E4E7EC'}}><p className="font-bold mb-3" style={{color:'#002050'}}>Étude de cas{c.title?` : ${c.title}`:''}</p>{c.context&&<div className="mb-3"><p className="text-xs font-bold uppercase tracking-wide mb-1 text-slate-400">Contexte</p><p className="text-sm text-slate-700">{c.context}</p></div>}{c.data&&<div className="mb-3"><p className="text-xs font-bold uppercase tracking-wide mb-1 text-slate-400">Données</p><p className="text-sm text-slate-700">{c.data}</p></div>}{c.task&&<div className="rounded-lg bg-blue-50 p-3 text-sm text-slate-700">{c.task}</div>}{training&&<div className="mt-4 space-y-3">{qs.map((q:any,i:number)=><label key={i} className="block text-xs font-semibold text-slate-600">{String(q)}<textarea value={answers[String(i)]||''} onChange={e=>{setAnswers(v=>({...v,[String(i)]:e.target.value}));setDone(false)}} rows={4} className="mt-1 w-full rounded-lg border p-3 text-sm"/></label>)}<button type="button" onClick={submit} className="rounded-lg bg-[#002050] px-3 py-1.5 text-xs font-semibold text-white">Terminer l’étude de cas</button>{done&&<p className="text-xs font-semibold text-emerald-700">Réponse d’entraînement enregistrée.</p>}</div>}</div>
+  const qs=(Array.isArray(c.questions)?c.questions:[])
+    .map((q:any)=>String(q||'').trim())
+    .filter(Boolean);
+  const [answers,setAnswers]=useState<Record<string,string>>({});
+  const [done,setDone]=useState(false);
+  const submit=()=>{
+    if(!qs.length)return;
+    const complete=qs.every((_:string,i:number)=>String(answers[String(i)]||'').trim().length>0);
+    const score=complete?100:0;
+    setDone(true);
+    if(training) onResult?.(score,{answers},score>=threshold);
+  };
+  return <div className="p-5 rounded-xl my-4 border" style={{borderColor:'#E4E7EC'}}>
+    <p className="font-bold mb-3" style={{color:'#002050'}}>Étude de cas{c.title?` : ${c.title}`:''}</p>
+    {c.context&&<div className="mb-3"><p className="text-xs font-bold uppercase tracking-wide mb-1 text-slate-400">Contexte</p><RichContent value={c.context} className="text-sm text-slate-700"/></div>}
+    {c.data&&<div className="mb-3"><p className="text-xs font-bold uppercase tracking-wide mb-1 text-slate-400">Données</p><RichContent value={c.data} className="text-sm text-slate-700"/></div>}
+    {c.task&&<div className="rounded-lg bg-blue-50 p-3 text-sm text-slate-700"><RichContent value={c.task}/></div>}
+    {qs.length>0&&<div className="mt-4 space-y-3">
+      <p className="text-xs font-black uppercase tracking-wide text-slate-400">Questions d’analyse</p>
+      {qs.map((q:string,i:number)=><label key={i} className="block text-xs font-semibold text-slate-600">
+        <span>{q}</span>
+        <textarea value={answers[String(i)]||''} onChange={e=>{setAnswers(v=>({...v,[String(i)]:e.target.value}));setDone(false)}} rows={4} className="mt-1 w-full rounded-lg border p-3 text-sm" placeholder="Construisez votre réponse…"/>
+      </label>)}
+      {training&&<button type="button" onClick={submit} className="rounded-lg bg-[#002050] px-3 py-1.5 text-xs font-semibold text-white">Terminer l’étude de cas</button>}
+      {training&&done&&<p className="text-xs font-semibold text-emerald-700">Réponse d’entraînement enregistrée.</p>}
+    </div>}
+  </div>
 }
 function ExerciseTraining({c,training,onResult,onFileSubmit}:{c:Record<string,any>;training:boolean;onResult?:(score:number,answer:any,passed:boolean)=>void;onFileSubmit?:(file:File)=>Promise<boolean>}){
   const [text,setText]=useState('');const [busy,setBusy]=useState(false);const [status,setStatus]=useState('');const uploadRequired=c.learner_upload_required===true;
@@ -911,13 +935,15 @@ class BlockRenderBoundary extends Component<{ children: ReactNode; blockType: st
 }
 
 // ─── Export : Rendu d'une leçon complète ─────────────────────
-export function LessonBlocksRenderer({ blocks, contentText, onQuizAnswer, onTrainingResult, onFileTrainingSubmit, learnerStateByBlock = {}, onStateChange, isOnline = true }: {
+export function LessonBlocksRenderer({ blocks, contentText, onQuizAnswer, onTrainingResult, onFileTrainingSubmit, learnerStateByBlock = {}, completedInteractionBlockIds = [], revealAllCorrections = false, onStateChange, isOnline = true }: {
   blocks: Block[];
   contentText?: string;
   onQuizAnswer?: (blockId: string, answer: any, correct: boolean) => void;
   onTrainingResult?: (blockId: string, score: number, answer: any, passed: boolean) => void;
   onFileTrainingSubmit?: (blockId: string, file: File) => Promise<boolean>;
   learnerStateByBlock?: Record<string, Record<string, any>>;
+  completedInteractionBlockIds?: string[];
+  revealAllCorrections?: boolean;
   onStateChange?: (blockId: string, state: Record<string, any>, completed: boolean) => void;
   isOnline?: boolean;
 }) {
@@ -936,9 +962,21 @@ export function LessonBlocksRenderer({ blocks, contentText, onQuizAnswer, onTrai
 
   return (
     <div>
-      {[...blocks]
-        .sort((a, b) => a.position - b.position)
-        .map(block => {
+      {(() => {
+        const orderedBlocks=[...blocks].sort((a,b)=>a.position-b.position);
+        const completedSet=new Set(completedInteractionBlockIds.map(String));
+        return orderedBlocks.map((block,index) => {
+          if(block.block_type==='correction'&&!revealAllCorrections){
+            let previous:Block|undefined;
+            for(let i=index-1;i>=0;i--){
+              if(orderedBlocks[i].block_type!=='correction'){previous=orderedBlocks[i];break;}
+            }
+            const requiresAttempt=Boolean(previous && (
+              previous.interaction_mode==='training' ||
+              ['qcm','true_false','open_question','exercise','assignment_upload','case_study','cloze','dictation','pronunciation','matching','sentence_order','oral_response','listening_comprehension','written_expression','interactive_table','checklist'].includes(previous.block_type)
+            ));
+            if(requiresAttempt && previous && !completedSet.has(String(previous.id))) return null;
+          }
           const compactTypes = new Set(['image','gallery','video','audio','pdf','word','excel','table','interactive_table','chart','scorm','embed','download']);
           const widthClass = compactTypes.has(block.block_type) ? 'max-w-3xl' : 'max-w-5xl';
           const titleHandledTypes = new Set(['callout','important','objective','remember','example','definition','summary','correction','bullet_list','numbered_list','quote','interactive_table','image','video','audio','pdf','word','excel','download','scorm','embed','assignment_upload','exercise','case_study']);
@@ -948,7 +986,8 @@ export function LessonBlocksRenderer({ blocks, contentText, onQuizAnswer, onTrai
               <BlockRenderBoundary blockType={block.block_type}><BlockRenderer block={block} onQuizAnswer={onQuizAnswer} onTrainingResult={block.interaction_mode === 'training' ? onTrainingResult : undefined} onFileTrainingSubmit={block.interaction_mode === 'training' ? onFileTrainingSubmit : undefined} learnerState={learnerStateByBlock[block.id] || {}} onStateChange={onStateChange} isOnline={isOnline} /></BlockRenderBoundary>
             </div>
           );
-        })}
+        });
+      })()}
     </div>
   );
 }
