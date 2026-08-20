@@ -1873,10 +1873,11 @@ function RichTextEditor({ value, onChange, locked, placeholder, headingLevel, la
   const ref = useRef<HTMLDivElement | null>(null);
   const [selectionToolbar, setSelectionToolbar] = useState<{ left: number; top: number } | null>(null);
   useEffect(() => { if (ref.current && ref.current.innerHTML !== value) ref.current.innerHTML = value || ''; }, [value]);
+  function emit() { if (ref.current) onChange(ref.current.innerHTML); }
   function command(cmd: string, arg?: string) {
     ref.current?.focus();
     document.execCommand(cmd, false, arg);
-    if (ref.current) onChange(ref.current.innerHTML);
+    emit();
     window.setTimeout(updateSelectionToolbar, 0);
   }
   function updateSelectionToolbar() {
@@ -1887,7 +1888,7 @@ function RichTextEditor({ value, onChange, locked, placeholder, headingLevel, la
     if (!ref.current.contains(range.commonAncestorContainer)) return setSelectionToolbar(null);
     const rect = range.getBoundingClientRect();
     const host = ref.current.getBoundingClientRect();
-    setSelectionToolbar({ left: Math.max(8, Math.min(host.width - 150, rect.left - host.left)), top: Math.max(4, rect.top - host.top - 38) });
+    setSelectionToolbar({ left: Math.max(8, Math.min(host.width - 210, rect.left - host.left)), top: Math.max(4, rect.top - host.top - 38) });
   }
   function addLink() {
     const url = window.prompt('Adresse du lien HTTPS');
@@ -1895,22 +1896,47 @@ function RichTextEditor({ value, onChange, locked, placeholder, headingLevel, la
     if (!/^https:\/\//i.test(url.trim())) { window.alert('Utilisez une adresse HTTPS valide.'); return; }
     command('createLink', url.trim());
   }
+  const toolBtn = 'h-8 rounded-lg border px-2.5 text-xs font-semibold hover:bg-slate-50 disabled:opacity-40';
   return (
-    <div className="relative rounded-xl border bg-white" style={{ borderColor: '#E4E7EC' }}>
+    <div className="relative overflow-visible rounded-xl border bg-white" style={{ borderColor: '#E4E7EC' }}>
+      {!locked && !headingLevel && (
+        <div className="flex flex-wrap items-center gap-1 border-b px-2 py-2" style={{ borderColor: '#EEF1F5', background: '#FBFCFE' }}>
+          <button type="button" className={toolBtn} onMouseDown={e=>e.preventDefault()} onClick={()=>command('bold')} title="Gras"><strong>B</strong></button>
+          <button type="button" className={toolBtn} onMouseDown={e=>e.preventDefault()} onClick={()=>command('italic')} title="Italique"><em>I</em></button>
+          <button type="button" className={toolBtn} onMouseDown={e=>e.preventDefault()} onClick={()=>command('insertUnorderedList')} title="Liste à puces">• Puces</button>
+          <button type="button" className={toolBtn} onMouseDown={e=>e.preventDefault()} onClick={()=>command('insertOrderedList')} title="Liste numérotée">1. Liste</button>
+          <button type="button" className={toolBtn} onMouseDown={e=>e.preventDefault()} onClick={addLink} title="Ajouter un lien">Lien</button>
+          <span className="ml-auto text-[10px] text-slate-400">Entrée = nouveau paragraphe · Maj+Entrée = retour simple</span>
+        </div>
+      )}
       {!locked && selectionToolbar && (
-        <div className="absolute z-20 flex items-center gap-1 rounded-lg border bg-white p-1 shadow-lg" style={{ left: selectionToolbar.left, top: selectionToolbar.top, borderColor: '#E4E7EC' }}>
+        <div className="absolute z-30 flex items-center gap-1 rounded-lg border bg-white p-1 shadow-lg" style={{ left: selectionToolbar.left, top: selectionToolbar.top, borderColor: '#E4E7EC' }}>
           <button type="button" onMouseDown={e => e.preventDefault()} onClick={() => command('bold')} className="h-7 min-w-7 rounded px-2 text-xs font-bold hover:bg-slate-50" title="Gras">B</button>
           <button type="button" onMouseDown={e => e.preventDefault()} onClick={() => command('italic')} className="h-7 min-w-7 rounded px-2 text-xs italic hover:bg-slate-50" title="Italique">I</button>
+          <button type="button" onMouseDown={e => e.preventDefault()} onClick={() => command('insertUnorderedList')} className="h-7 rounded px-2 text-xs hover:bg-slate-50" title="Puces">•</button>
+          <button type="button" onMouseDown={e => e.preventDefault()} onClick={() => command('insertOrderedList')} className="h-7 rounded px-2 text-xs hover:bg-slate-50" title="Numérotation">1.</button>
           <button type="button" onMouseDown={e => e.preventDefault()} onClick={addLink} className="h-7 rounded px-2 text-xs font-semibold hover:bg-slate-50" title="Ajouter un lien">Lien</button>
         </div>
       )}
       <div ref={ref} contentEditable={!locked} suppressContentEditableWarning spellCheck lang={language} data-placeholder={placeholder}
-        onInput={() => ref.current && onChange(ref.current.innerHTML)}
+        onInput={emit}
         onMouseUp={updateSelectionToolbar} onKeyUp={updateSelectionToolbar} onBlur={() => window.setTimeout(() => setSelectionToolbar(null), 120)}
-        className={`${headingLevel === 1 ? 'text-xl font-bold' : headingLevel === 2 ? 'text-lg font-semibold' : 'text-sm'} min-h-[88px] px-3 py-3 outline-none rich-editor`}
+        className={`${headingLevel === 1 ? 'text-xl font-bold' : headingLevel === 2 ? 'text-lg font-semibold' : 'text-sm'} min-h-[88px] px-3 py-3 outline-none rich-editor [&_p]:my-2 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:my-1 [&_a]:text-blue-700 [&_a]:underline`}
         style={{ color: headingLevel ? '#002050' : '#374151' }} />
     </div>
   );
+}
+
+function RichListEditor({ items, ordered, locked, onChange, placeholder, language = 'fr' }: { items:string[]; ordered?:boolean; locked:boolean; onChange:(items:string[])=>void; placeholder:string; language?:string }) {
+  const list = items?.length ? items : [''];
+  function update(index:number, html:string){ const next=[...list]; next[index]=html; onChange(next); }
+  function add(){ onChange([...list,'']); }
+  function remove(index:number){ const next=list.filter((_,i)=>i!==index); onChange(next.length?next:['']); }
+  return <div className="space-y-2">{list.map((item,index)=><div key={index} className="grid grid-cols-[28px_1fr_auto] items-start gap-2">
+    <span className="pt-3 text-sm font-bold" style={{color:'#002050'}}>{ordered?`${index+1}.`:'•'}</span>
+    <RichTextEditor value={item||''} locked={locked} language={language} placeholder={placeholder} onChange={html=>update(index,html)}/>
+    {!locked&&<button type="button" onClick={()=>remove(index)} className="mt-2 rounded p-2 hover:bg-red-50" title="Supprimer"><X size={14} className="text-red-600"/></button>}
+  </div>)}{!locked&&<button type="button" onClick={add} className="text-xs font-semibold px-3 py-2 rounded-lg border" style={{borderColor:'#BF8813',color:'#92400E'}}>+ Ajouter un élément</button>}</div>;
 }
 
 function EditableItems({ items, ordered, locked, onChange, placeholder, language = 'fr' }: { items: string[]; ordered?: boolean; locked: boolean; onChange: (items: string[]) => void; placeholder: string; language?: string }) {
@@ -1933,7 +1959,7 @@ function PedagogicalEditor({ c, locked, onChange, kind, language = 'fr' }: { c: 
   const labels:Record<string,string>={objective:'Objectif pédagogique',example:'Exemple',summary:'Résumé',important:'Important',correction:'Correction'};
   return <div className="space-y-2 p-3 rounded-xl border" style={{borderColor:'#E4E7EC',background:'#FBFCFE'}}>
     <input className="w-full font-semibold bg-transparent border-none outline-none" style={{color:'#002050'}} value={c.title||labels[kind]||''} onChange={e=>onChange({...c,title:e.target.value})} disabled={locked} spellCheck lang={language}/>
-    <RichTextEditor value={c.html||''} locked={locked} language={language} placeholder="Saisissez le contenu pédagogique..." onChange={html=>onChange({...c,html})}/>
+    <RichTextEditor value={c.html||c.content||c.text||''} locked={locked} language={language} placeholder="Saisissez le contenu pédagogique..." onChange={html=>onChange({...c,html})}/>
   </div>
 }
 
@@ -1978,21 +2004,20 @@ function BlockPreview({ block, def, locked, onChange, onGenerateTts, onGenerateS
         onChange={html => onChange({ ...c, html })} />
     );
     case 'callout': return (
-      <div className="flex gap-2 p-3 rounded-lg" style={{ background: c.type === 'warning' ? '#FEF3C7' : c.type === 'error' ? '#FEE2E2' : '#EFF6FF' }}>
-        <Info size={14} style={{ color: c.type === 'warning' ? '#D97706' : c.type === 'error' ? '#DC2626' : '#0369A1', flexShrink: 0, marginTop: 2 }} />
-        <textarea className="flex-1 bg-transparent text-sm border-none outline-none resize-none" rows={2}
-          value={c.content || ''} onChange={e => onChange({ ...c, content: e.target.value })} placeholder="Contenu de l'encadré..." disabled={locked} />
+      <div className="space-y-2 rounded-xl border p-3" style={{ borderColor:'#E4E7EC', background: c.type === 'warning' ? '#FEF3C7' : c.type === 'error' ? '#FEE2E2' : '#EFF6FF' }}>
+        <input className={inputCls} style={style} value={c.title||''} onChange={e=>onChange({...c,title:e.target.value})} placeholder="Titre de l’encadré (facultatif)" disabled={locked}/>
+        <RichTextEditor value={c.html||c.content||''} locked={locked} language={defaultLanguage} placeholder="Contenu de l'encadré..." onChange={html=>onChange({...c,html,content:stripHtml(html)})}/>
       </div>
     );
-    case 'bullet_list': return <EditableItems items={c.items || ['']} locked={locked} onChange={items=>onChange({...c,items})} placeholder="Écrivez un élément puis appuyez sur Entrée" />;
-    case 'numbered_list': return <EditableItems ordered items={c.items || ['']} locked={locked} onChange={items=>onChange({...c,items})} placeholder="Écrivez une étape puis appuyez sur Entrée" />;
+    case 'bullet_list': return <RichListEditor items={c.items || ['']} locked={locked} language={defaultLanguage} onChange={items=>onChange({...c,items})} placeholder="Élément de la liste" />;
+    case 'numbered_list': return <RichListEditor ordered items={c.items || ['']} locked={locked} language={defaultLanguage} onChange={items=>onChange({...c,items})} placeholder="Étape de la liste" />;
     case 'objective': case 'example': case 'summary': case 'important': case 'correction': return <PedagogicalEditor c={c} locked={locked} onChange={onChange} kind={block.block_type} />;
-    case 'definition': return <div className="space-y-2"><input className={inputCls} style={style} value={c.term||''} onChange={e=>onChange({...c,term:e.target.value})} placeholder="Terme à définir" disabled={locked}/><RichTextEditor value={c.definition||''} locked={locked} placeholder="Définition..." onChange={definition=>onChange({...c,definition})}/><RichTextEditor value={c.example||''} locked={locked} placeholder="Exemple facultatif..." onChange={example=>onChange({...c,example})}/></div>;
+    case 'definition': return <div className="space-y-2"><input className={inputCls} style={style} value={c.title||''} onChange={e=>onChange({...c,title:e.target.value})} placeholder="Titre du bloc (facultatif)" disabled={locked}/><input className={inputCls} style={style} value={c.term||''} onChange={e=>onChange({...c,term:e.target.value})} placeholder="Terme à définir" disabled={locked}/><RichTextEditor value={c.definition||''} locked={locked} language={defaultLanguage} placeholder="Définition..." onChange={definition=>onChange({...c,definition})}/><RichTextEditor value={c.example||''} locked={locked} language={defaultLanguage} placeholder="Exemple facultatif..." onChange={example=>onChange({...c,example})}/></div>;
     case 'case_study': return <div className="space-y-2"><input className={inputCls} style={style} value={c.title||''} onChange={e=>onChange({...c,title:e.target.value})} placeholder="Titre de l’étude de cas" disabled={locked}/><textarea className={inputCls} style={style} rows={3} value={c.context||''} onChange={e=>onChange({...c,context:e.target.value})} placeholder="Contexte" disabled={locked}/><textarea className={inputCls} style={style} rows={3} value={c.data||''} onChange={e=>onChange({...c,data:e.target.value})} placeholder="Données et informations disponibles" disabled={locked}/><textarea className={inputCls} style={style} rows={3} value={c.task||''} onChange={e=>onChange({...c,task:e.target.value})} placeholder="Travail demandé" disabled={locked}/><EditableItems items={c.questions||['']} locked={locked} onChange={questions=>onChange({...c,questions})} placeholder="Question d’analyse" /></div>;
     case 'remember': return (
       <div className="p-3 rounded-lg" style={{ background: 'rgba(191,136,19,0.08)', border: '1px solid #BF881330' }}>
         <div className="flex items-center gap-1.5 mb-2"><Star size={13} style={{ color: '#BF8813' }} /><input className="text-xs font-bold bg-transparent outline-none flex-1" style={{color:'#BF8813'}} value={c.title||'À retenir'} onChange={e=>onChange({...c,title:e.target.value})} disabled={locked}/></div>
-        <EditableItems items={c.points||['']} locked={locked} onChange={points=>onChange({...c,points})} placeholder="Point clé à retenir" />
+        <RichListEditor items={c.points||['']} locked={locked} language={defaultLanguage} onChange={points=>onChange({...c,points})} placeholder="Point clé à retenir" />
       </div>
     );
     case 'open_question': return <div className="space-y-2"><textarea className={inputCls} style={style} rows={3} value={c.question||''} onChange={e=>onChange({...c,question:e.target.value})} placeholder="Question posée à l’apprenant" disabled={locked}/><textarea className={inputCls} style={style} rows={2} value={c.guidance||''} onChange={e=>onChange({...c,guidance:e.target.value})} placeholder="Consignes ou éléments attendus" disabled={locked}/><textarea className={inputCls} style={style} rows={3} value={c.expected_answer||''} onChange={e=>onChange({...c,expected_answer:e.target.value})} placeholder="Réponse de référence pour le correcteur" disabled={locked}/><input type="number" className={inputCls} style={style} value={c.points||10} onChange={e=>onChange({...c,points:Number(e.target.value)})} min={0} placeholder="Points" disabled={locked}/></div>;
@@ -2071,7 +2096,8 @@ function BlockPreview({ block, def, locked, onChange, onGenerateTts, onGenerateS
     );
     case 'quote': return (
       <div className="space-y-2">
-        <textarea className={inputCls} style={style} rows={3} value={c.text || ''} onChange={e=>onChange({...c,text:e.target.value})} placeholder="Citation ou témoignage" disabled={locked}/>
+        <input className={inputCls} style={style} value={c.title||''} onChange={e=>onChange({...c,title:e.target.value})} placeholder="Titre du bloc (facultatif)" disabled={locked}/>
+        <RichTextEditor value={c.html||c.text||''} locked={locked} language={defaultLanguage} placeholder="Citation ou témoignage" onChange={html=>onChange({...c,html,text:stripHtml(html)})}/>
         <input className={inputCls} style={style} value={c.author || ''} onChange={e=>onChange({...c,author:e.target.value})} placeholder="Auteur / source" disabled={locked}/>
       </div>
     );
@@ -2092,14 +2118,30 @@ function BlockPreview({ block, def, locked, onChange, onGenerateTts, onGenerateS
     case 'flashcards': return (
       <div className="space-y-3">{(c.cards||[]).map((card:any,i:number)=><div key={card.id||i} className="grid gap-2 rounded-xl border p-3 sm:grid-cols-2" style={style}><textarea className={inputCls} style={style} rows={2} value={card.front||''} onChange={e=>{const cards=[...(c.cards||[])];cards[i]={...card,front:e.target.value};onChange({...c,cards})}} placeholder="Recto" disabled={locked}/><textarea className={inputCls} style={style} rows={2} value={card.back||''} onChange={e=>{const cards=[...(c.cards||[])];cards[i]={...card,back:e.target.value};onChange({...c,cards})}} placeholder="Verso" disabled={locked}/></div>)}{!locked&&<button type="button" className="text-xs font-semibold text-[#002050]" onClick={()=>onChange({...c,cards:[...(c.cards||[]),{id:crypto.randomUUID(),front:'',back:''}]})}>+ Ajouter une carte</button>}</div>
     );
-    case 'interactive_table': return (
-      <div className="space-y-2">
-        <input className={inputCls} style={style} value={(c.headers||[]).join(' | ')} onChange={e=>onChange({...c,headers:e.target.value.split('|').map((x:string)=>x.trim()),training_column_indexes:(c.training_column_indexes||[]).filter((i:number)=>i<e.target.value.split('|').length)})} placeholder="Colonnes séparées par |" disabled={locked}/>
-        <textarea className={inputCls} style={style} rows={5} value={(c.rows||[]).map((r:any[])=>r.join(' | ')).join('\n')} onChange={e=>onChange({...c,rows:e.target.value.split('\n').map((line:string)=>line.split('|').map(x=>x.trim()))})} placeholder={"Une ligne par rangée, cellules séparées par |\nValeur 1 | Valeur 2"} disabled={locked}/>
-        <select className={inputCls} style={style} value={c.mode||'explore'} onChange={e=>onChange({...c,mode:e.target.value})} disabled={locked}><option value="explore">Exploration / lecture</option><option value="training">Entraînement à compléter</option></select>
-        {c.mode==='training'&&<div className="rounded-xl border p-3" style={{borderColor:'#E4E7EC'}}><p className="text-xs font-semibold text-[#002050]">Colonnes que l’apprenant doit compléter</p><div className="mt-2 flex flex-wrap gap-3">{(c.headers||[]).map((header:string,i:number)=><label key={i} className="flex items-center gap-2 text-xs"><input type="checkbox" checked={(c.training_column_indexes||[]).includes(i)} onChange={e=>{const current=new Set<number>(c.training_column_indexes||[]);e.target.checked?current.add(i):current.delete(i);onChange({...c,training_column_indexes:[...current].sort((a,b)=>a-b)})}} disabled={locked}/><span>{header||`Colonne ${i+1}`}</span></label>)}</div></div>}
-      </div>
-    );
+    case 'interactive_table': {
+      const headers:string[] = Array.isArray(c.headers) && c.headers.length ? c.headers.map((x:any)=>String(x??'')) : ['Colonne 1','Colonne 2'];
+      const rows:string[][] = Array.isArray(c.rows) && c.rows.length ? c.rows.map((row:any)=>headers.map((_:string,i:number)=>String(Array.isArray(row)?(row[i]??''):''))) : [headers.map(()=> '')];
+      const updateHeader=(index:number,value:string)=>{const next=[...headers];next[index]=value;onChange({...c,headers:next,rows});};
+      const updateCell=(ri:number,ci:number,value:string)=>{const next=rows.map(r=>[...r]);next[ri][ci]=value;onChange({...c,headers,rows:next});};
+      const addColumn=()=>{const nextHeaders=[...headers,`Colonne ${headers.length+1}`];const nextRows=rows.map(r=>[...r,'']);onChange({...c,headers:nextHeaders,rows:nextRows});};
+      const removeColumn=(ci:number)=>{if(headers.length<=1)return;const nextHeaders=headers.filter((_,i)=>i!==ci);const nextRows=rows.map(r=>r.filter((_,i)=>i!==ci));const training=(c.training_column_indexes||[]).filter((i:number)=>i!==ci).map((i:number)=>i>ci?i-1:i);onChange({...c,headers:nextHeaders,rows:nextRows,training_column_indexes:training});};
+      const addRow=()=>onChange({...c,headers,rows:[...rows,headers.map(()=> '')]});
+      const removeRow=(ri:number)=>{const next=rows.filter((_,i)=>i!==ri);onChange({...c,headers,rows:next.length?next:[headers.map(()=> '')]});};
+      return (
+        <div className="space-y-3">
+          <div className="overflow-x-auto rounded-xl border" style={{borderColor:'#E4E7EC'}}>
+            <table className="min-w-full text-xs">
+              <thead><tr className="bg-slate-50"><th className="w-10 px-2 py-2 text-slate-400">#</th>{headers.map((header,i)=><th key={i} className="min-w-[180px] p-2"><div className="flex gap-1"><input className={inputCls} style={style} value={header} onChange={e=>updateHeader(i,e.target.value)} placeholder={`Colonne ${i+1}`} disabled={locked}/>{!locked&&headers.length>1&&<button type="button" onClick={()=>removeColumn(i)} className="rounded px-2 text-red-600 hover:bg-red-50" title="Supprimer la colonne">×</button>}</div></th>)}</tr></thead>
+              <tbody>{rows.map((row,ri)=><tr key={ri} className="border-t" style={{borderColor:'#EEF1F5'}}><td className="px-2 py-2 text-center font-semibold text-slate-400">{ri+1}</td>{headers.map((_,ci)=><td key={ci} className="p-2 align-top"><textarea className={`${inputCls} min-h-[70px] resize-y`} style={style} value={row[ci]||''} onChange={e=>updateCell(ri,ci,e.target.value)} placeholder="Contenu de la cellule" disabled={locked}/></td>)}{!locked&&<td className="p-2"><button type="button" onClick={()=>removeRow(ri)} className="rounded px-2 py-1 text-red-600 hover:bg-red-50" title="Supprimer la ligne">×</button></td>}</tr>)}</tbody>
+            </table>
+          </div>
+          {!locked&&<div className="flex flex-wrap gap-2"><button type="button" onClick={addRow} className="rounded-lg border px-3 py-2 text-xs font-semibold" style={{borderColor:'#BF8813',color:'#92400E'}}>+ Ligne</button><button type="button" onClick={addColumn} className="rounded-lg border px-3 py-2 text-xs font-semibold" style={{borderColor:'#002050',color:'#002050'}}>+ Colonne</button></div>}
+          <div className="grid gap-2 sm:grid-cols-2"><select className={inputCls} style={style} value={c.mode||'explore'} onChange={e=>onChange({...c,headers,rows,mode:e.target.value})} disabled={locked}><option value="explore">Exploration / lecture</option><option value="training">Entraînement à compléter</option></select><select className={inputCls} style={style} value={c.style||'table'} onChange={e=>onChange({...c,headers,rows,style:e.target.value})} disabled={locked}><option value="table">Tableau</option><option value="cards">Cartes</option></select></div>
+          {c.mode==='training'&&<div className="rounded-xl border p-3" style={{borderColor:'#E4E7EC'}}><p className="text-xs font-semibold text-[#002050]">Colonnes que l’apprenant doit compléter</p><div className="mt-2 flex flex-wrap gap-3">{headers.map((header:string,i:number)=><label key={i} className="flex items-center gap-2 text-xs"><input type="checkbox" checked={(c.training_column_indexes||[]).includes(i)} onChange={e=>{const current=new Set<number>(c.training_column_indexes||[]);e.target.checked?current.add(i):current.delete(i);onChange({...c,headers,rows,training_column_indexes:[...current].sort((a,b)=>a-b)})}} disabled={locked}/><span>{header||`Colonne ${i+1}`}</span></label>)}</div></div>}
+          <p className="text-[11px] text-slate-500">Le tableau est enregistré cellule par cellule. Les anciennes tables créées avec le format « | » restent compatibles et sont automatiquement normalisées.</p>
+        </div>
+      );
+    }
     case 'timeline': return (
       <div className="space-y-2">{(c.steps||[]).map((step:any,i:number)=><div key={step.id||i} className="grid gap-2 sm:grid-cols-[180px_1fr]"><input className={inputCls} style={style} value={step.title||''} onChange={e=>{const steps=[...(c.steps||[])];steps[i]={...step,title:e.target.value};onChange({...c,steps})}} placeholder={`Étape ${i+1}`} disabled={locked}/><input className={inputCls} style={style} value={step.description||''} onChange={e=>{const steps=[...(c.steps||[])];steps[i]={...step,description:e.target.value};onChange({...c,steps})}} placeholder="Description" disabled={locked}/></div>)}{!locked&&<button type="button" className="text-xs font-semibold text-[#002050]" onClick={()=>onChange({...c,steps:[...(c.steps||[]),{id:crypto.randomUUID(),date:'',title:'',description:''}]})}>+ Ajouter une étape</button>}</div>
     );
@@ -2162,7 +2204,7 @@ function BlockSettings({ block, locked, onUpdate, onAI, onRemoveResource, course
   const style = { borderColor: '#E4E7EC' };
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
-  const showOptionalBlockTitle = ['video','audio','pdf','word','excel','scorm','download','embed','assignment_upload','exercise','case_study','oral_response','listening_comprehension','written_expression'].includes(block.block_type);
+  const showOptionalBlockTitle = !['heading','subheading','separator','callout','remember','objective','example','summary','important','definition','correction','quote'].includes(block.block_type);
   const resourceRagCapable = ['pdf','word','excel','download'].includes(block.block_type);
   const previewProtectedResource = ['image','gallery','video','audio','pdf','word','excel','download','embed'].includes(block.block_type);
 

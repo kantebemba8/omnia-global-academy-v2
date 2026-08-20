@@ -40,6 +40,26 @@ function fmtSize(bytes?: number) {
   return `${(bytes / 1024 / 1024).toFixed(1)} Mo`;
 }
 
+function escapeHtml(value: string) {
+  return String(value || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+}
+
+function richHtml(value: any) {
+  const raw = String(value ?? '').trim();
+  if (!raw) return '';
+  if (/<\/?(?:p|div|strong|b|em|i|u|ul|ol|li|a|br|span|blockquote)\b/i.test(raw)) return raw;
+  return raw
+    .split(/\n{2,}/)
+    .map(paragraph => `<p>${escapeHtml(paragraph).replace(/\n/g, '<br />')}</p>`)
+    .join('');
+}
+
+function RichContent({ value, className = '' }: { value: any; className?: string }) {
+  const html = richHtml(value);
+  if (!html) return null;
+  return <div className={`prose prose-sm max-w-none leading-relaxed [&_p]:my-2 [&_ul]:my-2 [&_ol]:my-2 ${className}`} dangerouslySetInnerHTML={{ __html: html }} />;
+}
+
 
 function ResourceUnavailable({ block, label }: { block: Block; label: string }) {
   return (
@@ -92,7 +112,7 @@ export function BlockRenderer({ block, onQuizAnswer, onTrainingResult, onFileTra
       return (
         <div className="prose prose-sm max-w-none my-3 text-gray-700 leading-relaxed"
           style={{ lineHeight: 1.75 }}
-          dangerouslySetInnerHTML={{ __html: c.html || `<p>${c.text || ''}</p>` }}
+          dangerouslySetInnerHTML={{ __html: richHtml(c.html || c.text || '') }}
         />
       );
 
@@ -120,8 +140,8 @@ export function BlockRenderer({ block, onQuizAnswer, onTrainingResult, onFileTra
         <div className="flex gap-3 p-4 rounded-xl my-4" style={{ background: ct.bg, border: `1px solid ${ct.border}` }}>
           <CIcon size={18} style={{ color: ct.color, flexShrink: 0, marginTop: 1 }} />
           <div>
-            {c.title && <p className="font-bold text-sm mb-1" style={{ color: ct.color }}>{c.title}</p>}
-            <p className="text-sm leading-relaxed" style={{ color: '#374151' }}>{c.content || ''}</p>
+            {(block.title || c.title) && <p className="font-bold text-sm mb-1" style={{ color: ct.color }}>{block.title || c.title}</p>}
+            <RichContent value={c.html || c.content || ''} className="text-sm text-gray-700" />
           </div>
         </div>
       );
@@ -131,8 +151,8 @@ export function BlockRenderer({ block, onQuizAnswer, onTrainingResult, onFileTra
         <div className="flex gap-3 p-4 rounded-xl my-4" style={{ background: '#FEF2F2', border: '1px solid #FECACA' }}>
           <AlertTriangle size={18} style={{ color: '#DC2626', flexShrink: 0, marginTop: 1 }} />
           <div>
-            <p className="font-bold text-sm mb-1" style={{ color: '#DC2626' }}>Important</p>
-            <p className="text-sm leading-relaxed" style={{ color: '#374151' }}>{c.content || ''}</p>
+            <p className="font-bold text-sm mb-1" style={{ color: '#DC2626' }}>{block.title || c.title || 'Important'}</p>
+            <RichContent value={c.html || c.content || ''} className="text-sm text-gray-700" />
           </div>
         </div>
       );
@@ -142,9 +162,9 @@ export function BlockRenderer({ block, onQuizAnswer, onTrainingResult, onFileTra
       return (
         <div className="flex gap-3 p-4 rounded-xl my-4" style={{ background: '#D1FAE5', border: '1px solid #6EE7B7' }}>
           <CheckCircle size={18} style={{ color: '#065F46', flexShrink: 0, marginTop: 1 }} />
-          <div>
-            <p className="font-bold text-sm mb-1" style={{ color: '#065F46' }}>Objectif pédagogique</p>
-            <p className="text-sm leading-relaxed" style={{ color: '#374151' }}>{c.text || ''}</p>
+          <div className="min-w-0 flex-1">
+            <p className="font-bold text-sm mb-1" style={{ color: '#065F46' }}>{block.title || c.title || 'Objectif pédagogique'}</p>
+            <RichContent value={c.html || c.text || c.content || ''} className="text-sm text-gray-700" />
           </div>
         </div>
       );
@@ -154,13 +174,13 @@ export function BlockRenderer({ block, onQuizAnswer, onTrainingResult, onFileTra
         <div className="p-5 rounded-xl my-4" style={{ background: 'rgba(191,136,19,0.06)', border: '1px solid rgba(191,136,19,0.25)' }}>
           <div className="flex items-center gap-2 mb-3">
             <Star size={16} style={{ color: '#BF8813' }} />
-            <p className="font-bold" style={{ color: '#BF8813' }}>{c.title || 'À retenir'}</p>
+            <p className="font-bold" style={{ color: '#BF8813' }}>{block.title || c.title || 'À retenir'}</p>
           </div>
           <ul className="space-y-2">
             {(c.points || []).map((pt: string, i: number) => (
               <li key={i} className="flex items-start gap-2 text-sm" style={{ color: '#374151' }}>
                 <span className="w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5" style={{ background: '#BF8813', color: 'white' }}>{i + 1}</span>
-                {pt}
+                <RichContent value={pt} className="min-w-0 flex-1 text-sm text-gray-700" />
               </li>
             ))}
           </ul>
@@ -172,9 +192,9 @@ export function BlockRenderer({ block, onQuizAnswer, onTrainingResult, onFileTra
         <div className="p-5 rounded-xl my-4" style={{ background: '#FFFBEB', border: '1px solid #FDE68A' }}>
           <div className="flex items-center gap-2 mb-3">
             <Lightbulb size={16} style={{ color: '#D97706' }} />
-            <p className="font-bold" style={{ color: '#D97706' }}>{c.title || 'Exemple'}</p>
+            <p className="font-bold" style={{ color: '#D97706' }}>{block.title || c.title || 'Exemple'}</p>
           </div>
-          {c.content && <div className="text-sm mb-3 leading-relaxed" style={{ color: '#374151' }} dangerouslySetInnerHTML={{ __html: c.content }} />}
+          {(c.html || c.content) && <RichContent value={c.html || c.content} className="mb-3 text-sm text-gray-700" />}
           {c.situation && <p className="text-sm mb-2" style={{ color: '#374151' }}><strong>Situation :</strong> {c.situation}</p>}
           {c.explication && <p className="text-sm mb-2" style={{ color: '#374151' }}><strong>Explication :</strong> {c.explication}</p>}
           {c.conclusion && <p className="text-sm italic mt-2 pt-2" style={{ color: '#92400E', borderTop: '1px solid #FDE68A' }}>{c.conclusion}</p>}
@@ -184,9 +204,10 @@ export function BlockRenderer({ block, onQuizAnswer, onTrainingResult, onFileTra
     case 'definition':
       return (
         <div className="p-4 rounded-xl my-4" style={{ background: '#F0F9FF', border: '1px solid #BAE6FD' }}>
-          <p className="font-bold text-base mb-2" style={{ color: '#0369A1' }}>{c.term || ''}</p>
-          <p className="text-sm mb-2" style={{ color: '#374151' }}>{c.definition || ''}</p>
-          {c.example && <p className="text-xs italic" style={{ color: '#6B7280' }}>Exemple : {c.example}</p>}
+          {(block.title || c.title) && <p className="mb-2 text-xs font-bold uppercase tracking-wide" style={{ color: '#0369A1' }}>{block.title || c.title}</p>}
+          {c.term && <p className="font-bold text-base mb-2" style={{ color: '#0369A1' }}>{c.term}</p>}
+          <RichContent value={c.definition || ''} className="text-sm text-gray-700" />
+          {c.example && <div className="mt-3 border-t pt-3 text-xs italic" style={{ color: '#6B7280', borderColor:'#BAE6FD' }}><span className="font-semibold not-italic">Exemple : </span><RichContent value={c.example} className="inline text-xs text-gray-500" /></div>}
         </div>
       );
 
@@ -195,9 +216,9 @@ export function BlockRenderer({ block, onQuizAnswer, onTrainingResult, onFileTra
         <div className="p-5 rounded-xl my-4" style={{ background: '#F5F3FF', border: '1px solid #DDD6FE' }}>
           <div className="flex items-center gap-2 mb-3">
             <BookOpen size={16} style={{ color: '#7C3AED' }} />
-            <p className="font-bold" style={{ color: '#7C3AED' }}>Résumé</p>
+            <p className="font-bold" style={{ color: '#7C3AED' }}>{block.title || c.title || 'Résumé'}</p>
           </div>
-          {c.content && <div className="text-sm mb-3 leading-relaxed" style={{ color: '#374151' }} dangerouslySetInnerHTML={{ __html: c.content }} />}
+          {(c.html || c.content) && <RichContent value={c.html || c.content} className="mb-3 text-sm text-gray-700" />}
           {c.intro && <p className="text-sm font-semibold mb-2" style={{ color: '#374151' }}>{c.intro}</p>}
           {(c.points || []).length > 0 && (
             <ul className="space-y-1">
@@ -219,9 +240,9 @@ export function BlockRenderer({ block, onQuizAnswer, onTrainingResult, onFileTra
         <div className="p-5 rounded-xl my-4" style={{ background: '#D1FAE5', border: '1px solid #6EE7B7' }}>
           <div className="flex items-center gap-2 mb-3">
             <CheckCircle size={16} style={{ color: '#065F46' }} />
-            <p className="font-bold" style={{ color: '#065F46' }}>Correction</p>
+            <p className="font-bold" style={{ color: '#065F46' }}>{block.title || c.title || 'Correction'}</p>
           </div>
-          <div className="text-sm" style={{ color: '#374151' }} dangerouslySetInnerHTML={{ __html: c.content || '' }} />
+          <RichContent value={c.html || c.content || ''} className="text-sm text-gray-700" />
           {(c.key_points || []).length > 0 && (
             <ul className="mt-3 space-y-1">
               {(c.key_points || []).map((pt: string, i: number) => (
@@ -328,8 +349,11 @@ export function BlockRenderer({ block, onQuizAnswer, onTrainingResult, onFileTra
     case 'flashcards':
       return <FlashcardsBlock cards={c.cards || []} onComplete={(score)=>onTrainingResult?.(block.id,score,{cards_seen:c.cards?.length||0},score>=Number((block as any).training_passing_score||80))} />;
 
-    case 'interactive_table':
-      return <InteractiveTableBlock headers={c.headers || []} rows={c.rows || []} style={c.style} training={block.interaction_mode==='training'||c.mode==='training'} trainingColumns={Array.isArray(c.training_column_indexes)?c.training_column_indexes:[]} threshold={Number(block.training_passing_score||80)} onResult={(score,answer,passed)=>onTrainingResult?.(block.id,score,answer,passed)} />;
+    case 'interactive_table': {
+      const headers = Array.isArray(c.headers) ? c.headers.map((x:any)=>String(x??'')) : [];
+      const rows = Array.isArray(c.rows) ? c.rows.map((row:any)=>headers.map((_:string,i:number)=>String(Array.isArray(row)?(row[i]??''):''))) : [];
+      return <div className="my-4">{(block.title || c.title) && <p className="mb-2 font-bold text-[#002050]">{block.title || c.title}</p>}<InteractiveTableBlock headers={headers} rows={rows} style={c.style} training={block.interaction_mode==='training'||c.mode==='training'} trainingColumns={Array.isArray(c.training_column_indexes)?c.training_column_indexes:[]} threshold={Number(block.training_passing_score||80)} onResult={(score,answer,passed)=>onTrainingResult?.(block.id,score,answer,passed)} /></div>;
+    }
 
     case 'timeline':
       return (
@@ -363,11 +387,11 @@ export function BlockRenderer({ block, onQuizAnswer, onTrainingResult, onFileTra
 
 
     case 'bullet_list':
-      return <ul className="list-disc pl-6 space-y-1 text-sm text-gray-700">{(c.items || []).map((x: string, i: number) => <li key={i}>{x}</li>)}</ul>;
+      return <div className="my-4">{(block.title || c.title) && <p className="mb-2 font-bold text-[#002050]">{block.title || c.title}</p>}<ul className="list-disc pl-6 space-y-2 text-sm text-gray-700">{(c.items || []).map((x: string, i: number) => <li key={i}><RichContent value={x} className="text-sm text-gray-700" /></li>)}</ul></div>;
     case 'numbered_list':
-      return <ol className="list-decimal pl-6 space-y-1 text-sm text-gray-700">{(c.items || []).map((x: string, i: number) => <li key={i}>{x}</li>)}</ol>;
+      return <div className="my-4">{(block.title || c.title) && <p className="mb-2 font-bold text-[#002050]">{block.title || c.title}</p>}<ol className="list-decimal pl-6 space-y-2 text-sm text-gray-700">{(c.items || []).map((x: string, i: number) => <li key={i}><RichContent value={x} className="text-sm text-gray-700" /></li>)}</ol></div>;
     case 'quote':
-      return <blockquote className="border-l-4 pl-4 py-2 italic text-gray-700" style={{ borderColor: '#BF8813' }}><p>{c.text || ''}</p>{c.author && <footer className="mt-2 text-xs not-italic text-gray-500">— {c.author}</footer>}</blockquote>;
+      return <blockquote className="my-4 border-l-4 pl-4 py-2 italic text-gray-700" style={{ borderColor: '#BF8813' }}>{(block.title || c.title) && <p className="mb-2 text-sm font-bold not-italic text-[#002050]">{block.title || c.title}</p>}<RichContent value={c.html || c.text || ''} className="text-sm text-gray-700" />{c.author && <footer className="mt-2 text-xs not-italic text-gray-500">— {c.author}</footer>}</blockquote>;
     case 'code':
       return <pre className="overflow-x-auto rounded-lg bg-gray-950 p-4 text-xs text-gray-100"><code>{c.code || ''}</code></pre>;
     case 'checklist':
@@ -917,8 +941,10 @@ export function LessonBlocksRenderer({ blocks, contentText, onQuizAnswer, onTrai
         .map(block => {
           const compactTypes = new Set(['image','gallery','video','audio','pdf','word','excel','table','interactive_table','chart','scorm','embed','download']);
           const widthClass = compactTypes.has(block.block_type) ? 'max-w-3xl' : 'max-w-5xl';
+          const titleHandledTypes = new Set(['callout','important','objective','remember','example','definition','summary','correction','bullet_list','numbered_list','quote','interactive_table','image','video','audio','pdf','word','excel','download','scorm','embed','assignment_upload','exercise','case_study']);
           return (
             <div key={block.id} className={`mx-auto w-full ${widthClass}`}>
+              {block.title && !titleHandledTypes.has(block.block_type) && <h4 className="mb-2 mt-4 text-base font-bold" style={{color:'#002050'}}>{block.title}</h4>}
               <BlockRenderBoundary blockType={block.block_type}><BlockRenderer block={block} onQuizAnswer={onQuizAnswer} onTrainingResult={block.interaction_mode === 'training' ? onTrainingResult : undefined} onFileTrainingSubmit={block.interaction_mode === 'training' ? onFileTrainingSubmit : undefined} learnerState={learnerStateByBlock[block.id] || {}} onStateChange={onStateChange} isOnline={isOnline} /></BlockRenderBoundary>
             </div>
           );
