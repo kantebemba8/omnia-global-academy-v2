@@ -14,6 +14,8 @@ interface Block {
   position: number;
   interaction_mode?: 'content' | 'training' | 'assessment';
   training_passing_score?: number;
+  training_is_graded?: boolean;
+  linked_block_ids?: string[];
   title?: string;
   content_json: Record<string, any>;
   settings_json?: Record<string, any>;
@@ -78,6 +80,8 @@ function ResourceUnavailable({ block, label }: { block: Block; label: string }) 
 // ══════════════════════════════════════════════════════════════
 export function BlockRenderer({ block, onQuizAnswer, onTrainingResult, onFileTrainingSubmit, learnerState, onStateChange, isOnline = true }: BlockRendererProps) {
   const c = canonicalizeBlockContent(block.block_type, block.content_json);
+  const graded = block.training_is_graded !== false;
+  const trainingThreshold = Number(block.training_passing_score ?? 80);
   const onlineOnlyTypes = new Set(['video', 'audio', 'pdf', 'word', 'download', 'excel', 'scorm', 'embed']);
   if (!isOnline && onlineOnlyTypes.has(block.block_type)) {
     return (
@@ -233,7 +237,7 @@ export function BlockRenderer({ block, onQuizAnswer, onTrainingResult, onFileTra
       );
 
     case 'case_study':
-      return <CaseStudyTraining c={c} training={block.interaction_mode === 'training'} threshold={Number(block.training_passing_score || 80)} onResult={(score, answer, passed) => onTrainingResult?.(block.id, score, answer, passed)} />;
+      return <CaseStudyTraining c={c} training={block.interaction_mode === 'training'} threshold={trainingThreshold} graded={graded} onResult={(score, answer, passed) => onTrainingResult?.(block.id, score, answer, passed)} />;
 
     case 'correction':
       return (
@@ -317,21 +321,21 @@ export function BlockRenderer({ block, onQuizAnswer, onTrainingResult, onFileTra
     case 'dialogue':
       return <div className="my-4 space-y-2">{(c.lines||[]).map((x:any,i:number)=><div key={i} className="rounded-xl border p-3" style={{borderColor:'#E4E7EC'}}><span className="text-xs font-bold text-[#BF8813]">{x.speaker||`#${i+1}`}</span><p className="mt-1 text-sm font-semibold text-[#002050]">{x.text}</p>{x.translation&&<p className="mt-1 text-xs text-slate-500">{x.translation}</p>}</div>)}</div>;
     case 'cloze':
-      return <ClozeBlock c={c} threshold={Number((block as any).training_passing_score||80)} onResult={(score, answer, passed)=>onTrainingResult?.(block.id, score, answer, passed)}/>;
+      return <ClozeBlock c={c} threshold={trainingThreshold} graded={graded} onResult={(score, answer, passed)=>onTrainingResult?.(block.id, score, answer, passed)}/>;
     case 'matching':
-      return <MatchingBlock c={c} threshold={Number((block as any).training_passing_score||80)} onResult={(score, answer, passed)=>onTrainingResult?.(block.id, score, answer, passed)}/>;
+      return <MatchingBlock c={c} threshold={trainingThreshold} graded={graded} onResult={(score, answer, passed)=>onTrainingResult?.(block.id, score, answer, passed)}/>;
     case 'sentence_order':
-      return <SentenceOrderBlock c={c} threshold={Number((block as any).training_passing_score||80)} onResult={(score, answer, passed)=>onTrainingResult?.(block.id, score, answer, passed)}/>;
+      return <SentenceOrderBlock c={c} threshold={trainingThreshold} graded={graded} onResult={(score, answer, passed)=>onTrainingResult?.(block.id, score, answer, passed)}/>;
     case 'dictation':
-      return <DictationTraining c={c} threshold={Number((block as any).training_passing_score||80)} onResult={(score,answer,passed)=>onTrainingResult?.(block.id,score,answer,passed)}/>;
+      return <DictationTraining c={c} threshold={trainingThreshold} graded={graded} onResult={(score,answer,passed)=>onTrainingResult?.(block.id,score,answer,passed)}/>;
     case 'pronunciation':
-      return <SelfAssessedOralTraining title={c.title || 'Prononciation'} prompt={c.instructions || 'Écoutez puis répétez les éléments à voix haute.'} audios={(c.items||[]).map((x:any)=>({label:x.text,phonetic:x.phonetic,url:x.audio_url}))} threshold={Number((block as any).training_passing_score||80)} onResult={(score,answer,passed)=>onTrainingResult?.(block.id,score,answer,passed)}/>;
+      return <SelfAssessedOralTraining title={c.title || 'Prononciation'} prompt={c.instructions || 'Écoutez puis répétez les éléments à voix haute.'} audios={(c.items||[]).map((x:any)=>({label:x.text,phonetic:x.phonetic,url:x.audio_url}))} threshold={trainingThreshold} graded={graded} onResult={(score,answer,passed)=>onTrainingResult?.(block.id,score,answer,passed)}/>;
     case 'oral_response':
-      return <SelfAssessedOralTraining title="Réponse orale" prompt={c.prompt || ''} audios={c.reference_audio_url?[{label:'Audio de référence',url:c.reference_audio_url}]:[]} threshold={Number((block as any).training_passing_score||80)} onResult={(score,answer,passed)=>onTrainingResult?.(block.id,score,answer,passed)}/>;
+      return <SelfAssessedOralTraining title="Réponse orale" prompt={c.prompt || ''} audios={c.reference_audio_url?[{label:'Audio de référence',url:c.reference_audio_url}]:[]} threshold={trainingThreshold} graded={graded} onResult={(score,answer,passed)=>onTrainingResult?.(block.id,score,answer,passed)}/>;
     case 'listening_comprehension':
-      return <ListeningTraining c={c} threshold={Number((block as any).training_passing_score||80)} onResult={(score,answer,passed)=>onTrainingResult?.(block.id,score,answer,passed)}/>;
+      return <ListeningTraining c={c} threshold={trainingThreshold} graded={graded} onResult={(score,answer,passed)=>onTrainingResult?.(block.id,score,answer,passed)}/>;
     case 'written_expression':
-      return <WrittenTraining c={c} threshold={Number((block as any).training_passing_score||80)} onResult={(score,answer,passed)=>onTrainingResult?.(block.id,score,answer,passed)}/>;
+      return <WrittenTraining c={c} threshold={trainingThreshold} graded={graded} onResult={(score,answer,passed)=>onTrainingResult?.(block.id,score,answer,passed)}/>;
 
     case 'qcm':
       return <QcmBlock block={{...block, content_json:c}} onAnswer={(id,a,correct)=>{onQuizAnswer?.(id,a,correct);onTrainingResult?.(id,correct?100:0,a,correct);}} />;
@@ -340,19 +344,19 @@ export function BlockRenderer({ block, onQuizAnswer, onTrainingResult, onFileTra
       return <TrueFalseBlock block={{...block, content_json:c}} onAnswer={(id,a,correct)=>{onQuizAnswer?.(id,a,correct);onTrainingResult?.(id,correct?100:0,a,correct);}} />;
 
     case 'open_question':
-      return <OpenQuestionTraining c={c} threshold={Number((block as any).training_passing_score||80)} onResult={(score,answer,passed)=>onTrainingResult?.(block.id,score,answer,passed)}/>;
+      return <OpenQuestionTraining c={c} threshold={trainingThreshold} graded={graded} onResult={(score,answer,passed)=>onTrainingResult?.(block.id,score,answer,passed)}/>;
 
     // ── AVANCÉS ────────────────────────────────────────────────
     case 'accordion':
       return <AccordionBlock items={c.items || []} />;
 
     case 'flashcards':
-      return <FlashcardsBlock cards={c.cards || []} onComplete={(score)=>onTrainingResult?.(block.id,score,{cards_seen:c.cards?.length||0},score>=Number((block as any).training_passing_score||80))} />;
+      return <FlashcardsBlock cards={c.cards || []} onComplete={(score)=>onTrainingResult?.(block.id,score,{cards_seen:c.cards?.length||0},graded ? score>=trainingThreshold : true)} />;
 
     case 'interactive_table': {
       const headers = Array.isArray(c.headers) ? c.headers.map((x:any)=>String(x??'')) : [];
       const rows = Array.isArray(c.rows) ? c.rows.map((row:any)=>headers.map((_:string,i:number)=>String(Array.isArray(row)?(row[i]??''):''))) : [];
-      return <div className="my-4">{(block.title || c.title) && <p className="mb-2 font-bold text-[#002050]">{block.title || c.title}</p>}<InteractiveTableBlock headers={headers} rows={rows} style={c.style} training={block.interaction_mode==='training'||c.mode==='training'} trainingColumns={Array.isArray(c.training_column_indexes)?c.training_column_indexes:[]} threshold={Number(block.training_passing_score||80)} onResult={(score,answer,passed)=>onTrainingResult?.(block.id,score,answer,passed)} /></div>;
+      return <div className="my-4">{(block.title || c.title) && <p className="mb-2 font-bold text-[#002050]">{block.title || c.title}</p>}<InteractiveTableBlock headers={headers} rows={rows} style={c.style} training={block.interaction_mode==='training'||c.mode==='training'} trainingColumns={Array.isArray(c.training_column_indexes)?c.training_column_indexes:[]} threshold={trainingThreshold} graded={graded} onResult={(score,answer,passed)=>onTrainingResult?.(block.id,score,answer,passed)} /></div>;
     }
 
     case 'timeline':
@@ -425,8 +429,8 @@ export function BlockRenderer({ block, onQuizAnswer, onTrainingResult, onFileTra
 function normAnswer(value:string){return String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9\s]/g,' ').replace(/\s+/g,' ').trim()}
 function latexToMathMl(latex:string){const source=String(latex||'').trim();if(!source)return '';const escaped=source.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');return `<math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><mtext>${escaped}</mtext></math>`}
 function similarityScore(expected:string,actual:string){const a=normAnswer(expected),b=normAnswer(actual);if(!a||!b)return 0;const aw=new Set(a.split(' ').filter(Boolean)),bw=new Set(b.split(' ').filter(Boolean));const common=[...aw].filter(x=>bw.has(x)).length;const union=new Set([...aw,...bw]).size||1;const lexical=Math.round(common/union*100);const lengthRatio=Math.round(Math.min(a.length,b.length)/Math.max(a.length,b.length)*100);return Math.round(lexical*.75+lengthRatio*.25)}
-function DictationTraining({c,threshold,onResult}:{c:Record<string,any>;threshold:number;onResult?:(score:number,answer:any,passed:boolean)=>void}){const [value,setValue]=useState(''),[score,setScore]=useState<number|null>(null);const verify=()=>{const s=similarityScore(String(c.transcript||''),value);setScore(s);onResult?.(s,{text:value},s>=threshold)};return <div className="my-4 rounded-xl border p-4" style={{borderColor:'#E4E7EC'}}>{c.audio_url&&<audio className="w-full" controls src={c.audio_url}/>}<textarea value={value} onChange={e=>{setValue(e.target.value);setScore(null)}} className="mt-3 w-full rounded-lg border p-3 text-sm" rows={4} placeholder="Écrivez ce que vous entendez…"/><button type="button" onClick={verify} disabled={!value.trim()||!String(c.transcript||'').trim()} className="mt-3 rounded-lg bg-[#002050] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40">Vérifier</button>{score!==null&&<div className={`mt-2 text-xs font-semibold ${score>=threshold?'text-emerald-700':'text-red-700'}`}>{score}% · {score>=threshold?'Seuil atteint':'À retravailler'}</div>}{score!==null&&<details className="mt-2 text-xs text-slate-500"><summary>Voir le corrigé</summary><p className="mt-2">{c.transcript}</p></details>}</div>}
-function SelfAssessedOralTraining({title,prompt,audios,threshold,onResult}:{title:string;prompt:string;audios:Array<{label?:string;phonetic?:string;url?:string}>;threshold:number;onResult?:(score:number,answer:any,passed:boolean)=>void}){
+function DictationTraining({c,threshold,graded=true,onResult}:{c:Record<string,any>;threshold:number;graded?:boolean;onResult?:(score:number,answer:any,passed:boolean)=>void}){const [value,setValue]=useState(''),[score,setScore]=useState<number|null>(null);const verify=()=>{const s=similarityScore(String(c.transcript||''),value);setScore(s);onResult?.(s,{text:value},s>=threshold)};return <div className="my-4 rounded-xl border p-4" style={{borderColor:'#E4E7EC'}}>{c.audio_url&&<audio className="w-full" controls src={c.audio_url}/>}<textarea value={value} onChange={e=>{setValue(e.target.value);setScore(null)}} className="mt-3 w-full rounded-lg border p-3 text-sm" rows={4} placeholder="Écrivez ce que vous entendez…"/><button type="button" onClick={verify} disabled={!value.trim()||!String(c.transcript||'').trim()} className="mt-3 rounded-lg bg-[#002050] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40">Vérifier</button>{score!==null&&(graded?<div className={`mt-2 text-xs font-semibold ${score>=threshold?'text-emerald-700':'text-red-700'}`}>{score}% · {score>=threshold?'Seuil atteint':'À retravailler'}</div>:<div className="mt-2 text-xs font-semibold text-emerald-700">Entraînement réalisé.</div>)}{score!==null&&<details className="mt-2 text-xs text-slate-500"><summary>Voir le corrigé</summary><p className="mt-2">{c.transcript}</p></details>}</div>}
+function SelfAssessedOralTraining({title,prompt,audios,threshold,graded=true,onResult}:{title:string;prompt:string;audios:Array<{label?:string;phonetic?:string;url?:string}>;threshold:number;graded?:boolean;onResult?:(score:number,answer:any,passed:boolean)=>void}){
   const [score,setScore]=useState<number|null>(null);
   const [recording,setRecording]=useState(false);
   const [audioUrl,setAudioUrl]=useState('');
@@ -448,46 +452,46 @@ function SelfAssessedOralTraining({title,prompt,audios,threshold,onResult}:{titl
     <div className="mt-4 rounded-xl bg-slate-50 p-3"><p className="text-xs font-semibold text-[#002050]">Enregistrez-vous puis réécoutez votre réponse</p><div className="mt-2 flex flex-wrap items-center gap-2">{!recording?<button type="button" onClick={startRecording} className="inline-flex items-center gap-2 rounded-lg bg-[#002050] px-3 py-2 text-xs font-semibold text-white"><Mic size={14}/>Enregistrer</button>:<button type="button" onClick={stopRecording} className="inline-flex items-center gap-2 rounded-lg bg-red-600 px-3 py-2 text-xs font-semibold text-white"><Square size={12}/>Arrêter</button>}{audioUrl&&<audio controls src={audioUrl} className="h-9 max-w-full"/>}</div></div>
     <p className="mt-3 text-xs text-slate-500">Lorsque l’analyse automatique n’est pas suffisamment fiable pour la langue, Omnia conserve une auto-évaluation explicite plutôt qu’une fausse note automatique.</p>
     <div className="mt-3 flex gap-2"><button type="button" onClick={()=>choose(100)} disabled={!audioUrl} className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40">Maîtrisé</button><button type="button" onClick={()=>choose(0)} disabled={!audioUrl} className="rounded-lg border px-3 py-1.5 text-xs font-semibold text-slate-600 disabled:opacity-40">À retravailler</button></div>
-    {score!==null&&<p className={`mt-2 text-xs font-semibold ${score>=threshold?'text-emerald-700':'text-red-700'}`}>Note d’entraînement : {score}%</p>}
+    {score!==null&&(graded?<p className={`mt-2 text-xs font-semibold ${score>=threshold?'text-emerald-700':'text-red-700'}`}>Note d’entraînement : {score}%</p>:<p className="mt-2 text-xs font-semibold text-emerald-700">Entraînement réalisé.</p>)}
   </div>;
 }
 
 
-function ClozeBlock({c,threshold,onResult}:{c:Record<string,any>;threshold:number;onResult?:(score:number,answer:any,passed:boolean)=>void}){
+function ClozeBlock({c,threshold,graded=true,onResult}:{c:Record<string,any>;threshold:number;graded?:boolean;onResult?:(score:number,answer:any,passed:boolean)=>void}){
   const parts=Array.isArray(c.blanks)?c.blanks:[];const [answers,setAnswers]=useState<Record<string,string>>({});const [score,setScore]=useState<number|null>(null);
   const verify=()=>{const expected=parts.length?parts.map((x:any,i:number)=>String(x.answer??x.value??'')):[];if(!expected.length)return;let good=0;expected.forEach((exp:string,i:number)=>{if(normAnswer(answers[String(i)]||'')===normAnswer(exp))good++});const s=Math.round(good/expected.length*100);setScore(s);onResult?.(s,{answers},s>=threshold)};
   const text=String(c.text||c.sentence||'');
-  return <div className="my-4 rounded-xl border p-4" style={{borderColor:'#E4E7EC'}}><p className="font-semibold text-[#002050]">{c.title||'Texte à trous'}</p>{text&&<p className="mt-2 text-sm text-slate-600">{text}</p>}<div className="mt-3 grid gap-2">{parts.map((x:any,i:number)=><label key={i} className="text-xs font-semibold text-slate-600">{x.label||`Réponse ${i+1}`}<input value={answers[String(i)]||''} onChange={e=>{setAnswers(v=>({...v,[String(i)]:e.target.value}));setScore(null)}} className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"/></label>)}</div><button type="button" onClick={verify} disabled={!parts.length} className="mt-3 rounded-lg bg-[#002050] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40">Vérifier</button>{score!==null&&<p className={`mt-2 text-xs font-semibold ${score>=threshold?'text-emerald-700':'text-red-700'}`}>{score}% · {score>=threshold?'Seuil atteint':'À retravailler'}</p>}</div>
+  return <div className="my-4 rounded-xl border p-4" style={{borderColor:'#E4E7EC'}}><p className="font-semibold text-[#002050]">{c.title||'Texte à trous'}</p>{text&&<p className="mt-2 text-sm text-slate-600">{text}</p>}<div className="mt-3 grid gap-2">{parts.map((x:any,i:number)=><label key={i} className="text-xs font-semibold text-slate-600">{x.label||`Réponse ${i+1}`}<input value={answers[String(i)]||''} onChange={e=>{setAnswers(v=>({...v,[String(i)]:e.target.value}));setScore(null)}} className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"/></label>)}</div><button type="button" onClick={verify} disabled={!parts.length} className="mt-3 rounded-lg bg-[#002050] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40">Vérifier</button>{score!==null&&(graded?<p className={`mt-2 text-xs font-semibold ${score>=threshold?'text-emerald-700':'text-red-700'}`}>{score}% · {score>=threshold?'Seuil atteint':'À retravailler'}</p>:<p className="mt-2 text-xs font-semibold text-emerald-700">Réponse enregistrée.</p>)}</div>
 }
-function MatchingBlock({c,threshold,onResult}:{c:Record<string,any>;threshold:number;onResult?:(score:number,answer:any,passed:boolean)=>void}){
+function MatchingBlock({c,threshold,graded=true,onResult}:{c:Record<string,any>;threshold:number;graded?:boolean;onResult?:(score:number,answer:any,passed:boolean)=>void}){
   const pairs=Array.isArray(c.pairs)?c.pairs:[];const rights=pairs.map((x:any)=>String(x.right??x.answer??''));const [answers,setAnswers]=useState<Record<string,string>>({});const [score,setScore]=useState<number|null>(null);
   const verify=()=>{if(!pairs.length)return;let good=0;pairs.forEach((x:any,i:number)=>{if(normAnswer(answers[String(i)]||'')===normAnswer(String(x.right??x.answer??'')))good++});const s=Math.round(good/pairs.length*100);setScore(s);onResult?.(s,{answers},s>=threshold)};
-  return <div className="my-4 rounded-xl border p-4" style={{borderColor:'#E4E7EC'}}><p className="font-semibold text-[#002050]">{c.title||'Association'}</p><div className="mt-3 grid gap-2">{pairs.map((x:any,i:number)=><div key={i} className="grid items-center gap-2 sm:grid-cols-2"><div className="rounded-lg bg-slate-50 px-3 py-2 text-sm">{x.left??x.prompt}</div><select value={answers[String(i)]||''} onChange={e=>{setAnswers(v=>({...v,[String(i)]:e.target.value}));setScore(null)}} className="rounded-lg border px-3 py-2 text-sm"><option value="">Choisir…</option>{rights.map((r:string,j:number)=><option key={j} value={r}>{r}</option>)}</select></div>)}</div><button type="button" onClick={verify} disabled={!pairs.length} className="mt-3 rounded-lg bg-[#002050] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40">Vérifier</button>{score!==null&&<p className={`mt-2 text-xs font-semibold ${score>=threshold?'text-emerald-700':'text-red-700'}`}>{score}%</p>}</div>
+  return <div className="my-4 rounded-xl border p-4" style={{borderColor:'#E4E7EC'}}><p className="font-semibold text-[#002050]">{c.title||'Association'}</p><div className="mt-3 grid gap-2">{pairs.map((x:any,i:number)=><div key={i} className="grid items-center gap-2 sm:grid-cols-2"><div className="rounded-lg bg-slate-50 px-3 py-2 text-sm">{x.left??x.prompt}</div><select value={answers[String(i)]||''} onChange={e=>{setAnswers(v=>({...v,[String(i)]:e.target.value}));setScore(null)}} className="rounded-lg border px-3 py-2 text-sm"><option value="">Choisir…</option>{rights.map((r:string,j:number)=><option key={j} value={r}>{r}</option>)}</select></div>)}</div><button type="button" onClick={verify} disabled={!pairs.length} className="mt-3 rounded-lg bg-[#002050] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40">Vérifier</button>{score!==null&&(graded?<p className={`mt-2 text-xs font-semibold ${score>=threshold?'text-emerald-700':'text-red-700'}`}>{score}%</p>:<p className="mt-2 text-xs font-semibold text-emerald-700">Entraînement réalisé.</p>)}</div>
 }
-function SentenceOrderBlock({c,threshold,onResult}:{c:Record<string,any>;threshold:number;onResult?:(score:number,answer:any,passed:boolean)=>void}){
+function SentenceOrderBlock({c,threshold,graded=true,onResult}:{c:Record<string,any>;threshold:number;graded?:boolean;onResult?:(score:number,answer:any,passed:boolean)=>void}){
   const expected=(Array.isArray(c.items)?c.items:Array.isArray(c.words)?c.words:[]).map((x:any)=>String(x.text??x));const [value,setValue]=useState('');const [score,setScore]=useState<number|null>(null);
   const verify=()=>{const exp=expected.join(' ');const s=similarityScore(exp,value);setScore(s);onResult?.(s,{text:value},s>=threshold)};
-  return <div className="my-4 rounded-xl border p-4" style={{borderColor:'#E4E7EC'}}><p className="font-semibold text-[#002050]">{c.title||'Remettre la phrase dans l’ordre'}</p>{expected.length>0&&<div className="mt-2 flex flex-wrap gap-2">{[...expected].sort().map((x,i)=><span key={i} className="rounded-full bg-slate-100 px-3 py-1 text-xs">{x}</span>)}</div>}<input value={value} onChange={e=>{setValue(e.target.value);setScore(null)}} className="mt-3 w-full rounded-lg border px-3 py-2 text-sm" placeholder="Reconstituez la phrase"/><button type="button" onClick={verify} disabled={!value.trim()||!expected.length} className="mt-3 rounded-lg bg-[#002050] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40">Vérifier</button>{score!==null&&<p className={`mt-2 text-xs font-semibold ${score>=threshold?'text-emerald-700':'text-red-700'}`}>{score}%</p>}</div>
+  return <div className="my-4 rounded-xl border p-4" style={{borderColor:'#E4E7EC'}}><p className="font-semibold text-[#002050]">{c.title||'Remettre la phrase dans l’ordre'}</p>{expected.length>0&&<div className="mt-2 flex flex-wrap gap-2">{[...expected].sort().map((x,i)=><span key={i} className="rounded-full bg-slate-100 px-3 py-1 text-xs">{x}</span>)}</div>}<input value={value} onChange={e=>{setValue(e.target.value);setScore(null)}} className="mt-3 w-full rounded-lg border px-3 py-2 text-sm" placeholder="Reconstituez la phrase"/><button type="button" onClick={verify} disabled={!value.trim()||!expected.length} className="mt-3 rounded-lg bg-[#002050] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40">Vérifier</button>{score!==null&&(graded?<p className={`mt-2 text-xs font-semibold ${score>=threshold?'text-emerald-700':'text-red-700'}`}>{score}%</p>:<p className="mt-2 text-xs font-semibold text-emerald-700">Entraînement réalisé.</p>)}</div>
 }
-function ListeningTraining({c,threshold,onResult}:{c:Record<string,any>;threshold:number;onResult?:(score:number,answer:any,passed:boolean)=>void}){
+function ListeningTraining({c,threshold,graded=true,onResult}:{c:Record<string,any>;threshold:number;graded?:boolean;onResult?:(score:number,answer:any,passed:boolean)=>void}){
   const questions=Array.isArray(c.questions)?c.questions:[];const [answers,setAnswers]=useState<Record<string,string>>({});const [score,setScore]=useState<number|null>(null);
   const verify=()=>{if(!questions.length)return;let gradable=0,good=0;questions.forEach((q:any,i:number)=>{const exp=q.correct_answer??q.answer;if(exp!==undefined&&String(exp)!==''){gradable++;if(normAnswer(answers[String(i)]||'')===normAnswer(String(exp)))good++}});const s=gradable?Math.round(good/gradable*100):100;setScore(s);onResult?.(s,{answers},s>=threshold)};
-  return <div className="my-4 rounded-xl border p-4" style={{borderColor:'#E4E7EC'}}><p className="font-semibold text-[#002050]">{c.title||'Compréhension orale'}</p>{c.audio_url&&<audio className="mt-3 w-full" controls src={c.audio_url}/>}<div className="mt-3 space-y-3">{questions.map((q:any,i:number)=><label key={i} className="block text-xs font-semibold text-slate-600">{q.question||`Question ${i+1}`}<input value={answers[String(i)]||''} onChange={e=>{setAnswers(v=>({...v,[String(i)]:e.target.value}));setScore(null)}} className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"/></label>)}</div><button type="button" onClick={verify} disabled={!questions.length} className="mt-3 rounded-lg bg-[#002050] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40">Valider</button>{score!==null&&<p className={`mt-2 text-xs font-semibold ${score>=threshold?'text-emerald-700':'text-red-700'}`}>{score}%</p>}</div>
+  return <div className="my-4 rounded-xl border p-4" style={{borderColor:'#E4E7EC'}}><p className="font-semibold text-[#002050]">{c.title||'Compréhension orale'}</p>{c.audio_url&&<audio className="mt-3 w-full" controls src={c.audio_url}/>}<div className="mt-3 space-y-3">{questions.map((q:any,i:number)=><label key={i} className="block text-xs font-semibold text-slate-600">{q.question||`Question ${i+1}`}<input value={answers[String(i)]||''} onChange={e=>{setAnswers(v=>({...v,[String(i)]:e.target.value}));setScore(null)}} className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"/></label>)}</div><button type="button" onClick={verify} disabled={!questions.length} className="mt-3 rounded-lg bg-[#002050] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40">Valider</button>{score!==null&&(graded?<p className={`mt-2 text-xs font-semibold ${score>=threshold?'text-emerald-700':'text-red-700'}`}>{score}%</p>:<p className="mt-2 text-xs font-semibold text-emerald-700">Entraînement réalisé.</p>)}</div>
 }
-function WrittenTraining({c,threshold,onResult}:{c:Record<string,any>;threshold:number;onResult?:(score:number,answer:any,passed:boolean)=>void}){
+function WrittenTraining({c,threshold,graded=true,onResult}:{c:Record<string,any>;threshold:number;graded?:boolean;onResult?:(score:number,answer:any,passed:boolean)=>void}){
   const [text,setText]=useState('');const [done,setDone]=useState(false);const min=Math.max(1,Number(c.min_words||1));const words=text.trim()?text.trim().split(/\s+/).length:0;const submit=()=>{const s=words>=min?100:0;setDone(true);onResult?.(s,{text,word_count:words},s>=threshold)};
   return <div className="my-4 rounded-xl border p-4" style={{borderColor:'#E4E7EC'}}><p className="font-semibold text-[#002050]">{c.title||'Expression écrite'}</p>{c.prompt&&<p className="mt-1 text-sm text-slate-600">{c.prompt}</p>}<textarea value={text} onChange={e=>{setText(e.target.value);setDone(false)}} rows={7} className="mt-3 w-full rounded-lg border p-3 text-sm" placeholder="Rédigez votre réponse…"/><div className="mt-2 flex items-center justify-between text-xs text-slate-500"><span>{words} mot(s){min>1?` · minimum ${min}`:''}</span><button type="button" onClick={submit} disabled={!text.trim()} className="rounded-lg bg-[#002050] px-3 py-1.5 font-semibold text-white disabled:opacity-40">Terminer l’entraînement</button></div>{done&&<p className="mt-2 text-xs font-semibold text-emerald-700">Réponse enregistrée comme entraînement.</p>}</div>
 }
-function OpenQuestionTraining({c,threshold,onResult}:{c:Record<string,any>;threshold:number;onResult?:(score:number,answer:any,passed:boolean)=>void}){
+function OpenQuestionTraining({c,threshold,graded=true,onResult}:{c:Record<string,any>;threshold:number;graded?:boolean;onResult?:(score:number,answer:any,passed:boolean)=>void}){
   const [text,setText]=useState('');const [score,setScore]=useState<number|null>(null);const expected=String(c.expected_answer||'').trim();
   const verify=()=>{const s=expected?similarityScore(expected,text):100;setScore(s);onResult?.(s,{text},s>=threshold)};
-  return <div className="my-4 rounded-xl border p-4" style={{borderColor:'#E4E7EC'}}><p className="font-semibold text-[#002050]">{c.question||c.title||'Question ouverte'}</p>{c.guidance&&<p className="mt-1 text-xs text-slate-500">{c.guidance}</p>}<textarea value={text} onChange={e=>{setText(e.target.value);setScore(null)}} rows={5} className="mt-3 w-full rounded-lg border p-3 text-sm"/><button type="button" onClick={verify} disabled={!text.trim()} className="mt-3 rounded-lg bg-[#002050] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40">{expected?'Vérifier':'Terminer l’entraînement'}</button>{score!==null&&<p className={`mt-2 text-xs font-semibold ${score>=threshold?'text-emerald-700':'text-red-700'}`}>{score}% · {score>=threshold?'Seuil atteint':'À retravailler'}</p>}</div>
+  return <div className="my-4 rounded-xl border p-4" style={{borderColor:'#E4E7EC'}}><p className="font-semibold text-[#002050]">{c.question||c.title||'Question ouverte'}</p>{c.guidance&&<p className="mt-1 text-xs text-slate-500">{c.guidance}</p>}<textarea value={text} onChange={e=>{setText(e.target.value);setScore(null)}} rows={5} className="mt-3 w-full rounded-lg border p-3 text-sm"/><button type="button" onClick={verify} disabled={!text.trim()} className="mt-3 rounded-lg bg-[#002050] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40">{expected?'Vérifier':'Terminer l’entraînement'}</button>{score!==null&&(graded?<p className={`mt-2 text-xs font-semibold ${score>=threshold?'text-emerald-700':'text-red-700'}`}>{score}% · {score>=threshold?'Seuil atteint':'À retravailler'}</p>:<p className="mt-2 text-xs font-semibold text-emerald-700">Réponse enregistrée.</p>)}</div>
 }
 function ChecklistBlock({items,initialState,onChange}:{items:any[];initialState:Record<string,any>;onChange?:(state:Record<string,any>,completed:boolean)=>void}){
   const [state,setState]=useState<Record<string,any>>(initialState||{});const update=(key:string,val:boolean)=>{const next={...state,[key]:val};setState(next);const required=items.filter(x=>x.required!==false);const completed=required.every((x:any,i:number)=>Boolean(next[String(x.id||items.indexOf(x))]));onChange?.(next,completed)};
   return <div className="my-4 rounded-xl border p-4" style={{borderColor:'#E4E7EC'}}><div className="space-y-2">{items.map((item:any,i:number)=>{const key=String(item.id||i);return <label key={key} className="flex items-start gap-3 rounded-lg px-2 py-2 hover:bg-slate-50"><input type="checkbox" checked={Boolean(state[key])} onChange={e=>update(key,e.target.checked)} className="mt-0.5"/><span className="text-sm text-slate-700">{item.text||item.label||String(item)}{item.required===false&&<span className="ml-2 text-[10px] text-slate-400">facultatif</span>}</span></label>})}</div></div>
 }
-function CaseStudyTraining({c,training,threshold,onResult}:{c:Record<string,any>;training:boolean;threshold:number;onResult?:(score:number,answer:any,passed:boolean)=>void}){
+function CaseStudyTraining({c,training,threshold,graded=true,onResult}:{c:Record<string,any>;training:boolean;threshold:number;graded?:boolean;onResult?:(score:number,answer:any,passed:boolean)=>void}){
   const qs=(Array.isArray(c.questions)?c.questions:[])
     .map((q:any)=>String(q||'').trim())
     .filter(Boolean);
@@ -498,7 +502,7 @@ function CaseStudyTraining({c,training,threshold,onResult}:{c:Record<string,any>
     const complete=qs.every((_:string,i:number)=>String(answers[String(i)]||'').trim().length>0);
     const score=complete?100:0;
     setDone(true);
-    if(training) onResult?.(score,{answers},score>=threshold);
+    if(training) onResult?.(score,{answers},graded?score>=threshold:true);
   };
   return <div className="p-5 rounded-xl my-4 border" style={{borderColor:'#E4E7EC'}}>
     <p className="font-bold mb-3" style={{color:'#002050'}}>Étude de cas{c.title?` : ${c.title}`:''}</p>
@@ -880,7 +884,7 @@ function FlashcardsBlock({ cards, onComplete }: { cards: Array<{ id: string; fro
   );
 }
 
-function InteractiveTableBlock({ headers, rows, style, training = false, trainingColumns = [], threshold = 80, onResult }: { headers: string[]; rows: string[][]; style?: string; training?: boolean; trainingColumns?: number[]; threshold?: number; onResult?: (score:number, answer:any, passed:boolean)=>void }) {
+function InteractiveTableBlock({ headers, rows, style, training = false, trainingColumns = [], threshold = 80, graded = true, onResult }: { headers: string[]; rows: string[][]; style?: string; training?: boolean; trainingColumns?: number[]; threshold?: number; graded?: boolean; onResult?: (score:number, answer:any, passed:boolean)=>void }) {
   const [answers,setAnswers]=useState<Record<string,string>>({});
   const [score,setScore]=useState<number|null>(null);
   const targetColumns=(trainingColumns.length?trainingColumns:headers.map((_,i)=>i).filter(i=>i>0)).filter(i=>i>=0&&i<headers.length);
@@ -919,7 +923,7 @@ function InteractiveTableBlock({ headers, rows, style, training = false, trainin
           })}</tr>)}</tbody>
         </table>
       </div>
-      {training&&<div className="mt-3 flex flex-wrap items-center gap-3"><button type="button" onClick={check} className="rounded-lg bg-[#002050] px-3 py-2 text-xs font-semibold text-white">Vérifier le tableau</button>{score!==null&&<span className={`text-xs font-semibold ${score>=threshold?'text-emerald-700':'text-red-700'}`}>Note d’entraînement : {score}% · seuil {threshold}%</span>}</div>}
+      {training&&<div className="mt-3 flex flex-wrap items-center gap-3"><button type="button" onClick={check} className="rounded-lg bg-[#002050] px-3 py-2 text-xs font-semibold text-white">Vérifier le tableau</button>{score!==null&&(graded?<span className={`text-xs font-semibold ${score>=threshold?'text-emerald-700':'text-red-700'}`}>Note d’entraînement : {score}% · seuil {threshold}%</span>:<span className="text-xs font-semibold text-emerald-700">Tableau complété.</span>)}</div>}
     </div>
   );
 }
@@ -967,15 +971,14 @@ export function LessonBlocksRenderer({ blocks, contentText, onQuizAnswer, onTrai
         const completedSet=new Set(completedInteractionBlockIds.map(String));
         return orderedBlocks.map((block,index) => {
           if(block.block_type==='correction'&&!revealAllCorrections){
-            let previous:Block|undefined;
-            for(let i=index-1;i>=0;i--){
-              if(orderedBlocks[i].block_type!=='correction'){previous=orderedBlocks[i];break;}
+            const explicitTargets=Array.isArray(block.linked_block_ids)?block.linked_block_ids.map(String).filter(Boolean):[];
+            if(explicitTargets.length){if(!explicitTargets.some(id=>completedSet.has(id)))return null;}
+            else {
+              let previous:Block|undefined;
+              for(let i=index-1;i>=0;i--){if(orderedBlocks[i].block_type!=='correction'){previous=orderedBlocks[i];break;}}
+              const requiresAttempt=Boolean(previous && (previous.interaction_mode==='training'||['qcm','true_false','open_question','exercise','assignment_upload','case_study','cloze','dictation','pronunciation','matching','sentence_order','oral_response','listening_comprehension','written_expression','interactive_table','checklist'].includes(previous.block_type)));
+              if(requiresAttempt&&previous&&!completedSet.has(String(previous.id)))return null;
             }
-            const requiresAttempt=Boolean(previous && (
-              previous.interaction_mode==='training' ||
-              ['qcm','true_false','open_question','exercise','assignment_upload','case_study','cloze','dictation','pronunciation','matching','sentence_order','oral_response','listening_comprehension','written_expression','interactive_table','checklist'].includes(previous.block_type)
-            ));
-            if(requiresAttempt && previous && !completedSet.has(String(previous.id))) return null;
           }
           const compactTypes = new Set(['image','gallery','video','audio','pdf','word','excel','table','interactive_table','chart','scorm','embed','download']);
           const widthClass = compactTypes.has(block.block_type) ? 'max-w-3xl' : 'max-w-5xl';

@@ -32,6 +32,8 @@ interface Block {
   assessment_scope?: 'lesson'|'module'|'final'|null;
   is_required?: boolean;
   training_passing_score?: number;
+  training_is_graded?: boolean;
+  linked_block_ids?: string[];
   rag_enabled?: boolean;
   preview_allowed?: boolean;
   position: number;
@@ -1709,6 +1711,7 @@ export default function StudioConceptionFormation() {
                     courseId={course?.id || ''}
                     moduleId={currentModule?.id || ''}
                     lessonId={currentLesson?.id || ''}
+                    lessonBlocks={blocks}
                   />
                 </div>
               </div>
@@ -2206,14 +2209,19 @@ function BlockPreview({ block, def, locked, onChange, onGenerateTts, onGenerateS
 }
 
 // ─── Panneau réglages du bloc ─────────────────────────────────
-function BlockSettings({ block, locked, onUpdate, onAI, onRemoveResource, courseId, moduleId, lessonId }: {
+function BlockSettings({ block, locked, onUpdate, onAI, onRemoveResource, courseId, moduleId, lessonId, lessonBlocks }: {
   block: Block; locked: boolean;
   onUpdate: (updates: Partial<Block>) => void;
   onAI: (action: string, prompt: string) => void;
   onRemoveResource: () => void;
-  courseId: string; moduleId: string; lessonId: string;
+  courseId: string; moduleId: string; lessonId: string; lessonBlocks: Block[];
 }) {
   const c = block.content_json;
+  const relationActivityTypes = new Set(['qcm','true_false','open_question','exercise','assignment_upload','case_study','flashcards','interactive_table','checklist','cloze','dictation','pronunciation','matching','sentence_order','oral_response','listening_comprehension','written_expression']);
+  const relationCandidates = (lessonBlocks || []).filter(item => item.id !== block.id && relationActivityTypes.has(item.block_type));
+  const correctionCandidates = relationCandidates.filter(item => item.interaction_mode !== 'assessment');
+  const linkedIds = Array.isArray(block.linked_block_ids) ? block.linked_block_ids.map(String) : [];
+  const blockLabel = (item: Block) => String(item.title || item.content_json?.title || item.content_json?.question || item.content_json?.statement || BLOCK_DEFS.find(def => def.type === item.block_type)?.label || item.block_type).trim();
   const inputCls = 'w-full px-3 py-2.5 border rounded-lg text-sm focus:outline-none focus:border-[#002050]';
   const style = { borderColor: '#E4E7EC' };
   const [uploading, setUploading] = useState(false);
@@ -2379,6 +2387,23 @@ function BlockSettings({ block, locked, onUpdate, onAI, onRemoveResource, course
         </details>
       )}
 
+      {block.block_type === 'rubric' && (
+        <div className="rounded-xl border p-3 space-y-2" style={{ borderColor: '#DDE5F0', background: '#F8FAFC' }}>
+          <div><p className="text-xs font-bold" style={{ color: '#002050' }}>Associer la grille à</p><p className="mt-1 text-[11px] text-gray-500">Sélectionnez une ou plusieurs activités de cette leçon. Cette association alimente aussi la grille des questions lors de la création d’une évaluation officielle.</p></div>
+          {relationCandidates.length ? relationCandidates.map(item => <label key={item.id} className="flex items-start gap-2 rounded-lg border bg-white p-2 text-xs" style={{borderColor:'#E4E7EC'}}><input type="checkbox" className="mt-0.5" checked={linkedIds.includes(String(item.id))} disabled={locked} onChange={e=>{const next=e.target.checked?[...linkedIds,String(item.id)]:linkedIds.filter(id=>id!==String(item.id));onUpdate({linked_block_ids:next})}}/><span><strong style={{color:'#002050'}}>{blockLabel(item)}</strong><span className="block text-[10px] text-slate-500">{BLOCK_DEFS.find(def=>def.type===item.block_type)?.label || item.block_type}</span></span></label>) : <p className="text-xs text-amber-700">Ajoutez d’abord une activité à évaluer dans cette leçon.</p>}
+        </div>
+      )}
+
+      {block.block_type === 'correction' && (
+        <div className="rounded-xl border p-3 space-y-2" style={{ borderColor: '#DDE5F0', background: '#F8FAFC' }}>
+          <div><p className="text-xs font-bold" style={{ color: '#002050' }}>Correction de</p><p className="mt-1 text-[11px] text-gray-500">La correction restera masquée jusqu’à la tentative de l’activité sélectionnée.</p></div>
+          <select className={inputCls} style={style} value={linkedIds[0] || ''} disabled={locked} onChange={e=>onUpdate({linked_block_ids:e.target.value?[e.target.value]:[]})}>
+            <option value="">— Sélectionner l’exercice ou l’entraînement —</option>
+            {correctionCandidates.map(item => <option key={item.id} value={item.id}>{blockLabel(item)} · {BLOCK_DEFS.find(def=>def.type===item.block_type)?.label || item.block_type}</option>)}
+          </select>
+        </div>
+      )}
+
       {TRAINING_CAPABLE_BLOCKS.has(block.block_type) && (
         <div className="rounded-xl border p-3 space-y-3" style={{ borderColor: '#DDE5F0', background: '#F8FAFC' }}>
           <div>
@@ -2393,10 +2418,11 @@ function BlockSettings({ block, locked, onUpdate, onAI, onRemoveResource, course
           </select>
           {(block.interaction_mode || 'training') === 'training' && <>
             <label className="flex items-center gap-2 text-xs font-semibold text-gray-700"><input type="checkbox" checked={block.is_required === true} disabled={locked} onChange={e => onUpdate({ is_required: e.target.checked })}/> Obligatoire pour progresser</label>
-            <div>
+            <label className="flex items-center gap-2 text-xs font-semibold text-gray-700"><input type="checkbox" checked={block.training_is_graded !== false} disabled={locked} onChange={e => onUpdate({ training_is_graded: e.target.checked })}/> Entraînement noté</label>
+            {block.training_is_graded !== false ? <div>
               <label className="block text-xs mb-1" style={{ color: '#6B7280' }}>Seuil de réussite de l’entraînement (%)</label>
-              <input type="number" min={1} max={100} className={inputCls} style={style} value={Number(block.training_passing_score || 80)} disabled={locked} onChange={e => onUpdate({ training_passing_score: Math.min(100, Math.max(1, Number(e.target.value) || 80)) })}/>
-            </div>
+              <input type="number" min={1} max={100} className={inputCls} style={style} value={Number(block.training_passing_score ?? 80)} disabled={locked} onChange={e => onUpdate({ training_passing_score: Math.min(100, Math.max(1, Number(e.target.value) || 80)) })}/>
+            </div> : <p className="rounded-lg bg-emerald-50 px-3 py-2 text-[11px] text-emerald-800">Non noté : aucune note ni seuil de réussite. Si l’activité est obligatoire, une tentative/soumission suffit pour progresser.</p>}
           </>}
           {block.interaction_mode === 'assessment' && <div>
             <label className="block text-xs mb-1" style={{ color: '#6B7280' }}>Compte dans</label>
