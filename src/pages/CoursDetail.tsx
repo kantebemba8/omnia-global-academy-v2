@@ -599,7 +599,7 @@ export function CoursDetail() {
                     </button>
                     {isOpen && (
                       <div style={{ borderTop: '1px solid #F0F0F0' }}>
-                        {mod.objective && sectionType(mod) === 'module' && (
+                        {mod.objective && sectionType === 'module' && (
                           <p className="px-5 py-3 text-xs" style={{ color: '#6B7280', backgroundColor: '#FAFAFA' }}>{String(mod.objective)}</p>
                         )}
                         {displayLessons.map((lesson, li) => {
