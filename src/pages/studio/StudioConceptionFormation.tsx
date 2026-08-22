@@ -822,8 +822,13 @@ export default function StudioConceptionFormation() {
     const check = await api('validate_checklist', { course_id: course.id });
     setChecklist(check);
     if (!check.valid) { setShowChecklist(true); showToast('Corrigez les erreurs avant de soumettre', 'error'); return; }
-    if (!course.assessment_policy?.builder_configured_at) {
-      showToast('Configurez d’abord les règles d’évaluation, de réussite et de certification.', 'error');
+    const policyState = await api('assessment_policy_get', { course_id: course.id });
+    const freshPolicy = policyState.success && policyState.policy && typeof policyState.policy === 'object'
+      ? policyState.policy
+      : course.assessment_policy;
+    if (freshPolicy) setCourse(current => current ? { ...current, assessment_policy: freshPolicy } : current);
+    if (!freshPolicy?.builder_configured_at) {
+      showToast('Enregistrez les règles d’évaluation dans Finalisation avant de soumettre.', 'error');
       setShowAssessmentPolicy(true);
       return;
     }
@@ -1769,6 +1774,7 @@ export default function StudioConceptionFormation() {
           onClose={closeAssessmentPolicy}
           onSaved={(policy) => {
             setCourse(current => current ? { ...current, assessment_policy: policy as Record<string, any> } : current);
+            setChecklist(null);
           }}
         />
       )}
@@ -1821,7 +1827,7 @@ export default function StudioConceptionFormation() {
                 return <div key={`${issue.severity}-${i}`} className="flex items-start gap-2 p-3 rounded-xl" style={{ background: isError ? '#FEE2E2' : '#FEF3C7' }}>
                   {isError ? <AlertCircle size={14} style={{ color: '#DC2626', flexShrink: 0, marginTop: 2 }} /> : <AlertTriangle size={14} style={{ color: '#D97706', flexShrink: 0, marginTop: 2 }} />}
                   <div className="min-w-0 flex-1"><p className="text-sm" style={{ color: isError ? '#DC2626' : '#92400E' }}>{issue.message}</p>
-                    {issue.target && <button type="button" onClick={() => goToQualityIssue(issue)} className="mt-1 text-xs font-semibold underline" style={{ color: '#002050' }}>Corriger</button>}
+                    {issue.target && issue.target !== 'content' && <button type="button" onClick={() => goToQualityIssue(issue)} className="mt-1 text-xs font-semibold underline" style={{ color: '#002050' }}>Corriger</button>}
                   </div>
                 </div>;
               })}
