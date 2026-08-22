@@ -1042,17 +1042,39 @@ export function CoursLecteur() {
     } catch (error) { console.error('block_state_save', error); }
   }, [isOnline, currentLessonId, courseId, sessionToken, isPreview, previewQuery]);
 
-  const learnerStateByBlock = useMemo(() => Object.fromEntries((lessonData?.block_states || []).map(item => [item.block_id, item.state_json || {}])), [lessonData?.block_states]);
+  // Les réponses lesson-content ont évolué au fil des versions. Une copie locale,
+  // un cache ou une ancienne réponse preview peut contenir block_states/latest_attempts
+  // dans une forme non tableau. Le lecteur ne doit jamais tomber dans l'ErrorBoundary
+  // global pour cette raison.
+  const safeBlockStates = useMemo(
+    () => Array.isArray(lessonData?.block_states) ? lessonData.block_states : [],
+    [lessonData?.block_states],
+  );
+  const safeLatestTrainingAttempts = useMemo(
+    () => Array.isArray(lessonData?.training?.latest_attempts) ? lessonData.training.latest_attempts : [],
+    [lessonData?.training?.latest_attempts],
+  );
+  const learnerStateByBlock = useMemo(
+    () => Object.fromEntries(
+      safeBlockStates
+        .filter((item: any) => item && item.block_id)
+        .map((item: any) => [String(item.block_id), item.state_json && typeof item.state_json === 'object' ? item.state_json : {}]),
+    ),
+    [safeBlockStates],
+  );
   const completedInteractionBlockIds = useMemo(() => {
+    // En preview complète, toutes les corrections sont déjà explicitement révélées :
+    // aucune donnée de tentative apprenant n'est nécessaire.
+    if (isPreview) return [];
     const ids = new Set<string>();
-    for (const attempt of lessonData?.training?.latest_attempts || []) {
-      if (attempt?.block_id) ids.add(String(attempt.block_id));
+    for (const attempt of safeLatestTrainingAttempts) {
+      if (attempt && attempt.block_id) ids.add(String(attempt.block_id));
     }
-    for (const state of lessonData?.block_states || []) {
-      if (state?.completed && state?.block_id) ids.add(String(state.block_id));
+    for (const state of safeBlockStates) {
+      if (state && state.completed && state.block_id) ids.add(String(state.block_id));
     }
     return Array.from(ids);
-  }, [lessonData?.training?.latest_attempts, lessonData?.block_states]);
+  }, [isPreview, safeLatestTrainingAttempts, safeBlockStates]);
 
   const currentMod = modules.find(m => m.lessons.some(l => l.lesson_id === currentLessonId));
   const orderedReaderLessons = modules.flatMap(m => m.lessons);
@@ -1287,7 +1309,7 @@ export function CoursLecteur() {
                   <SimpleMarkdown text={lesson.text_content} />
                 </div>
               )}
-              {lesson.has_blocks && lessonData?.blocks && (lessonData.blocks as any[]).length > 0 && (
+              {lesson.has_blocks && Array.isArray(lessonData?.blocks) && lessonData.blocks.length > 0 && (
                 <div className="mb-5">
                   <LessonBlocksRenderer
                     blocks={lessonData.blocks as any[]}
