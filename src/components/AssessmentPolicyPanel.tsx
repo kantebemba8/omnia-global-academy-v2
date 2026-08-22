@@ -231,10 +231,16 @@ export function AssessmentPolicyPanel({ courseId, locked, onClose, onSaved }: { 
         policy: savedPolicy,
         assessments: rows,
       });
-      await call('ensure_assessments', { course_id: courseId });
+      const verified = await call('assessment_policy_get', { course_id: courseId });
+      const verifiedPolicy = verified.policy || result.policy || savedPolicy;
+      setPolicy({
+        lesson_assessment_required: verifiedPolicy.lesson_assessment_required === true,
+        module_assessment_required: verifiedPolicy.module_assessment_required === true,
+        final_assessment_required: verifiedPolicy.final_assessment_required === true,
+      });
       setMessage('Les règles d’évaluation ont été enregistrées.');
-      onSaved?.(result.policy || savedPolicy);
-      onClose();
+      onSaved?.(verifiedPolicy);
+      window.setTimeout(() => onClose(), 700);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Enregistrement impossible.');
     } finally {

@@ -1294,6 +1294,7 @@ Deno.serve(async(req)=>{
    if(blocksError)throw blocksError;
 
    const policy=course.assessment_policy&&typeof course.assessment_policy==="object"?course.assessment_policy:{};
+   const policyConfigured=Boolean(policy.builder_configured_at);
    const defaultCooldown=Math.max(0,Number(policy.default_retry_cooldown_hours??24));
    const defaultRemediation=Math.max(1,Number(policy.default_remediation_after_attempts??3));
    const defaultMode=String(policy.default_remediation_mode||"review_module");
@@ -1318,7 +1319,10 @@ Deno.serve(async(req)=>{
      if(inserted.error)throw inserted.error;
      assessment=inserted.data;
     } else {
-     const updatedAssessment=await sb.from("course_assessments").update({required,passing_score:passing,updated_at:new Date().toISOString()}).eq("id",assessment.id).select("*").single();
+     const ensurePatch:any=policyConfigured
+      ? {updated_at:new Date().toISOString()}
+      : {required,passing_score:passing,updated_at:new Date().toISOString()};
+     const updatedAssessment=await sb.from("course_assessments").update(ensurePatch).eq("id",assessment.id).select("*").single();
      if(updatedAssessment.error)throw updatedAssessment.error;
      assessment=updatedAssessment.data;
     }
