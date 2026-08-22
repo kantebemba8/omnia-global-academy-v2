@@ -147,7 +147,7 @@ Deno.serve(async (req: Request) => {
     let internalQuery = sb
       .from("courses")
       .select(
-        "id,title,short_description,cover_image_url,category,level,price_xof,is_free,cpd_hours,cpd_accredited,average_rating,total_reviews,total_students,creator_type,language,subtitles_available,total_duration_seconds,creator_id,establishment_id,created_at,training_delivery_mode",
+        "id,title,short_description,cover_image_url,category,level,price_xof,is_free,cpd_hours,cpd_accredited,average_rating,total_reviews,total_students,creator_type,language,subtitles_available,total_duration_seconds,creator_id,establishment_id,creator_context,created_at,training_delivery_mode",
       )
       .eq("is_published", true)
       .eq("is_catalog_active", true)
@@ -214,7 +214,9 @@ Deno.serve(async (req: Request) => {
       ...internalCourses.map((course: any) => ({
         ...course,
         content_origin: "internal",
-        creator_name: course.creator_type === "plateforme"
+        public_creator_type: (course.creator_type === "plateforme" || String(course.creator_context || "") === "super_admin") ? "plateforme" : course.creator_type,
+        creator_logo_url: (course.creator_type === "plateforme" || String(course.creator_context || "") === "super_admin") ? "/omnia-sidebar-logo.png" : null,
+        creator_name: (course.creator_type === "plateforme" || String(course.creator_context || "") === "super_admin")
           ? "Omnia Global Academy"
           : course.creator_type === "etablissement"
           ? establishmentMap[course.establishment_id] ?? null

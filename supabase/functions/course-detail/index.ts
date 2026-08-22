@@ -45,7 +45,7 @@ Deno.serve(async (req: Request) => {
       "preview_video_url, category, level, price_xof, is_free, cpd_hours, " +
       "cpd_accredited, cpd_provider_code, average_rating, total_reviews, " +
       "total_students, language, subtitles_available, prerequisites, target_audience, learning_outcomes, course_intro_title, course_intro_summary, " +
-      "objectives, creator_type, creator_id, establishment_id, " +
+      "objectives, creator_type, creator_id, creator_context, establishment_id, " +
       "total_duration_seconds, is_published, learning_design_settings, free_preview_mode, preview_first_lesson_enabled, " +
       "lesson_passing_score, module_passing_score, final_passing_score, is_catalog_active, is_current_catalog_version, training_delivery_mode";
 
@@ -62,8 +62,8 @@ Deno.serve(async (req: Request) => {
 
     // ── Creator ─────────────────────────────────────────────────────────────
     let creator: Record<string, unknown> = {};
-    if (course.creator_type === "plateforme") {
-      creator = { id: null, full_name: "Omnia Global Academy", bio: "Formation créée par la plateforme Omnia Global Academy.", expertise_domain: null, avatar_url: null };
+    if (course.creator_type === "plateforme" || String(course.creator_context || "") === "super_admin") {
+      creator = { id: null, full_name: "Omnia Global Academy", bio: "Formation créée et publiée par Omnia Global Academy.", expertise_domain: null, avatar_url: "/omnia-sidebar-logo.png", logo_url: "/omnia-sidebar-logo.png", public_creator_type: "plateforme" };
     } else if (course.creator_type === "etablissement" && course.establishment_id) {
       const { data: ep } = await supabase
         .from("etablissement_profiles")

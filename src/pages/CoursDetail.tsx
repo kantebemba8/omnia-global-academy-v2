@@ -13,7 +13,8 @@ const LEVEL_COLORS: Record<string, string> = {
 };
 
 function Stars({ rating, size = 14 }: { rating: number; size?: number }) {
-  const n = Math.round(rating);
+  const safe = Number.isFinite(Number(rating)) ? Math.min(5, Math.max(0, Number(rating))) : 0;
+  const n = Math.round(safe);
   return <span style={{ color: '#BF8813', fontSize: `${size}px`, letterSpacing: '1px' }}>{'★'.repeat(n)}{'☆'.repeat(5 - n)}</span>;
 }
 
@@ -68,14 +69,14 @@ export function CoursDetail() {
     if (sessionToken) headers.Authorization = `Bearer ${sessionToken}`;
 
     fetch(`${ENDPOINTS.courseDetail}?id=${id}${isCreatorPreview ? '&preview=visitor' : ''}`, { headers })
-      .then(r => r.json())
+      .then(async r => { const d = await r.json().catch(() => null); if (!r.ok || !d?.course) throw new Error(d?.message || d?.error || 'COURSE_DETAIL_UNAVAILABLE'); return d; })
       .then(d => {
         setDetail(d);
         setIsEnrolled(d.is_enrolled ?? false);
         fetch(`${ENDPOINTS.courseSessions}?course_id=${encodeURIComponent(String(id))}`, { headers: { Authorization: `Bearer ${ANON_KEY}` } })
           .then(r => r.json()).then(s => setTrainingSessions(Array.isArray(s.sessions) ? s.sessions : [])).catch(() => setTrainingSessions([]));
         // Open first module by default
-        const firstMod = (d.modules as Record<string,unknown>[])?.[0];
+        const firstMod = Array.isArray(d.modules) ? d.modules[0] : null;
         if (firstMod?.id) setOpenModules(new Set([firstMod.id as string]));
         // Fetch similar courses
         const cat = (d.course as Record<string, unknown>)?.category;
@@ -147,11 +148,11 @@ export function CoursDetail() {
 
   const course = detail.course as Record<string, unknown>;
   const creator = (detail.creator ?? {}) as Record<string, unknown>;
-  const modules = (detail.modules ?? []) as Record<string, unknown>[];
-  const reviews = (detail.reviews ?? []) as Record<string, unknown>[];
-  const ratingDist = (detail.rating_distribution ?? []) as { stars: number; count: number; pct: number }[];
+  const modules = Array.isArray(detail.modules) ? detail.modules as Record<string, unknown>[] : [];
+  const reviews = Array.isArray(detail.reviews) ? detail.reviews as Record<string, unknown>[] : [];
+  const ratingDist = Array.isArray(detail.rating_distribution) ? detail.rating_distribution as { stars: number; count: number; pct: number }[] : [];
   const freePreviewId = detail.free_preview_lesson_id as string | null;
-  const certifications = (detail.certifications ?? []) as Array<{
+  const certifications = (Array.isArray(detail.certifications) ? detail.certifications : []) as Array<{
     id: string;
     certification_type?: string | null;
     organization_name?: string | null;
@@ -166,7 +167,7 @@ export function CoursDetail() {
     expires_at?: string | null;
     display_on_certificate?: boolean;
   }>;
-  const liveContent = (detail.live_content ?? []) as Array<{
+  const liveContent = (Array.isArray(detail.live_content) ? detail.live_content : []) as Array<{
     id: string;
     event_id?: string | null;
     media_id?: string | null;
@@ -271,7 +272,7 @@ export function CoursDetail() {
 
             {(creator.full_name || creator.school_name) && (
               <div className="mt-5 flex items-center gap-3">
-                {(course.creator_type === 'plateforme' || String(creator.full_name ?? creator.school_name ?? '').toLowerCase().includes('omnia global academy')) ? <img src="/omnia-sidebar-logo.png" alt="Omnia Global Academy" className="h-11 w-11 rounded-xl border border-white/30 bg-white p-1 object-contain" /> : (creator.avatar_url || creator.logo_url) ? <img src={String(creator.avatar_url || creator.logo_url)} alt="" className="h-11 w-11 rounded-full border-2 border-white/30 object-cover" /> : <Monogram name={String(creator.full_name || creator.school_name || 'Omnia')} size={44} />}
+                {((course.creator_type === 'plateforme' || course.creator_context === 'super_admin') || String(creator.full_name ?? creator.school_name ?? '').toLowerCase().includes('omnia global academy')) ? <img src="/omnia-sidebar-logo.png" alt="Omnia Global Academy" className="h-11 w-11 rounded-xl border border-white/30 bg-white p-1 object-contain" /> : (creator.avatar_url || creator.logo_url) ? <img src={String(creator.avatar_url || creator.logo_url)} alt="" className="h-11 w-11 rounded-full border-2 border-white/30 object-cover" /> : <Monogram name={String(creator.full_name || creator.school_name || 'Omnia')} size={44} />}
                 <div><p className="text-xs" style={{ color:'rgba(255,255,255,.55)' }}>Créé par</p><p className="text-sm font-bold text-white">{String(creator.full_name || creator.school_name)}</p>{creator.expertise_domain&&<p className="text-xs" style={{color:'#E5BE5B'}}>{String(creator.expertise_domain)}</p>}</div>
               </div>
             )}
@@ -632,14 +633,14 @@ export function CoursDetail() {
         <section>
           <h2 className="font-bold mb-5" style={{ color: '#002050', fontSize: '22px' }}>Votre formateur</h2>
           <div className="flex items-start gap-4 p-5 rounded-xl" style={{ border: '1px solid #E4E7EC' }}>
-            {(course.creator_type === 'plateforme' || String(creator.full_name ?? creator.school_name ?? '').toLowerCase().includes('omnia global academy')) ? <img src="/omnia-sidebar-logo.png" alt="Omnia Global Academy" className="h-16 w-16 rounded-xl object-contain bg-white p-1" /> : (creator.avatar_url || creator.logo_url) ? <img src={String(creator.avatar_url || creator.logo_url)} alt="" className="h-16 w-16 rounded-full object-cover" /> : <Monogram name={String(creator.full_name ?? creator.school_name ?? 'Omnia')} size={64} />}
+            {((course.creator_type === 'plateforme' || course.creator_context === 'super_admin') || String(creator.full_name ?? creator.school_name ?? '').toLowerCase().includes('omnia global academy')) ? <img src="/omnia-sidebar-logo.png" alt="Omnia Global Academy" className="h-16 w-16 rounded-xl object-contain bg-white p-1" /> : (creator.avatar_url || creator.logo_url) ? <img src={String(creator.avatar_url || creator.logo_url)} alt="" className="h-16 w-16 rounded-full object-cover" /> : <Monogram name={String(creator.full_name ?? creator.school_name ?? 'Omnia')} size={64} />}
             <div>
               <p className="font-bold" style={{ color: '#002050', fontSize: '17px' }}>
                 {String(creator.full_name ?? creator.school_name ?? 'Omnia Global Academy')}
               </p>
               {creator.expertise_domain && <p className="text-sm mt-0.5" style={{ color: '#BF8813' }}>{String(creator.expertise_domain)}</p>}
               {creator.bio && <p className="text-sm mt-2" style={{ color: '#6B7280', lineHeight: 1.65 }}>{String(creator.bio)}</p>}
-              {course.creator_type === 'plateforme' && <p className="text-sm mt-2" style={{ color: '#6B7280' }}>Formation générée par la plateforme Omnia Global Academy.</p>}
+              {(course.creator_type === 'plateforme' || course.creator_context === 'super_admin') && <p className="text-sm mt-2" style={{ color: '#6B7280' }}>Formation générée par la plateforme Omnia Global Academy.</p>}
             </div>
           </div>
         </section>
