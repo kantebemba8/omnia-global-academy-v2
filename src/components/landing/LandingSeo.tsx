@@ -92,7 +92,8 @@ export function LandingSeo({ landingPage, featuredCourses, socialNetworks, partn
       if (course.language) courseObject.inLanguage = course.language;
       if (course.level) courseObject.educationalLevel = course.level;
       if (course.creator_name) {
-        courseObject.author = { '@type': 'Person', name: course.creator_name };
+        const creatorType = course.public_creator_type || course.creator_type;
+        courseObject.author = { '@type': creatorType === 'professeur' ? 'Person' : 'Organization', name: creatorType === 'plateforme' ? 'Omnia Global Academy' : course.creator_name };
       }
       if (course.is_free || Number.isFinite(course.price_xof)) {
         courseObject.offers = {

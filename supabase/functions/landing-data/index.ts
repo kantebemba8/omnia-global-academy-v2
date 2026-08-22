@@ -90,7 +90,7 @@ Deno.serve(async (req: Request) => {
       supabase.from("site_settings").select("key, value").in("key", LANDING_KEYS),
       supabase
         .from("courses")
-        .select("id,title,short_description,cover_image_url,category,level,price_xof,is_free,cpd_hours,cpd_accredited,average_rating,total_reviews,total_students,creator_id,creator_type,language,total_duration_seconds", { count: "exact" })
+        .select("id,title,short_description,cover_image_url,category,level,price_xof,is_free,cpd_hours,cpd_accredited,average_rating,total_reviews,total_students,creator_id,creator_type,creator_context,establishment_id,language,total_duration_seconds", { count: "exact" })
         .eq("is_published", true)
         .order("average_rating", { ascending: false })
         .order("total_students", { ascending: false })
@@ -156,24 +156,40 @@ Deno.serve(async (req: Request) => {
         .filter((value: string | null): value is string => Boolean(value)),
     );
 
-    const creatorIds = Array.from(new Set((coursesResult.data ?? [])
-      .map((course: { creator_id?: string | null }) => course.creator_id)
+    const featuredRows = coursesResult.data ?? [];
+    const creatorIds = Array.from(new Set(featuredRows
+      .filter((course: any) => course.creator_type === "professeur" && String(course.creator_context || "") !== "super_admin")
+      .map((course: any) => course.creator_id)
       .filter((value: string | null | undefined): value is string => Boolean(value))));
+    const establishmentIds = Array.from(new Set(featuredRows
+      .filter((course: any) => (course.creator_type === "etablissement" || course.creator_type === "structure") && course.establishment_id)
+      .map((course: any) => course.establishment_id)
+      .filter(Boolean)));
 
-    const creatorNames = new Map<string, string>();
-    if (creatorIds.length > 0) {
-      const { data: creators, error: creatorsError } = await supabase
-        .from("users")
-        .select("id,full_name")
-        .in("id", creatorIds);
-      if (creatorsError) throw creatorsError;
-      for (const creator of creators ?? []) creatorNames.set(creator.id, creator.full_name);
-    }
+    const [creatorsResult, visibilityResult, establishmentsResult] = await Promise.all([
+      creatorIds.length ? supabase.from("users").select("id,full_name,avatar_url").in("id", creatorIds) : Promise.resolve({ data: [], error: null }),
+      creatorIds.length ? supabase.from("user_profiles").select("user_id,field_visibility").in("user_id", creatorIds) : Promise.resolve({ data: [], error: null }),
+      establishmentIds.length ? supabase.from("etablissement_profiles").select("id,school_name,logo_url").in("id", establishmentIds) : Promise.resolve({ data: [], error: null }),
+    ]);
+    const identityError = creatorsResult.error || visibilityResult.error || establishmentsResult.error;
+    if (identityError) throw identityError;
+    const creatorMap = new Map((creatorsResult.data ?? []).map((item: any) => [item.id, item]));
+    const visibilityMap = new Map((visibilityResult.data ?? []).map((item: any) => [item.user_id, item.field_visibility && typeof item.field_visibility === "object" ? item.field_visibility : {}]));
+    const establishmentMap = new Map((establishmentsResult.data ?? []).map((item: any) => [item.id, item]));
 
-    const featuredCourses = (coursesResult.data ?? []).map((course: any) => ({
-      ...course,
-      creator_name: course.creator_id ? creatorNames.get(course.creator_id) ?? null : null,
-    }));
+    const featuredCourses = featuredRows.map((course: any) => {
+      const platform = course.creator_type === "plateforme" || String(course.creator_context || "") === "super_admin";
+      const structure = course.creator_type === "etablissement" || course.creator_type === "structure";
+      const professor = creatorMap.get(course.creator_id);
+      const visibility = visibilityMap.get(course.creator_id) || {};
+      const establishment = establishmentMap.get(course.establishment_id);
+      return {
+        ...course,
+        public_creator_type: platform ? "plateforme" : structure ? "structure" : "professeur",
+        creator_name: platform ? "Omnia Global Academy" : structure ? establishment?.school_name ?? null : professor?.full_name ?? null,
+        creator_logo_url: platform ? "/omnia-sidebar-logo.png" : structure ? establishment?.logo_url ?? null : (visibility.avatar_url !== false ? professor?.avatar_url ?? null : null),
+      };
+    });
 
     const realStat = (value: number) => value > 0 ? value.toLocaleString("fr-FR") : null;
 

@@ -64,19 +64,21 @@ Deno.serve(async (req: Request) => {
     let creator: Record<string, unknown> = {};
     if (course.creator_type === "plateforme" || String(course.creator_context || "") === "super_admin") {
       creator = { id: null, full_name: "Omnia Global Academy", bio: "Formation créée et publiée par Omnia Global Academy.", expertise_domain: null, avatar_url: "/omnia-sidebar-logo.png", logo_url: "/omnia-sidebar-logo.png", public_creator_type: "plateforme" };
-    } else if (course.creator_type === "etablissement" && course.establishment_id) {
+    } else if ((course.creator_type === "etablissement" || course.creator_type === "structure") && course.establishment_id) {
       const { data: ep } = await supabase
         .from("etablissement_profiles")
         .select("id, school_name, logo_url, director_name")
         .eq("id", course.establishment_id)
         .maybeSingle();
-      creator = ep ?? {};
+      creator = { ...(ep ?? {}), public_creator_type: "structure" };
     } else if (course.creator_id) {
-      const [{ data: u }, { data: pp }] = await Promise.all([
+      const [{ data: u }, { data: pp }, { data: privacy }] = await Promise.all([
         supabase.from("users").select("id, full_name, avatar_url").eq("id", course.creator_id).maybeSingle(),
         supabase.from("professeur_profiles").select("bio, expertise_domain").eq("user_id", course.creator_id).maybeSingle(),
+        supabase.from("user_profiles").select("field_visibility").eq("user_id", course.creator_id).maybeSingle(),
       ]);
-      creator = { ...(u ?? {}), bio: pp?.bio ?? null, expertise_domain: pp?.expertise_domain ?? null };
+      const visibility = privacy?.field_visibility && typeof privacy.field_visibility === "object" ? privacy.field_visibility as Record<string, boolean> : {};
+      creator = { ...(u ?? {}), avatar_url: visibility.avatar_url !== false ? u?.avatar_url ?? null : null, bio: pp?.bio ?? null, expertise_domain: pp?.expertise_domain ?? null, public_creator_type: "professeur" };
     }
 
     // ── Modules + lessons ───────────────────────────────────────────────────

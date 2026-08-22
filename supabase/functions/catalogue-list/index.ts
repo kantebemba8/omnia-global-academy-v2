@@ -202,25 +202,31 @@ Deno.serve(async (req: Request) => {
 
     const internalCourses = internalResult.data ?? [];
     const professorIds = internalCourses.filter((item: any) => item.creator_type === "professeur" && item.creator_id).map((item: any) => item.creator_id);
-    const establishmentIds = internalCourses.filter((item: any) => item.creator_type === "etablissement" && item.establishment_id).map((item: any) => item.establishment_id);
-    const [usersResult, establishmentsResult] = await Promise.all([
-      professorIds.length ? sb.from("users").select("id,full_name").in("id", professorIds) : Promise.resolve({ data: [] }),
-      establishmentIds.length ? sb.from("etablissement_profiles").select("id,school_name").in("id", establishmentIds) : Promise.resolve({ data: [] }),
+    const establishmentIds = internalCourses.filter((item: any) => (item.creator_type === "etablissement" || item.creator_type === "structure") && item.establishment_id).map((item: any) => item.establishment_id);
+    const [usersResult, establishmentsResult, visibilityResult] = await Promise.all([
+      professorIds.length ? sb.from("users").select("id,full_name,avatar_url").in("id", professorIds) : Promise.resolve({ data: [] }),
+      establishmentIds.length ? sb.from("etablissement_profiles").select("id,school_name,logo_url").in("id", establishmentIds) : Promise.resolve({ data: [] }),
+      professorIds.length ? sb.from("user_profiles").select("user_id,field_visibility").in("user_id", professorIds) : Promise.resolve({ data: [] }),
     ]);
-    const userMap = Object.fromEntries((usersResult.data ?? []).map((item: any) => [item.id, item.full_name]));
-    const establishmentMap = Object.fromEntries((establishmentsResult.data ?? []).map((item: any) => [item.id, item.school_name]));
+    const userMap = Object.fromEntries((usersResult.data ?? []).map((item: any) => [item.id, item]));
+    const establishmentMap = Object.fromEntries((establishmentsResult.data ?? []).map((item: any) => [item.id, item]));
+    const visibilityMap = Object.fromEntries((visibilityResult.data ?? []).map((item: any) => [item.user_id, item.field_visibility && typeof item.field_visibility === "object" ? item.field_visibility : {}]));
 
     const combined = [
       ...internalCourses.map((course: any) => ({
         ...course,
         content_origin: "internal",
-        public_creator_type: (course.creator_type === "plateforme" || String(course.creator_context || "") === "super_admin") ? "plateforme" : course.creator_type,
-        creator_logo_url: (course.creator_type === "plateforme" || String(course.creator_context || "") === "super_admin") ? "/omnia-sidebar-logo.png" : null,
+        public_creator_type: (course.creator_type === "plateforme" || String(course.creator_context || "") === "super_admin") ? "plateforme" : (course.creator_type === "etablissement" || course.creator_type === "structure") ? "structure" : "professeur",
+        creator_logo_url: (course.creator_type === "plateforme" || String(course.creator_context || "") === "super_admin")
+          ? "/omnia-sidebar-logo.png"
+          : (course.creator_type === "etablissement" || course.creator_type === "structure")
+          ? establishmentMap[course.establishment_id]?.logo_url ?? null
+          : (visibilityMap[course.creator_id]?.avatar_url !== false ? userMap[course.creator_id]?.avatar_url ?? null : null),
         creator_name: (course.creator_type === "plateforme" || String(course.creator_context || "") === "super_admin")
           ? "Omnia Global Academy"
-          : course.creator_type === "etablissement"
-          ? establishmentMap[course.establishment_id] ?? null
-          : userMap[course.creator_id] ?? null,
+          : (course.creator_type === "etablissement" || course.creator_type === "structure")
+          ? establishmentMap[course.establishment_id]?.school_name ?? null
+          : userMap[course.creator_id]?.full_name ?? null,
       })),
       ...(externalResult.data ?? []).map((course: any) => ({
         ...course,

@@ -10,7 +10,7 @@ import { ShieldCheck, Clock, BadgeCheck, RefreshCw, CheckCircle, XCircle, Tag, L
 interface CourseInfo {
   id: string; title: string; category: string; level: string;
   price_xof: number; cover_image_url: string | null;
-  cpd_accredited: boolean; creator_name: string; is_free: boolean;
+  cpd_accredited: boolean; creator_name: string; creator_logo_url?: string | null; is_free: boolean;
 }
 
 interface CouponResult {
@@ -57,7 +57,7 @@ export default function Checkout() {
 
     fetch(`${ENDPOINTS.courseDetail}?id=${courseId}`)
       .then(r => r.json())
-      .then(d => { setCourse(d.course ?? null); setLoading(false); })
+      .then(d => { const c=d.course ?? null; const creator=d.creator ?? {}; if(c){ const platform=c.creator_type==='plateforme'||c.creator_context==='super_admin'; c.creator_name=platform?'Omnia Global Academy':String(creator.full_name||creator.school_name||''); c.creator_logo_url=platform?'/omnia-sidebar-logo.png':String(creator.avatar_url||creator.logo_url||'')||null; } setCourse(c); setLoading(false); })
       .catch(() => setLoading(false));
   }, [courseId, navigate]);
 
@@ -203,7 +203,7 @@ export default function Checkout() {
                     </span>
                   )}
                 </div>
-                <p className="text-xs text-gray-500">Par {course.creator_name}</p>
+                <div className="flex items-center gap-2 text-xs text-gray-500">{course.creator_logo_url&&<img src={course.creator_logo_url} alt={course.creator_name} className="h-5 w-5 rounded object-contain"/>}<span>Par {course.creator_name}</span></div>
 
                 <div className="border-t border-gray-100 mt-5 pt-4 space-y-2">
                   <div className="flex justify-between text-sm text-gray-600">

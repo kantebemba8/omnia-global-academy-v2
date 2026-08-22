@@ -70,8 +70,9 @@ export function CourseCard({ course, variant = 'grid' }: CourseCardProps) {
   const isExternal = course.content_origin === 'external';
   const coursePath = isExternal ? `/formation-externe/${course.id}` : `/cours/${course.id}`;
   const rating = Number.isFinite(course.average_rating) ? course.average_rating : 0;
-  const creatorName = isExternal ? course.provider_name : course.creator_name;
   const isPlatformCreator = !isExternal && (course.public_creator_type === 'plateforme' || course.creator_context === 'super_admin' || course.creator_type === 'plateforme');
+  const creatorName = isExternal ? course.provider_name : isPlatformCreator ? 'Omnia Global Academy' : course.creator_name;
+  const creatorImage = !isExternal ? (isPlatformCreator ? '/omnia-sidebar-logo.png' : course.creator_logo_url || null) : null;
   const accessLabel = course.access_mode === 'registered' ? 'Après inscription' : course.access_mode === 'premium' ? 'Accès Premium' : course.access_mode === 'paid' ? 'Paiement sur Omnia' : 'Accès public';
   const externalPriceLabel = course.access_mode === 'paid' ? `${Number(course.price_xof || 0).toLocaleString('fr-FR')} XOF` : accessLabel;
 
@@ -93,7 +94,7 @@ export function CourseCard({ course, variant = 'grid' }: CourseCardProps) {
         <div className="min-w-0 flex-1 py-3 pr-2 sm:pr-4">
           <p data-no-auto-translate="true" className="mb-1 text-xs uppercase tracking-wide" style={{ color: '#6B7280' }}>{course.category}</p>
           <p data-no-auto-translate="true" className="mb-1 line-clamp-2 text-sm font-semibold" style={{ color: '#002050' }}>{course.title}</p>
-          {creatorName && <div className="mb-1 flex items-center gap-1.5 text-xs" style={{ color: '#6B7280' }}>{isPlatformCreator && <img src={course.creator_logo_url || '/omnia-sidebar-logo.png'} alt="Omnia Global Academy" className="h-4 w-4 rounded object-contain" />}<span>{isExternal ? 'Source :' : 'Par'} <span data-no-auto-translate="true">{creatorName}</span></span></div>}
+          {creatorName && <div className="mb-1 flex items-center gap-1.5 text-xs" style={{ color: '#6B7280' }}>{creatorImage && <img src={creatorImage} alt={creatorName || ''} className="h-4 w-4 rounded object-contain" />}<span>{isExternal ? 'Source :' : 'Par'} <span data-no-auto-translate="true">{creatorName}</span></span></div>}
           {course.total_reviews > 0 && (
             <div className="flex flex-wrap items-center gap-1.5">
               <Stars rating={rating} />
@@ -155,7 +156,7 @@ export function CourseCard({ course, variant = 'grid' }: CourseCardProps) {
       <div className="flex flex-1 flex-col p-4">
         <p data-no-auto-translate="true" className="mb-1 text-xs uppercase tracking-wide" style={{ color: '#6B7280' }}>{course.category ?? ''}</p>
         <p data-no-auto-translate="true" className="mb-1 line-clamp-2 flex-1 text-sm font-semibold leading-snug" style={{ color: '#002050' }}>{course.title}</p>
-        {creatorName && <div className="mb-2 flex items-center gap-2 text-xs" style={{ color: '#6B7280' }}>{isPlatformCreator && <img src={course.creator_logo_url || '/omnia-sidebar-logo.png'} alt="Omnia Global Academy" className="h-5 w-5 rounded object-contain" />}<span>{isExternal ? 'Source :' : 'Par'} <span data-no-auto-translate="true">{creatorName}</span></span></div>}
+        {creatorName && <div className="mb-2 flex items-center gap-2 text-xs" style={{ color: '#6B7280' }}>{creatorImage && <img src={creatorImage} alt={creatorName || ''} className="h-5 w-5 rounded object-contain" />}<span>{isExternal ? 'Source :' : 'Par'} <span data-no-auto-translate="true">{creatorName}</span></span></div>}
         {course.total_reviews > 0 && (
           <div className="mb-1 flex flex-wrap items-center gap-1.5">
             <Stars rating={rating} />
