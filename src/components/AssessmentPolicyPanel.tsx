@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AlertCircle, CheckCircle2, Eye, Loader2, Monitor, Plus, RotateCcw,
-  Save, ShieldCheck, Trash2, Users, Video, X, type LucideIcon,
+  Save, ShieldCheck, Trash2, Users, Video, X, Layers3, type LucideIcon,
 } from 'lucide-react';
 import { edgeAuthHeaders } from '../lib/edgeAuth';
 import { assessmentGovernanceCall } from '../lib/assessmentGovernanceApi';
@@ -373,6 +373,7 @@ function AssessmentGroup({ title, rows, frameworks, locked, onUpdate }: { title:
               </div>
               {row.randomize_questions && <div className="mt-3 max-w-xs"><NumberField label="Nombre de questions tirées (0 = toutes)" value={Number(row.random_question_count || 0)} min={0} disabled={locked} onChange={value => onUpdate(row.id, { random_question_count: Math.max(0, value) })}/></div>}
               <QuestionBankPanel assessmentId={row.id} locked={locked} />
+              <AssessmentCompositionPanel assessmentId={row.id} scope={row.scope} locked={locked} />
             </div>
 
             <details className="mt-4 rounded-xl bg-gray-50 p-4">
@@ -437,6 +438,98 @@ function AssessmentGroup({ title, rows, frameworks, locked, onUpdate }: { title:
       })}</div>
     </section>
   );
+}
+
+function AssessmentCompositionPanel({ assessmentId, scope, locked }: { assessmentId: string; scope: AssessmentRow['scope']; locked?: boolean }) {
+  const [open, setOpen] = useState(scope === 'final');
+  const [loading, setLoading] = useState(false);
+  const [sections, setSections] = useState<any[]>([]);
+  const [questions, setQuestions] = useState<any[]>([]);
+  const [total, setTotal] = useState(0);
+  const [message, setMessage] = useState('');
+  const [newSection, setNewSection] = useState({ title: '', target_points: 0 });
+
+  const load = useCallback(async () => {
+    setLoading(true); setMessage('');
+    try {
+      const data = await call('assessment_composition_get', { assessment_id: assessmentId });
+      setSections(data.sections || []); setQuestions(data.questions || []); setTotal(Number(data.total_points || 0));
+    } catch (e) { setMessage(e instanceof Error ? e.message : 'Composition indisponible.'); }
+    finally { setLoading(false); }
+  }, [assessmentId]);
+
+  useEffect(() => { if (open) void load(); }, [open, load]);
+
+  async function createSection() {
+    if (!newSection.title.trim()) return setMessage('Donnez un titre à la partie.');
+    setLoading(true);
+    try {
+      await call('assessment_section_create', { assessment_id: assessmentId, title: newSection.title.trim(), target_points: newSection.target_points > 0 ? newSection.target_points : null });
+      setNewSection({ title: '', target_points: 0 }); await load();
+    } catch (e) { setMessage(e instanceof Error ? e.message : 'Création impossible.'); } finally { setLoading(false); }
+  }
+  async function updateSection(section: any, patch: Record<string, unknown>) {
+    setSections(cur => cur.map(x => x.id === section.id ? { ...x, ...patch } : x));
+    try { await call('assessment_section_update', { section_id: section.id, ...patch }); await load(); }
+    catch (e) { setMessage(e instanceof Error ? e.message : 'Modification impossible.'); await load(); }
+  }
+  async function deleteSection(section: any) {
+    if (!confirm(`Supprimer la partie « ${section.title} » ?`)) return;
+    try { await call('assessment_section_delete', { section_id: section.id }); await load(); }
+    catch (e) { setMessage(e instanceof Error ? e.message : 'Suppression impossible.'); }
+  }
+  async function updateQuestion(question: any, patch: Record<string, unknown>) {
+    setQuestions(cur => cur.map(x => x.id === question.id ? { ...x, ...patch } : x));
+    try { await call('assessment_question_design_update', { question_id: question.id, ...patch }); await load(); }
+    catch (e) { setMessage(e instanceof Error ? e.message : 'Modification impossible.'); await load(); }
+  }
+
+  return <div className="mt-3 rounded-xl border bg-white" style={{ borderColor: BORDER }}>
+    <button type="button" onClick={() => setOpen(v => !v)} className="flex w-full items-center justify-between gap-3 p-3 text-left">
+      <span className="flex items-center gap-2 text-xs font-semibold" style={{ color: BLUE }}><Layers3 size={15} color={GOLD}/>Composition et points</span>
+      <span className="text-xs text-gray-500">{open ? 'Fermer' : 'Ouvrir'}</span>
+    </button>
+    {open && <div className="border-t p-3" style={{ borderColor: BORDER }}>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg bg-blue-50 p-3">
+        <div><p className="text-xs font-semibold text-blue-900">Total automatique de l’évaluation</p><p className="text-[11px] text-blue-700">Seuls les points des questions sont additionnés. Une grille rubric ne compte jamais une seconde fois.</p></div>
+        <strong className="text-lg" style={{ color: BLUE }}>{total} pts</strong>
+      </div>
+      {loading && <p className="text-xs text-gray-500">Chargement…</p>}
+      {sections.length > 0 && <div className="space-y-2">
+        {sections.map(section => {
+          const actual = Number(section.actual_points || 0);
+          const target = section.target_points == null ? null : Number(section.target_points);
+          return <div key={section.id} className="rounded-lg border p-3" style={{ borderColor: target != null && Math.abs(actual-target) > .001 ? '#F59E0B' : BORDER }}>
+            <div className="grid gap-2 md:grid-cols-[1fr_130px_130px_44px] md:items-end">
+              <TextField label="Titre de la partie" value={section.title || ''} disabled={locked} onChange={value => void updateSection(section, { title: value })}/>
+              <NumberField label="Points attendus" value={target || 0} min={0} step={0.5} disabled={locked} onChange={value => void updateSection(section, { target_points: value > 0 ? value : null })}/>
+              <div className="text-xs"><span className="block font-semibold text-gray-600">Points réels</span><strong className={target != null && Math.abs(actual-target) > .001 ? 'text-amber-700' : 'text-emerald-700'}>{actual} pts</strong></div>
+              <button type="button" disabled={locked} onClick={() => void deleteSection(section)} className="h-10 rounded-lg border text-red-600 disabled:opacity-40" style={{ borderColor: BORDER }}><Trash2 size={15} className="mx-auto"/></button>
+            </div>
+          </div>;
+        })}
+      </div>}
+      {!locked && <div className="mt-3 grid gap-2 rounded-lg bg-gray-50 p-3 md:grid-cols-[1fr_140px_auto] md:items-end">
+        <TextField label="Nouvelle partie" value={newSection.title} onChange={title => setNewSection(v => ({...v,title}))} placeholder={scope === 'final' ? 'Ex. Partie 1 — Connaissances essentielles' : 'Titre de la partie'}/>
+        <NumberField label="Points attendus" value={newSection.target_points} min={0} step={0.5} onChange={target_points => setNewSection(v => ({...v,target_points}))}/>
+        <button type="button" onClick={() => void createSection()} className="h-10 rounded-lg px-3 text-xs font-semibold text-white" style={{ background: BLUE }}><Plus size={14} className="mr-1 inline"/>Ajouter</button>
+      </div>}
+      <div className="mt-4 overflow-x-auto">
+        <table className="w-full min-w-[720px] border-collapse text-xs">
+          <thead><tr className="bg-gray-50"><th className="border p-2 text-left">Question / activité</th><th className="border p-2 text-left">Type</th><th className="border p-2 text-left">Partie</th><th className="border p-2 text-right">Points</th><th className="border p-2 text-left">Correction</th></tr></thead>
+          <tbody>{questions.map(q => <tr key={q.id}>
+            <td className="border p-2"><span className="line-clamp-2">{q.prompt || 'Question'}</span></td>
+            <td className="border p-2">{q.question_type}</td>
+            <td className="border p-2"><select value={q.section_id || ''} disabled={locked} onChange={e => void updateQuestion(q,{section_id:e.target.value || null})} className="h-9 w-full rounded border px-2"><option value="">Sans partie</option>{sections.map(section => <option key={section.id} value={section.id}>{section.title}</option>)}</select></td>
+            <td className="border p-2 text-right"><input type="number" min={0.1} step={0.5} value={Number(q.points || 0)} disabled={locked} onChange={e => void updateQuestion(q,{points:Number(e.target.value || .1)})} className="h-9 w-24 rounded border px-2 text-right"/></td>
+            <td className="border p-2">{q.grading_mode === 'automatic' ? 'Automatique' : 'Humaine'}{Array.isArray(q.rubric) && q.rubric.length ? ' · grille liée' : ''}</td>
+          </tr>)}</tbody>
+        </table>
+        {!questions.length && !loading && <p className="py-4 text-center text-xs text-gray-500">Aucune question officielle. Ajoutez des activités ou utilisez la banque de questions.</p>}
+      </div>
+      {message && <p className="mt-3 text-xs text-amber-700">{message}</p>}
+    </div>}
+  </div>;
 }
 
 function QuestionBankPanel({ assessmentId, locked }: { assessmentId: string; locked?: boolean }) {

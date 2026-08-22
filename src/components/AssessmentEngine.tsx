@@ -35,6 +35,7 @@ async function call(action: string, payload: Record<string, unknown>) {
 
 type Question = {
   id: string;
+  section_id?: string | null;
   question_type: 'qcm' | 'true_false' | 'open_question' | 'exercise' | 'assignment_upload' | 'case_study' | 'cloze' | 'dictation' | 'pronunciation' | 'matching' | 'sentence_order' | 'oral_response' | 'listening_comprehension' | 'written_expression';
   prompt: string;
   options?: any;
@@ -307,7 +308,7 @@ export function AssessmentEngine({
         <div>
           <h2 className="font-semibold" style={{ color: BLUE }}>{assessment.title}</h2>
           <p className="mt-1 text-sm text-gray-500">
-            Seuil de réussite : <b>{assessment.passing_score}%</b>
+            Seuil de réussite : <b>{assessment.passing_score}%</b>{Number(assessment.total_points || 0) > 0 && <> · Barème : <b>{assessment.total_points} points</b></>}
             {' · '}remédiation après {assessment.remediation_after_attempts} échec(s)
             {assessment.retry_cooldown_hours > 0 ? ` · reprise après ${assessment.retry_cooldown_hours} h` : ''}
             {assessment.time_limit_minutes ? ` · ${assessment.time_limit_minutes} min` : ''}
@@ -367,8 +368,15 @@ export function AssessmentEngine({
 
       {!passed && !pending && !blocked && (
         <div className="space-y-5">
-          {assessment.questions.map((question, index) => (
-            <div key={question.id} className="rounded-xl bg-gray-50 p-4">
+          {assessment.questions.map((question, index) => {
+            const section = (assessment.sections || []).find(item => item.id === question.section_id);
+            const previousSectionId = index > 0 ? assessment.questions[index - 1]?.section_id : null;
+            const showSection = Boolean(section && section.id !== previousSectionId);
+            return <div key={question.id}>
+              {showSection && <div className="mb-3 mt-2 rounded-xl border-l-4 bg-slate-50 p-4" style={{ borderLeftColor: GOLD }}>
+                <div className="flex flex-wrap items-center justify-between gap-2"><div><p className="font-bold" style={{ color: BLUE }}>{section?.title}</p>{section?.description && <p className="mt-1 text-xs text-slate-500">{section.description}</p>}</div>{section?.target_points != null && <span className="text-xs font-semibold text-slate-600">{section.target_points} pts</span>}</div>
+              </div>}
+              <div className="rounded-xl bg-gray-50 p-4">
               <p className="mb-3 text-sm font-medium" style={{ color: BLUE }}>
                 {index + 1}. {question.prompt} <span className="text-xs text-gray-400">({question.points} pts)</span>
               </p>
@@ -446,8 +454,9 @@ export function AssessmentEngine({
                   )}
                 </div>
               )}
-            </div>
-          ))}
+              </div>
+            </div>;
+          })}
         </div>
       )}
 

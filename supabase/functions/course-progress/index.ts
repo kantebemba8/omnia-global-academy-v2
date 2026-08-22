@@ -59,6 +59,9 @@ Deno.serve(async(req:Request)=>{
     const lessonUnlock:Record<string,boolean>={};
     const {data:lessonProgress}=previewAllowed?{data:[]} : await sb.from("user_lesson_progress").select("lesson_id,time_spent_seconds,quiz_passed,is_completed").eq("user_id",userId).eq("course_id",courseId);
     const {data:assessments}=await sb.from("course_assessments").select("id,scope,module_id,lesson_id,passing_score,required").eq("course_id",courseId).eq("is_active",true);
+    // Politique canonique OGA : une progression acquise reste acquise. Pour les évaluations
+    // obligatoires, toute tentative publiée réussie satisfait la condition; une tentative
+    // ultérieure moins bonne ne retire pas une réussite déjà obtenue.
     const assessmentIds=(assessments??[]).map((a:any)=>a.id);
     const {data:attempts}=!previewAllowed&&assessmentIds.length?await sb.from("assessment_attempts").select("assessment_id,score,passed,status,attempt_number,submitted_at").eq("user_id",userId).in("assessment_id",assessmentIds).order("attempt_number",{ascending:false}):{data:[]};
 
