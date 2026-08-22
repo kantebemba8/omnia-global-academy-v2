@@ -96,6 +96,14 @@ function courseProgressExpiry(): string {
   return new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
 }
 function fmtTime(s: number) { return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; }
+function sectionType(mod: any): 'introduction' | 'module' | 'conclusion' | 'final_exam' {
+  return String(
+    mod?.section_type ||
+    (mod?.is_intro ? 'introduction' :
+      mod?.is_conclusion ? 'conclusion' :
+      mod?.is_final_exam ? 'final_exam' : 'module')
+  ) as 'introduction' | 'module' | 'conclusion' | 'final_exam';
+}
 function previewModulesFromCourseInfo(info: CourseInfoPayload | null): ModuleItem[] {
   return (info?.modules || []).map((mod: any) => ({
     module_id: String(mod.id),
@@ -121,7 +129,6 @@ function previewModulesFromCourseInfo(info: CourseInfoPayload | null): ModuleIte
 }
 function normalizeReaderModules(input: any): ModuleItem[] {
   if (!Array.isArray(input)) return [];
-  const sectionType = (mod:any) => String(mod?.section_type || (mod?.is_intro ? 'introduction' : mod?.is_conclusion ? 'conclusion' : mod?.is_final_exam ? 'final_exam' : 'module'));
   const stageType = (lesson:any) => String(lesson?.stage_type || (lesson?.is_intro ? 'introduction' : lesson?.is_module_intro ? 'module_presentation' : lesson?.is_conclusion ? 'conclusion' : lesson?.is_final_exam ? 'final_exam' : 'lesson'));
   const rankModule = (mod:any) => sectionType(mod)==='introduction'?-100000:sectionType(mod)==='conclusion'?100000:sectionType(mod)==='final_exam'?200000:Number(mod?.position||0);
   const rankLesson = (lesson:any) => stageType(lesson)==='module_presentation'?-10000:stageType(lesson)==='module_summary'?10000:Number(lesson?.position||0);
