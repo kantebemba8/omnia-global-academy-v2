@@ -1994,6 +1994,50 @@ function LanguageBlockEditor({type,c,locked,onChange}:{type:string;c:Record<stri
   return <div className="space-y-2"><textarea className={cls} style={st} rows={4} value={c.prompt||''} onChange={e=>onChange({...c,prompt:e.target.value})} placeholder="Sujet d’expression écrite" disabled={locked}/><input type="number" min={20} className={cls} style={st} value={c.target_words||120} onChange={e=>onChange({...c,target_words:Math.max(20,Number(e.target.value)||120)})} disabled={locked}/></div>;
 }
 
+
+function SubmissionModeEditor({ c, locked, onChange, allowPerQuestion = false }: {
+  c: Record<string, any>;
+  locked?: boolean;
+  onChange: (value: Record<string, any>) => void;
+  allowPerQuestion?: boolean;
+}) {
+  const responseMode = String(c.response_mode || (c.learner_upload_required === true ? 'file' : 'text'));
+  const accepted = Array.isArray(c.accepted_types) ? c.accepted_types.map((x:any)=>String(x)) : ['pdf','doc','docx','xls','xlsx'];
+  const maxSize = Math.max(1, Math.min(50, Number(c.max_size_mb || 10)));
+  const setMode = (mode: string) => onChange({ ...c, response_mode: mode, learner_upload_required: mode === 'file' });
+
+  return <div className="space-y-3 rounded-xl border p-3" style={{borderColor:'#D9DEE8',background:'#F8FAFC'}}>
+    <div>
+      <p className="text-xs font-bold" style={{color:'#002050'}}>Mode de remise apprenant</p>
+      <p className="mt-1 text-[11px] text-gray-500">Le mode de remise est indépendant du mode de correction.</p>
+    </div>
+    <select className="w-full rounded-lg border bg-white px-3 py-2 text-sm" style={{borderColor:'#D9DEE8'}} value={responseMode} disabled={locked} onChange={e=>setMode(e.target.value)}>
+      <option value="text">Réponse texte</option>
+      <option value="file">Fichier à joindre</option>
+      <option value="text_file">Réponse texte + fichier</option>
+    </select>
+
+    {allowPerQuestion && responseMode !== 'file' && <div>
+      <p className="mb-1 text-xs font-semibold text-slate-600">Organisation de la réponse texte</p>
+      <select className="w-full rounded-lg border bg-white px-3 py-2 text-sm" style={{borderColor:'#D9DEE8'}} value={String(c.response_layout || 'per_question')} disabled={locked} onChange={e=>onChange({...c,response_layout:e.target.value})}>
+        <option value="per_question">Une réponse par question d’analyse</option>
+        <option value="single">Une réponse globale</option>
+      </select>
+    </div>}
+
+    {(responseMode === 'file' || responseMode === 'text_file') && <>
+      <div>
+        <p className="mb-1 text-xs font-semibold text-slate-600">Formats autorisés</p>
+        <input className="w-full rounded-lg border bg-white px-3 py-2 text-sm" style={{borderColor:'#D9DEE8'}} value={accepted.join(', ')} disabled={locked} onChange={e=>onChange({...c,accepted_types:e.target.value.split(',').map(x=>x.trim().replace(/^\./,'').toLowerCase()).filter(Boolean)})} placeholder="pdf, docx, xlsx, png, jpg"/>
+      </div>
+      <div>
+        <p className="mb-1 text-xs font-semibold text-slate-600">Taille maximale du fichier (Mo)</p>
+        <input type="number" min={1} max={50} className="w-full rounded-lg border bg-white px-3 py-2 text-sm" style={{borderColor:'#D9DEE8'}} value={maxSize} disabled={locked} onChange={e=>onChange({...c,max_size_mb:Math.max(1,Math.min(50,Number(e.target.value)||10))})}/>
+      </div>
+    </>}
+  </div>;
+}
+
 // ─── Aperçu inline du bloc (éditable) ────────────────────────
 function BlockPreview({ block, def, locked, onChange, onGenerateTts, onGenerateSubtitles, mediaAiBusy, defaultLanguage = 'fr' }: {
   block: Block; def: typeof BLOCK_DEFS[0] | undefined; locked: boolean;
@@ -2030,7 +2074,7 @@ function BlockPreview({ block, def, locked, onChange, onGenerateTts, onGenerateS
     case 'numbered_list': return <RichListEditor ordered items={Array.isArray(c.items)?c.items:[]} locked={locked} language={defaultLanguage} onChange={items=>onChange({...c,items})} placeholder="Étape de la liste" />;
     case 'objective': case 'example': case 'summary': case 'important': case 'correction': return <PedagogicalEditor c={c} locked={locked} onChange={onChange} kind={block.block_type} />;
     case 'definition': return <div className="space-y-2"><input className={inputCls} style={style} value={c.title||''} onChange={e=>onChange({...c,title:e.target.value})} placeholder="Titre du bloc (facultatif)" disabled={locked}/><input className={inputCls} style={style} value={c.term||''} onChange={e=>onChange({...c,term:e.target.value})} placeholder="Terme à définir" disabled={locked}/><RichTextEditor value={c.definition||''} locked={locked} language={defaultLanguage} placeholder="Définition..." onChange={definition=>onChange({...c,definition})}/><RichTextEditor value={c.example||''} locked={locked} language={defaultLanguage} placeholder="Exemple facultatif..." onChange={example=>onChange({...c,example})}/></div>;
-    case 'case_study': return <div className="space-y-2"><input className={inputCls} style={style} value={c.title||''} onChange={e=>onChange({...c,title:e.target.value})} placeholder="Titre de l’étude de cas" disabled={locked}/><textarea className={inputCls} style={style} rows={3} value={c.context||''} onChange={e=>onChange({...c,context:e.target.value})} placeholder="Contexte" disabled={locked}/><textarea className={inputCls} style={style} rows={3} value={c.data||''} onChange={e=>onChange({...c,data:e.target.value})} placeholder="Données et informations disponibles" disabled={locked}/><textarea className={inputCls} style={style} rows={3} value={c.task||''} onChange={e=>onChange({...c,task:e.target.value})} placeholder="Travail demandé" disabled={locked}/><EditableItems items={Array.isArray(c.questions)?c.questions:[]} locked={locked} onChange={questions=>onChange({...c,questions})} placeholder="Question d’analyse" /></div>;
+    case 'case_study': return <div className="space-y-2"><input className={inputCls} style={style} value={c.title||''} onChange={e=>onChange({...c,title:e.target.value})} placeholder="Titre de l’étude de cas" disabled={locked}/><textarea className={inputCls} style={style} rows={3} value={c.context||''} onChange={e=>onChange({...c,context:e.target.value})} placeholder="Contexte" disabled={locked}/><textarea className={inputCls} style={style} rows={3} value={c.data||''} onChange={e=>onChange({...c,data:e.target.value})} placeholder="Données et informations disponibles" disabled={locked}/><textarea className={inputCls} style={style} rows={3} value={c.task||''} onChange={e=>onChange({...c,task:e.target.value})} placeholder="Travail demandé" disabled={locked}/><EditableItems items={Array.isArray(c.questions)?c.questions:[]} locked={locked} onChange={questions=>onChange({...c,questions})} placeholder="Question d’analyse" /><SubmissionModeEditor c={c} locked={locked} onChange={onChange} allowPerQuestion /></div>;
     case 'remember': return (
       <div className="p-3 rounded-lg" style={{ background: 'rgba(191,136,19,0.08)', border: '1px solid #BF881330' }}>
         <div className="flex items-center gap-1.5 mb-2"><Star size={13} style={{ color: '#BF8813' }} /><input className="text-xs font-bold bg-transparent outline-none flex-1" style={{color:'#BF8813'}} value={c.title||'À retenir'} onChange={e=>onChange({...c,title:e.target.value})} disabled={locked}/></div>
@@ -2038,7 +2082,7 @@ function BlockPreview({ block, def, locked, onChange, onGenerateTts, onGenerateS
       </div>
     );
     case 'open_question': return <div className="space-y-2"><textarea className={inputCls} style={style} rows={3} value={c.question||''} onChange={e=>onChange({...c,question:e.target.value})} placeholder="Question posée à l’apprenant" disabled={locked}/><textarea className={inputCls} style={style} rows={2} value={c.guidance||''} onChange={e=>onChange({...c,guidance:e.target.value})} placeholder="Consignes ou éléments attendus" disabled={locked}/><textarea className={inputCls} style={style} rows={3} value={c.expected_answer||''} onChange={e=>onChange({...c,expected_answer:e.target.value})} placeholder="Réponse de référence pour le correcteur" disabled={locked}/><input type="number" className={inputCls} style={style} value={c.points||10} onChange={e=>onChange({...c,points:Number(e.target.value)})} min={0} placeholder="Points" disabled={locked}/></div>;
-    case 'exercise': return <div className="space-y-2"><input className={inputCls} style={style} value={c.title||''} onChange={e=>onChange({...c,title:e.target.value})} placeholder="Titre de l’exercice" disabled={locked}/><textarea className={inputCls} style={style} rows={4} value={c.instructions||''} onChange={e=>onChange({...c,instructions:e.target.value})} placeholder="Consignes détaillées" disabled={locked}/><textarea className={inputCls} style={style} rows={3} value={c.task||''} onChange={e=>onChange({...c,task:e.target.value})} placeholder="Travail à réaliser" disabled={locked}/><div className="p-3 rounded-lg text-xs" style={{background:'#FFF7ED',color:'#9A3412'}}>Ajoutez les fichiers de travail (PDF, Word, Excel) depuis le panneau de réglages. L’apprenant pourra les télécharger puis déposer sa réponse.</div></div>;
+    case 'exercise': return <div className="space-y-2"><input className={inputCls} style={style} value={c.title||''} onChange={e=>onChange({...c,title:e.target.value})} placeholder="Titre de l’exercice" disabled={locked}/><textarea className={inputCls} style={style} rows={4} value={c.instructions||''} onChange={e=>onChange({...c,instructions:e.target.value})} placeholder="Consignes détaillées" disabled={locked}/><textarea className={inputCls} style={style} rows={3} value={c.task||''} onChange={e=>onChange({...c,task:e.target.value})} placeholder="Travail à réaliser" disabled={locked}/><SubmissionModeEditor c={c} locked={locked} onChange={onChange}/><div className="p-3 rounded-lg text-xs" style={{background:'#FFF7ED',color:'#9A3412'}}>Les fichiers de travail du créateur restent des ressources. La remise apprenant se règle séparément ci-dessus.</div></div>;
     case 'image': return (
       <div className="space-y-2">
         {c.url ? <img src={c.url} alt={c.alt} className="w-full rounded-lg object-cover max-h-48" /> : (

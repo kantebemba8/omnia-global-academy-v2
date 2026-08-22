@@ -83,9 +83,9 @@ export function emptyBlockContent(type: string): Record<string, any> {
     case 'qcm': return { question: '', options: ['', '', '', ''], correctIndex: 0, explanation: '', points: 10 };
     case 'true_false': return { statement: '', answer: true, explanation: '', points: 10 };
     case 'open_question': return { question: '', guidance: '', expected_answer: '', points: 10, rubric: [] };
-    case 'exercise': return { title: '', instructions: '', task: '', resources: [], learner_upload_required: false, points: 10 };
+    case 'exercise': return { title: '', instructions: '', task: '', resources: [], response_mode: 'text', accepted_types: ['pdf','doc','docx','xls','xlsx'], max_size_mb: 10, points: 10 };
     case 'assignment_upload': return { title: '', instructions: '', accepted_types: ['pdf', 'docx'], max_size_mb: 10, points: 10, rubric: [] };
-    case 'case_study': return { context: '', data: '', task: '', questions: [], points: 20, rubric: [] };
+    case 'case_study': return { context: '', data: '', task: '', questions: [], response_mode: 'text', response_layout: 'per_question', accepted_types: ['pdf','doc','docx','xls','xlsx','png','jpg'], max_size_mb: 10, points: 20, rubric: [] };
     case 'rubric': return { criteria: [{ name: '', description: '', points: 10 }] };
     case 'accordion': return { items: [{ id: crypto.randomUUID(), title: '', content: '' }] };
     case 'flashcards': return { cards: [{ id: crypto.randomUUID(), front: '', back: '' }], training_enabled: true };

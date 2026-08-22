@@ -29,7 +29,7 @@ interface BlockRendererProps {
   block: Block;
   onQuizAnswer?: (blockId: string, answer: any, correct: boolean) => void;
   onTrainingResult?: (blockId: string, score: number, answer: any, passed: boolean) => void;
-  onFileTrainingSubmit?: (blockId: string, file: File) => Promise<boolean>;
+  onFileTrainingSubmit?: (blockId: string, file: File, answer?: Record<string, any>) => Promise<boolean>;
   learnerState?: Record<string, any>;
   onStateChange?: (blockId: string, state: Record<string, any>, completed: boolean) => void;
   isOnline?: boolean;
@@ -237,7 +237,7 @@ export function BlockRenderer({ block, onQuizAnswer, onTrainingResult, onFileTra
       );
 
     case 'case_study':
-      return <CaseStudyTraining c={c} training={block.interaction_mode === 'training'} threshold={trainingThreshold} graded={graded} onResult={(score, answer, passed) => onTrainingResult?.(block.id, score, answer, passed)} />;
+      return <CaseStudyTraining c={c} training={block.interaction_mode === 'training'} threshold={trainingThreshold} graded={graded} onResult={(score, answer, passed) => onTrainingResult?.(block.id, score, answer, passed)} onFileSubmit={onFileTrainingSubmit ? (file,answer) => onFileTrainingSubmit(block.id,file,answer) : undefined} />;
 
     case 'correction':
       return (
@@ -258,7 +258,7 @@ export function BlockRenderer({ block, onQuizAnswer, onTrainingResult, onFileTra
       );
 
     case 'exercise':
-      return <ExerciseTraining c={c} training={block.interaction_mode === 'training'} onResult={(score, answer, passed) => onTrainingResult?.(block.id, score, answer, passed)} onFileSubmit={onFileTrainingSubmit ? (file) => onFileTrainingSubmit(block.id, file) : undefined} />;
+      return <ExerciseTraining c={c} training={block.interaction_mode === 'training'} onResult={(score, answer, passed) => onTrainingResult?.(block.id, score, answer, passed)} onFileSubmit={onFileTrainingSubmit ? (file,answer) => onFileTrainingSubmit(block.id,file,answer) : undefined} />;
 
     // ── MÉDIAS ─────────────────────────────────────────────────
     case 'image':
@@ -491,40 +491,58 @@ function ChecklistBlock({items,initialState,onChange}:{items:any[];initialState:
   const [state,setState]=useState<Record<string,any>>(initialState||{});const update=(key:string,val:boolean)=>{const next={...state,[key]:val};setState(next);const required=items.filter(x=>x.required!==false);const completed=required.every((x:any,i:number)=>Boolean(next[String(x.id||items.indexOf(x))]));onChange?.(next,completed)};
   return <div className="my-4 rounded-xl border p-4" style={{borderColor:'#E4E7EC'}}><div className="space-y-2">{items.map((item:any,i:number)=>{const key=String(item.id||i);return <label key={key} className="flex items-start gap-3 rounded-lg px-2 py-2 hover:bg-slate-50"><input type="checkbox" checked={Boolean(state[key])} onChange={e=>update(key,e.target.checked)} className="mt-0.5"/><span className="text-sm text-slate-700">{item.text||item.label||String(item)}{item.required===false&&<span className="ml-2 text-[10px] text-slate-400">facultatif</span>}</span></label>})}</div></div>
 }
-function CaseStudyTraining({c,training,threshold,graded=true,onResult}:{c:Record<string,any>;training:boolean;threshold:number;graded?:boolean;onResult?:(score:number,answer:any,passed:boolean)=>void}){
-  const qs=(Array.isArray(c.questions)?c.questions:[])
-    .map((q:any)=>String(q||'').trim())
-    .filter(Boolean);
+function CaseStudyTraining({c,training,threshold,graded=true,onResult,onFileSubmit}:{c:Record<string,any>;training:boolean;threshold:number;graded?:boolean;onResult?:(score:number,answer:any,passed:boolean)=>void;onFileSubmit?:(file:File,answer?:Record<string,any>)=>Promise<boolean>}){
+  const qs=(Array.isArray(c.questions)?c.questions:[]).map((q:any)=>typeof q==='string'?q:String(q?.question||q?.text||'')).filter(Boolean);
+  const responseMode=String(c.response_mode||'text');
+  const responseLayout=String(c.response_layout||'per_question');
+  const needsText=responseMode==='text'||responseMode==='text_file';
+  const needsFile=responseMode==='file'||responseMode==='text_file';
   const [answers,setAnswers]=useState<Record<string,string>>({});
-  const [done,setDone]=useState(false);
-  const submit=()=>{
-    if(!qs.length)return;
-    const complete=qs.every((_:string,i:number)=>String(answers[String(i)]||'').trim().length>0);
-    const score=complete?100:0;
-    setDone(true);
-    if(training) onResult?.(score,{answers},graded?score>=threshold:true);
-  };
+  const [globalText,setGlobalText]=useState('');
+  const [file,setFile]=useState<File|null>(null);
+  const [busy,setBusy]=useState(false);
+  const [status,setStatus]=useState('');
+  const textComplete=!needsText || (responseLayout==='single'
+    ? globalText.trim().length>0
+    : (qs.length>0 ? qs.every((_:string,i:number)=>String(answers[String(i)]||'').trim().length>0) : globalText.trim().length>0));
+  const fileComplete=!needsFile || Boolean(file);
+  const canSubmit=textComplete&&fileComplete;
+  const answerPayload=()=>responseLayout==='single'?{text:globalText,response_layout:'single'}:{answers,response_layout:'per_question'};
+  const submit=async()=>{if(!canSubmit)return;setBusy(true);setStatus('');const payload=answerPayload();try{if(needsFile&&file&&onFileSubmit){const ok=await onFileSubmit(file,payload);setStatus(ok?'Étude de cas remise.':'Échec de la remise.');}else{const score=textComplete?100:0;onResult?.(score,payload,graded?score>=threshold:true);setStatus('Réponse d’entraînement enregistrée.');}}finally{setBusy(false)}};
   return <div className="p-5 rounded-xl my-4 border" style={{borderColor:'#E4E7EC'}}>
     <p className="font-bold mb-3" style={{color:'#002050'}}>Étude de cas{c.title?` : ${c.title}`:''}</p>
     {c.context&&<div className="mb-3"><p className="text-xs font-bold uppercase tracking-wide mb-1 text-slate-400">Contexte</p><RichContent value={c.context} className="text-sm text-slate-700"/></div>}
     {c.data&&<div className="mb-3"><p className="text-xs font-bold uppercase tracking-wide mb-1 text-slate-400">Données</p><RichContent value={c.data} className="text-sm text-slate-700"/></div>}
     {c.task&&<div className="rounded-lg bg-blue-50 p-3 text-sm text-slate-700"><RichContent value={c.task}/></div>}
-    {qs.length>0&&<div className="mt-4 space-y-3">
-      <p className="text-xs font-black uppercase tracking-wide text-slate-400">Questions d’analyse</p>
-      {qs.map((q:string,i:number)=><label key={i} className="block text-xs font-semibold text-slate-600">
-        <span>{q}</span>
-        <textarea value={answers[String(i)]||''} onChange={e=>{setAnswers(v=>({...v,[String(i)]:e.target.value}));setDone(false)}} rows={4} className="mt-1 w-full rounded-lg border p-3 text-sm" placeholder="Construisez votre réponse…"/>
-      </label>)}
-      {training&&<button type="button" onClick={submit} className="rounded-lg bg-[#002050] px-3 py-1.5 text-xs font-semibold text-white">Terminer l’étude de cas</button>}
-      {training&&done&&<p className="text-xs font-semibold text-emerald-700">Réponse d’entraînement enregistrée.</p>}
-    </div>}
+    {qs.length>0&&<div className="mt-4 space-y-2"><p className="text-xs font-black uppercase tracking-wide text-slate-400">Questions d’analyse</p>{qs.map((q:string,i:number)=><p key={i} className="text-sm font-semibold text-slate-700">{i+1}. {q}</p>)}</div>}
+    {training&&needsText&&responseLayout==='per_question'&&qs.length>0&&<div className="mt-4 space-y-3">{qs.map((q:string,i:number)=><label key={i} className="block text-xs font-semibold text-slate-600"><span>{i+1}. {q}</span><textarea value={answers[String(i)]||''} onChange={e=>setAnswers(v=>({...v,[String(i)]:e.target.value}))} rows={4} className="mt-1 w-full rounded-lg border p-3 text-sm" placeholder="Construisez votre réponse…"/></label>)}</div>}
+    {training&&needsText&&(responseLayout==='single'||!qs.length)&&<textarea value={globalText} onChange={e=>setGlobalText(e.target.value)} rows={8} className="mt-4 w-full rounded-lg border p-3 text-sm" placeholder="Rédigez votre réponse globale…"/>}
+    {training&&needsFile&&<label className="mt-4 block cursor-pointer rounded-xl border border-dashed p-4 text-center text-sm text-slate-600"><input type="file" className="hidden" disabled={busy} accept={(c.accepted_types||[]).map((x:string)=>`.${String(x).replace(/^\./,'')}`).join(',')} onChange={e=>setFile(e.target.files?.[0]||null)}/>{file?`Fichier sélectionné : ${file.name}`:'Choisir le fichier à joindre'}</label>}
+    {training&&<button type="button" onClick={()=>void submit()} disabled={!canSubmit||busy} className="mt-3 rounded-lg bg-[#002050] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40">{busy?'Envoi en cours…':'Remettre l’étude de cas'}</button>}
+    {training&&status&&<p className={`mt-2 text-xs font-semibold ${status.startsWith('Échec')?'text-red-700':'text-emerald-700'}`}>{status}</p>}
   </div>
 }
-function ExerciseTraining({c,training,onResult,onFileSubmit}:{c:Record<string,any>;training:boolean;onResult?:(score:number,answer:any,passed:boolean)=>void;onFileSubmit?:(file:File)=>Promise<boolean>}){
-  const [text,setText]=useState('');const [busy,setBusy]=useState(false);const [status,setStatus]=useState('');const uploadRequired=c.learner_upload_required===true;
-  const finishText=()=>{if(!text.trim())return;onResult?.(100,{text},true);setStatus('Entraînement enregistré.')};
-  const upload=async(file:File)=>{if(!onFileSubmit)return;setBusy(true);const ok=await onFileSubmit(file).catch(()=>false);setBusy(false);setStatus(ok?'Fichier remis et entraînement enregistré.':'Échec de la remise du fichier.')};
-  return <div className="p-5 rounded-xl my-4 border-2" style={{borderColor:'#002050'}}><p className="font-bold mb-3 text-[#002050]">Exercice{c.title?` : ${c.title}`:''}</p>{c.instructions&&<p className="text-sm mb-2 text-slate-700"><strong>Consigne :</strong> {c.instructions}</p>}{c.task&&<div className="rounded-lg bg-slate-50 p-3 text-sm font-semibold text-[#002050]">{c.task}</div>}{training&&!uploadRequired&&<><textarea value={text} onChange={e=>setText(e.target.value)} rows={5} className="mt-4 w-full rounded-lg border p-3 text-sm" placeholder="Votre réponse d’entraînement…"/><button type="button" onClick={finishText} disabled={!text.trim()} className="mt-2 rounded-lg bg-[#002050] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40">Terminer l’exercice</button></>}{training&&uploadRequired&&<label className="mt-4 block rounded-xl border border-dashed p-4 text-center text-sm text-slate-600"><input type="file" className="hidden" disabled={busy} accept={(c.accepted_types||[]).map((x:string)=>`.${String(x).replace(/^\\./,'')}`).join(',')} onChange={e=>{const f=e.target.files?.[0];if(f)void upload(f)}}/>{busy?'Envoi en cours…':'Choisir le fichier de réponse'}</label>}{status&&<p className={`mt-2 text-xs font-semibold ${status.startsWith('Échec')?'text-red-700':'text-emerald-700'}`}>{status}</p>}</div>
+
+function ExerciseTraining({c,training,onResult,onFileSubmit}:{c:Record<string,any>;training:boolean;onResult?:(score:number,answer:any,passed:boolean)=>void;onFileSubmit?:(file:File,answer?:Record<string,any>)=>Promise<boolean>}){
+  const legacyMode=c.learner_upload_required===true?'file':'text';
+  const responseMode=String(c.response_mode||legacyMode);
+  const needsText=responseMode==='text'||responseMode==='text_file';
+  const needsFile=responseMode==='file'||responseMode==='text_file';
+  const [text,setText]=useState('');
+  const [file,setFile]=useState<File|null>(null);
+  const [busy,setBusy]=useState(false);
+  const [status,setStatus]=useState('');
+  const canSubmit=(!needsText||text.trim().length>0)&&(!needsFile||Boolean(file));
+  const submit=async()=>{if(!canSubmit)return;setBusy(true);setStatus('');try{if(needsFile&&file&&onFileSubmit){const ok=await onFileSubmit(file,{text});setStatus(ok?'Exercice remis et enregistré.':'Échec de la remise.');}else{onResult?.(100,{text},true);setStatus('Entraînement enregistré.');}}finally{setBusy(false)}};
+  return <div className="p-5 rounded-xl my-4 border-2" style={{borderColor:'#002050'}}>
+    <p className="font-bold mb-3 text-[#002050]">Exercice{c.title?` : ${c.title}`:''}</p>
+    {c.instructions&&<p className="text-sm mb-2 text-slate-700"><strong>Consigne :</strong> {c.instructions}</p>}
+    {c.task&&<div className="rounded-lg bg-slate-50 p-3 text-sm font-semibold text-[#002050]">{c.task}</div>}
+    {training&&needsText&&<textarea value={text} onChange={e=>setText(e.target.value)} rows={6} className="mt-4 w-full rounded-lg border p-3 text-sm" placeholder="Votre réponse…"/>}
+    {training&&needsFile&&<label className="mt-4 block cursor-pointer rounded-xl border border-dashed p-4 text-center text-sm text-slate-600"><input type="file" className="hidden" disabled={busy} accept={(c.accepted_types||[]).map((x:string)=>`.${String(x).replace(/^\./,'')}`).join(',')} onChange={e=>setFile(e.target.files?.[0]||null)}/>{file?`Fichier sélectionné : ${file.name}`:'Choisir le fichier de réponse'}</label>}
+    {training&&<button type="button" onClick={()=>void submit()} disabled={!canSubmit||busy} className="mt-3 rounded-lg bg-[#002050] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40">{busy?'Envoi en cours…':'Remettre l’exercice'}</button>}
+    {status&&<p className={`mt-2 text-xs font-semibold ${status.startsWith('Échec')?'text-red-700':'text-emerald-700'}`}>{status}</p>}
+  </div>
 }
 function AssignmentTraining({c,training,onFileSubmit}:{c:Record<string,any>;training:boolean;onFileSubmit?:(file:File)=>Promise<boolean>}){
   const [busy,setBusy]=useState(false);const [status,setStatus]=useState('');const upload=async(file:File)=>{if(!onFileSubmit)return;setBusy(true);const ok=await onFileSubmit(file).catch(()=>false);setBusy(false);setStatus(ok?'Travail remis et entraînement validé.':'Échec de la remise du fichier.')};
@@ -944,7 +962,7 @@ export function LessonBlocksRenderer({ blocks, contentText, onQuizAnswer, onTrai
   contentText?: string;
   onQuizAnswer?: (blockId: string, answer: any, correct: boolean) => void;
   onTrainingResult?: (blockId: string, score: number, answer: any, passed: boolean) => void;
-  onFileTrainingSubmit?: (blockId: string, file: File) => Promise<boolean>;
+  onFileTrainingSubmit?: (blockId: string, file: File, answer?: Record<string, any>) => Promise<boolean>;
   learnerStateByBlock?: Record<string, Record<string, any>>;
   completedInteractionBlockIds?: string[];
   revealAllCorrections?: boolean;

@@ -1007,7 +1007,7 @@ export function CoursLecteur() {
     }
   }, [isOnline, currentLessonId, courseId, sessionToken, loadProgress, isPreview, previewQuery]);
 
-  const submitTrainingFile = useCallback(async (blockId: string, file: File) => {
+  const submitTrainingFile = useCallback(async (blockId: string, file: File, extraAnswer: Record<string, any> = {}) => {
     if (isPreview || !isOnline || !currentLessonId || !courseId || !sessionToken) return false;
     try {
       const preparedResponse = await fetch(ENDPOINTS.lessonContent, {
@@ -1019,7 +1019,7 @@ export function CoursLecteur() {
       if (!preparedResponse.ok || !prepared?.signedUrl || !prepared?.path) throw new Error(prepared?.message || prepared?.error || 'Préparation du dépôt impossible');
       const uploadResponse = await fetch(prepared.signedUrl, { method: 'PUT', headers: { 'Content-Type': file.type || 'application/octet-stream' }, body: file });
       if (!uploadResponse.ok) throw new Error('Téléversement du fichier impossible');
-      const answer = { files: [{ bucket_name: prepared.bucket || 'assessment-submissions', storage_path: prepared.path, file_name: file.name, mime_type: file.type || null, size_bytes: file.size }] };
+      const answer = { ...extraAnswer, files: [{ bucket_name: prepared.bucket || 'assessment-submissions', storage_path: prepared.path, file_name: file.name, mime_type: file.type || null, size_bytes: file.size }] };
       const resultResponse = await fetch(ENDPOINTS.lessonContent, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionToken}` },

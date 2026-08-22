@@ -43,6 +43,9 @@ type Question = {
   points: number;
   explanation?: string;
   accepted_submission_types?: string[];
+  response_mode?: 'text' | 'file' | 'text_file' | null;
+  response_layout?: 'single' | 'per_question' | null;
+  max_submission_size_mb?: number | null;
   resource_files?: Array<{ name: string; url: string }>;
 };
 
@@ -55,7 +58,7 @@ type UploadedFile = {
 };
 
 type PendingFile = { file: File; uploaded?: UploadedFile };
-type AnswerValue = string | number | boolean | string[] | { files: PendingFile[] };
+type AnswerValue = string | number | boolean | string[] | { text?: string; responses?: string[]; files?: PendingFile[] };
 
 type Attempt = {
   id: string;
@@ -167,25 +170,75 @@ export function AssessmentEngine({
     void load();
   }, [load]);
 
+  function effectiveResponseMode(question: AssessmentQuestion) {
+    if (question.response_mode) return question.response_mode;
+    if (question.question_type === 'case_study') return 'text';
+    if (['exercise','assignment_upload','oral_response','pronunciation'].includes(question.question_type)) return 'file';
+    return 'text';
+  }
+
+  function submissionObject(questionId: string) {
+    const raw = answers[questionId];
+    return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw as { text?: string; responses?: string[]; files?: PendingFile[] } : {};
+  }
+
+  function textComplete(question: AssessmentQuestion) {
+    const raw = answers[question.id];
+    if (question.question_type === 'case_study' && (question.response_layout || 'per_question') === 'per_question') {
+      const questions = Array.isArray(question.options?.questions) ? question.options.questions : [];
+      const values = submissionObject(question.id).responses || [];
+      return questions.length > 0 ? questions.every((_: any, i: number) => String(values[i] || '').trim().length > 0) : String(submissionObject(question.id).text || '').trim().length > 0;
+    }
+    if (['exercise','case_study'].includes(question.question_type)) return String(submissionObject(question.id).text || '').trim().length > 0;
+    return raw !== undefined && String(raw ?? '').trim().length > 0;
+  }
+
   const complete = useMemo(() => assessment?.questions.every(question => {
     const answer = answers[question.id];
-    if (['exercise', 'assignment_upload', 'oral_response', 'pronunciation'].includes(question.question_type)) {
-      return Boolean(answer && typeof answer === 'object' && !Array.isArray(answer) && 'files' in answer && answer.files.length > 0);
+    const responseMode = effectiveResponseMode(question);
+    if (['exercise','case_study'].includes(question.question_type)) {
+      const files = submissionObject(question.id).files || [];
+      const textOk = textComplete(question);
+      if (responseMode === 'text') return textOk;
+      if (responseMode === 'file') return files.length > 0;
+      return textOk && files.length > 0;
     }
+    if (['assignment_upload', 'oral_response', 'pronunciation'].includes(question.question_type)) return (submissionObject(question.id).files || []).length > 0;
     if (['cloze', 'matching', 'listening_comprehension'].includes(question.question_type)) return Array.isArray(answer) && answer.length > 0 && answer.every(value => String(value ?? '').trim().length > 0);
     if (question.question_type === 'sentence_order') return Array.isArray(answer) ? answer.length > 0 : String(answer ?? '').trim().length > 0;
     return answer !== undefined && String(answer).trim() !== '';
   }) ?? false, [assessment, answers]);
 
   function pendingFiles(questionId: string): PendingFile[] {
-    const answer = answers[questionId];
-    return answer && typeof answer === 'object' && 'files' in answer ? answer.files : [];
+    return submissionObject(questionId).files || [];
   }
 
   function setFiles(questionId: string, files: FileList | null) {
     if (preview) return;
     const selected = Array.from(files || []).map(file => ({ file }));
-    setAnswers(current => ({ ...current, [questionId]: { files: selected } }));
+    setAnswers(current => {
+      const raw = current[questionId];
+      const previous = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw as any : {};
+      return { ...current, [questionId]: { ...previous, files: selected } };
+    });
+  }
+
+  function setSubmissionText(questionId: string, text: string) {
+    setAnswers(current => {
+      const raw = current[questionId];
+      const previous = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw as any : {};
+      return { ...current, [questionId]: { ...previous, text } };
+    });
+  }
+
+  function setSubmissionResponse(questionId: string, index: number, value: string) {
+    setAnswers(current => {
+      const raw = current[questionId];
+      const previous = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw as any : {};
+      const responses = Array.isArray(previous.responses) ? [...previous.responses] : [];
+      responses[index] = value;
+      return { ...current, [questionId]: { ...previous, responses } };
+    });
   }
 
   async function uploadFiles(questionId: string, items: PendingFile[]): Promise<UploadedFile[]> {
@@ -219,10 +272,11 @@ export function AssessmentEngine({
       };
       uploaded.push(metadata);
     }
-    setAnswers(current => ({
-      ...current,
-      [questionId]: { files: items.map((item, index) => ({ ...item, uploaded: uploaded[index] })) },
-    }));
+    setAnswers(current => {
+      const raw = current[questionId];
+      const previous = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw as any : {};
+      return { ...current, [questionId]: { ...previous, files: items.map((item, index) => ({ ...item, uploaded: uploaded[index] })) } };
+    });
     return uploaded;
   }
 
@@ -236,8 +290,14 @@ export function AssessmentEngine({
       const normalizedAnswers = [];
       for (const question of assessment.questions) {
         const raw = answers[question.id];
-        if (['exercise', 'assignment_upload', 'oral_response', 'pronunciation'].includes(question.question_type)) {
-          const pending = raw && typeof raw === 'object' && !Array.isArray(raw) && 'files' in raw ? raw.files : [];
+        if (['exercise','case_study'].includes(question.question_type)) {
+          const responseMode = effectiveResponseMode(question);
+          const submission = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw as any : {};
+          const pending = Array.isArray(submission.files) ? submission.files : [];
+          const files = responseMode === 'file' || responseMode === 'text_file' ? await uploadFiles(question.id, pending) : [];
+          normalizedAnswers.push({ question_id: question.id, answer: { text: submission.text || '', responses: Array.isArray(submission.responses) ? submission.responses : [], files } });
+        } else if (['assignment_upload', 'oral_response', 'pronunciation'].includes(question.question_type)) {
+          const pending = raw && typeof raw === 'object' && !Array.isArray(raw) && Array.isArray((raw as any).files) ? (raw as any).files : [];
           const files = await uploadFiles(question.id, pending);
           normalizedAnswers.push({ question_id: question.id, answer: { files } });
         } else {
@@ -438,21 +498,38 @@ export function AssessmentEngine({
                 return <div className="space-y-3">{questions.map((item: any, itemIndex: number) => <label key={itemIndex} className="block text-sm"><span className="font-medium">{item.question || `Question ${itemIndex + 1}`}</span><input className="mt-1 w-full rounded-lg border p-2" value={values[itemIndex] || ''} onChange={event => setArrayAnswer(question.id, itemIndex, event.target.value)} /></label>)}</div>;
               })()}
 
-              {['dictation', 'written_expression', 'case_study'].includes(question.question_type) && (
-                <textarea rows={question.question_type === 'written_expression' || question.question_type === 'case_study' ? 8 : 5} className="w-full rounded-lg border p-3 text-sm" value={typeof answers[question.id] === 'string' ? answers[question.id] as string : ''} onChange={event => setAnswers(current => ({ ...current, [question.id]: event.target.value }))} placeholder={question.question_type === 'dictation' ? 'Transcrivez ce que vous entendez…' : 'Rédigez votre réponse…'} />
+              {['dictation', 'written_expression'].includes(question.question_type) && (
+                <textarea rows={question.question_type === 'written_expression' ? 8 : 5} className="w-full rounded-lg border p-3 text-sm" value={typeof answers[question.id] === 'string' ? answers[question.id] as string : ''} onChange={event => setAnswers(current => ({ ...current, [question.id]: event.target.value }))} placeholder={question.question_type === 'dictation' ? 'Transcrivez ce que vous entendez…' : 'Rédigez votre réponse…'} />
               )}
 
-              {['exercise', 'assignment_upload', 'oral_response', 'pronunciation'].includes(question.question_type) && (
+              {['exercise','case_study'].includes(question.question_type) && (() => {
+                const responseMode = effectiveResponseMode(question);
+                const needsText = responseMode === 'text' || responseMode === 'text_file';
+                const needsFile = responseMode === 'file' || responseMode === 'text_file';
+                const submission = submissionObject(question.id);
+                const questions = Array.isArray(question.options?.questions) ? question.options.questions : [];
+                const perQuestion = question.question_type === 'case_study' && (question.response_layout || 'per_question') === 'per_question' && questions.length > 0;
+                return <div className="space-y-3">
+                  {needsText && perQuestion && questions.map((item:any,itemIndex:number)=><label key={itemIndex} className="block text-sm"><span className="font-medium">{itemIndex+1}. {item.question || `Question ${itemIndex+1}`}</span><textarea rows={4} className="mt-1 w-full rounded-lg border p-3 text-sm" value={(submission.responses || [])[itemIndex] || ''} onChange={event=>setSubmissionResponse(question.id,itemIndex,event.target.value)} placeholder="Rédigez votre réponse…"/></label>)}
+                  {needsText && !perQuestion && <textarea rows={question.question_type === 'case_study' ? 8 : 6} className="w-full rounded-lg border p-3 text-sm" value={submission.text || ''} onChange={event=>setSubmissionText(question.id,event.target.value)} placeholder={question.question_type === 'case_study' ? 'Rédigez votre analyse…' : 'Rédigez votre réponse…'} />}
+                  {needsFile && <div>
+                    <label className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm ${preview ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}>
+                      <Upload size={15} /> {preview ? 'Dépôt désactivé en prévisualisation' : 'Joindre mon fichier'}
+                      <input type="file" disabled={preview} className="hidden" accept={(question.accepted_submission_types || []).map(type => `.${type}`).join(',')} onChange={event => setFiles(question.id, event.target.files)} />
+                    </label>
+                    {pendingFiles(question.id).length > 0 && <div className="mt-2 space-y-1 text-xs text-green-700">{pendingFiles(question.id).map((item,fileIndex)=><p key={`${item.file.name}-${fileIndex}`}>{item.file.name}</p>)}</div>}
+                    {question.max_submission_size_mb ? <p className="mt-1 text-[10px] text-slate-400">Maximum {question.max_submission_size_mb} Mo.</p> : null}
+                  </div>}
+                </div>;
+              })()}
+
+              {['assignment_upload', 'oral_response', 'pronunciation'].includes(question.question_type) && (
                 <div>
                   <label className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm ${preview ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}>
                     <Upload size={15} /> {preview ? 'Dépôt désactivé en prévisualisation' : (question.question_type === 'oral_response' || question.question_type === 'pronunciation' ? 'Déposer mon enregistrement audio' : 'Déposer mon travail')}
-                    <input type="file" multiple disabled={preview} className="hidden" accept={(question.accepted_submission_types || []).map(type => `.${type}`).join(',')} onChange={event => setFiles(question.id, event.target.files)} />
+                    <input type="file" disabled={preview} className="hidden" accept={(question.accepted_submission_types || []).map(type => `.${type}`).join(',')} onChange={event => setFiles(question.id, event.target.files)} />
                   </label>
-                  {pendingFiles(question.id).length > 0 && (
-                    <div className="mt-2 space-y-1 text-xs text-green-700">
-                      {pendingFiles(question.id).map((item, fileIndex) => <p key={`${item.file.name}-${fileIndex}`}>{item.file.name}</p>)}
-                    </div>
-                  )}
+                  {pendingFiles(question.id).length > 0 && <div className="mt-2 space-y-1 text-xs text-green-700">{pendingFiles(question.id).map((item, fileIndex) => <p key={`${item.file.name}-${fileIndex}`}>{item.file.name}</p>)}</div>}
                 </div>
               )}
               </div>
