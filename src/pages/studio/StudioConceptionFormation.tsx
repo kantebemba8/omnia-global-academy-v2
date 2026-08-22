@@ -848,6 +848,9 @@ export default function StudioConceptionFormation() {
         if (data.pricing_required) {
           setCourse(c => c ? { ...c, pricing_status: data.pricing_status } : c);
           showToast(data.message || 'La tarification a été transmise pour validation.', 'info');
+        } else if (data.direct_publish || data.published) {
+          setCourse(c => c ? { ...c, studio_status: 'published', is_published: true, is_catalog_active: true } : c);
+          showToast('Formation publiée par Omnia Global Academy');
         } else {
           setCourse(c => c ? { ...c, studio_status: 'pending_validation' } : c);
           showToast('Formation soumise pour validation');
@@ -1429,7 +1432,7 @@ export default function StudioConceptionFormation() {
               <div className="max-w-4xl mx-auto space-y-4">
                 <div className="bg-white rounded-xl border p-5" style={{borderColor:'#E4E7EC'}}>
                   <h2 className="text-lg font-bold" style={{color:'#002050'}}>Finalisation</h2>
-                  <p className="mt-1 text-sm text-gray-500">Vérifiez la cohérence des évaluations définies pendant le Build, puis contrôlez la certification, la commercialisation et les contenus Live/Replays avant soumission.</p>
+                  <p className="mt-1 text-sm text-gray-500">Vérifiez la cohérence technique des évaluations, la certification, la commercialisation et les contenus Live/Replays avant finalisation.</p>
                   <button type="button" onClick={openAssessmentPolicy} disabled={openingAssessmentPolicy || locked} className="mt-4 inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold disabled:opacity-50" style={{borderColor:'#002050',color:'#002050'}}><ClipboardCheck size={15}/>Contrôler les évaluations, la réussite et la progression</button>
                 </div>
                 {course.id && course.studio_status && !['draft','changes_requested'].includes(String(course.studio_status)) && <StudioQualityStatusPanel courseId={course.id} />}
@@ -1437,7 +1440,7 @@ export default function StudioConceptionFormation() {
                 <StudioCommercialCertificationPanel course={course} locked={locked} onPatch={(patch)=>setCourse(c=>({...c,...patch}))} onSaved={(msg)=>showToast(msg, msg.toLowerCase().includes('erreur') ? 'error' : 'success')} />
                 <div className="flex items-center justify-between bg-white rounded-xl border p-4" style={{borderColor:'#E4E7EC'}}>
                   <button onClick={()=>{setShowFinalization(false);setCurrentModule(null);setCurrentLesson(null);}} className="flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium" style={{borderColor:'#E4E7EC',color:'#374151'}}><ChevronLeft size={15}/>Retour aux informations</button>
-                  <button onClick={submit} disabled={submitting||locked} className="flex items-center gap-2 rounded-lg px-5 py-2 text-sm font-semibold text-white disabled:opacity-50" style={{background:'#BF8813'}}><Send size={15}/>Soumettre la formation</button>
+                  <button onClick={submit} disabled={submitting||locked} className="flex items-center gap-2 rounded-lg px-5 py-2 text-sm font-semibold text-white disabled:opacity-50" style={{background:'#BF8813'}}><Send size={15}/>{course.creator_context === 'super_admin' ? 'Publier la formation' : 'Soumettre la formation'}</button>
                 </div>
               </div>
             )}
@@ -1783,8 +1786,8 @@ export default function StudioConceptionFormation() {
         <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/55 px-4 py-6">
           <div className="w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-2xl">
             <div className="border-b px-5 py-4" style={{ borderColor: '#E4E7EC' }}>
-              <h3 className="font-bold" style={{ color: '#002050' }}>Dernière vérification avant soumission</h3>
-              <p className="mt-1 text-sm text-slate-600">Vérifiez les informations essentielles du brouillon avant de l’envoyer à l’Administration Omnia.</p>
+              <h3 className="font-bold" style={{ color: '#002050' }}>{course.creator_context === 'super_admin' ? 'Dernière vérification avant publication' : 'Dernière vérification avant soumission'}</h3>
+              <p className="mt-1 text-sm text-slate-600">{course.creator_context === 'super_admin' ? 'Vérifiez les informations essentielles avant publication directe par Omnia Global Academy.' : 'Vérifiez les informations essentielles du brouillon avant de l’envoyer à l’Administration Omnia.'}</p>
             </div>
             <div className="space-y-3 p-5 text-sm">
               <div className="grid grid-cols-[140px_1fr] gap-2"><span className="text-slate-500">Code</span><strong className="text-[#002050]">{course.course_code || 'Non renseigné'}</strong></div>
@@ -1798,7 +1801,7 @@ export default function StudioConceptionFormation() {
             <div className="flex flex-col-reverse gap-2 border-t p-4 sm:flex-row sm:justify-end" style={{ borderColor: '#E4E7EC' }}>
               <button type="button" onClick={() => setShowSubmitReview(false)} className="rounded-xl border px-4 py-2.5 text-sm font-semibold" style={{ borderColor: '#E4E7EC' }}>Continuer à modifier</button>
               <button type="button" onClick={() => { setShowSubmitReview(false); setShowAssessmentPolicy(true); }} className="rounded-xl border px-4 py-2.5 text-sm font-semibold" style={{ borderColor: '#BF8813', color: '#92400E' }}>Revoir les évaluations</button>
-              <button type="button" onClick={confirmSubmit} disabled={submitting} className="rounded-xl px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50" style={{ background: '#002050' }}>{submitting ? 'Soumission…' : 'J’ai vérifié — soumettre'}</button>
+              <button type="button" onClick={confirmSubmit} disabled={submitting} className="rounded-xl px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50" style={{ background: '#002050' }}>{submitting ? (course.creator_context === 'super_admin' ? 'Publication…' : 'Soumission…') : (course.creator_context === 'super_admin' ? 'J’ai vérifié — publier' : 'J’ai vérifié — soumettre')}</button>
             </div>
           </div>
         </div>
