@@ -129,18 +129,22 @@ export function AssessmentPolicyPanel({ courseId, locked, onClose, onSaved }: { 
     setError('');
     setFrameworkWarning('');
     try {
-      if (!locked) await call('ensure_assessments', { course_id: courseId });
+      const catalogPromise = assessmentGovernanceCall<any>('framework_catalog').catch((caught) => {
+        setFrameworkWarning(caught instanceof Error
+          ? `Référentiels indisponibles : ${caught.message}`
+          : 'Les référentiels de compétences sont temporairement indisponibles.');
+        return { frameworks: [] };
+      });
 
-      const [data, catalog] = await Promise.all([
-        call('assessment_policy_get', { course_id: courseId }),
-        assessmentGovernanceCall<any>('framework_catalog').catch((caught) => {
-          setFrameworkWarning(caught instanceof Error
-            ? `Référentiels indisponibles : ${caught.message}`
-            : 'Les référentiels de compétences sont temporairement indisponibles.');
-          return { frameworks: [] };
-        }),
-      ]);
+      // Lire d'abord la configuration persistée. Une réconciliation complète ne doit
+      // jamais bloquer l'ouverture d'un panneau qui possède déjà ses évaluations.
+      let data = await call('assessment_policy_get', { course_id: courseId });
+      if (!locked && (!Array.isArray(data.assessments) || data.assessments.length === 0)) {
+        await call('ensure_assessments', { course_id: courseId });
+        data = await call('assessment_policy_get', { course_id: courseId });
+      }
 
+      const catalog = await catalogPromise;
       setFrameworks(catalog.frameworks || []);
       setPolicy({
         lesson_assessment_required: data.policy?.lesson_assessment_required === true,
@@ -233,6 +237,13 @@ export function AssessmentPolicyPanel({ courseId, locked, onClose, onSaved }: { 
       });
       const verified = await call('assessment_policy_get', { course_id: courseId });
       const verifiedPolicy = verified.policy || result.policy || savedPolicy;
+      if (!verifiedPolicy.builder_configured_at) {
+        throw new StudioApiError(
+          'Les règles ont été envoyées mais leur confirmation n’a pas été persistée. Réessayez.',
+          'ASSESSMENT_POLICY_CONFIRMATION_NOT_PERSISTED',
+          409,
+        );
+      }
       setPolicy({
         lesson_assessment_required: verifiedPolicy.lesson_assessment_required === true,
         module_assessment_required: verifiedPolicy.module_assessment_required === true,
