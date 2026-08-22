@@ -66,6 +66,17 @@ function RichContent({ value, className = '' }: { value: any; className?: string
 }
 
 
+
+function resourceDisplayTitle(block: Block, fallback: string) {
+  const c = block.content_json || {};
+  const explicit = String(c.title || block.title || '').trim();
+  const technical = String(block.file_name || '').trim();
+  if (!explicit) return fallback;
+  if (technical && explicit.toLowerCase() === technical.toLowerCase()) return fallback;
+  if (/\.(pdf|docx?|xlsx?|pptx?|zip|csv)$/i.test(explicit)) return fallback;
+  return explicit;
+}
+
 function ResourceUnavailable({ block, label }: { block: Block; label: string }) {
   return (
     <div className="my-4 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
@@ -323,9 +334,9 @@ export function BlockRenderer({ block, onQuizAnswer, onTrainingResult, onFileTra
 
     // ── ÉVALUATION ─────────────────────────────────────────────
     case 'vocabulary':
-      return <div className="my-4 overflow-hidden rounded-xl border" style={{borderColor:'#E4E7EC'}}>{(c.items||[]).map((x:any,i:number)=><div key={i} className="grid gap-1 border-b p-3 last:border-b-0 sm:grid-cols-2"><div><strong style={{color:'#002050'}}>{x.term}</strong>{x.example&&<p className="mt-1 text-xs text-slate-500">{x.example}</p>}</div><div className="text-sm text-slate-600">{x.translation}{x.audio_url&&<audio className="mt-2 w-full" controls src={x.audio_url}/>}</div></div>)}</div>;
+      return <div className="my-4">{c.title&&<p className="mb-2 font-bold text-[#002050]">{c.title}</p>}<div className="overflow-hidden rounded-xl border" style={{borderColor:'#E4E7EC'}}>{(c.items||[]).map((x:any,i:number)=><div key={i} className="grid gap-1 border-b p-3 last:border-b-0 sm:grid-cols-2"><div><strong style={{color:'#002050'}}>{x.term}</strong>{x.example&&<p className="mt-1 text-xs text-slate-500">{x.example}</p>}</div><div className="text-sm text-slate-600">{x.translation}{x.audio_url&&<audio className="mt-2 w-full" controls src={x.audio_url}/>}</div></div>)}</div></div>;
     case 'dialogue':
-      return <div className="my-4 space-y-2">{(c.lines||[]).map((x:any,i:number)=><div key={i} className="rounded-xl border p-3" style={{borderColor:'#E4E7EC'}}><span className="text-xs font-bold text-[#BF8813]">{x.speaker||`#${i+1}`}</span><p className="mt-1 text-sm font-semibold text-[#002050]">{x.text}</p>{x.translation&&<p className="mt-1 text-xs text-slate-500">{x.translation}</p>}</div>)}</div>;
+      return <div className="my-4 space-y-2">{c.title&&<p className="mb-2 font-bold text-[#002050]">{c.title}</p>}{(c.lines||[]).map((x:any,i:number)=><div key={i} className="rounded-xl border p-3" style={{borderColor:'#E4E7EC'}}><span className="text-xs font-bold text-[#BF8813]">{x.speaker||`#${i+1}`}</span><RichContent value={x.text} className="mt-1 text-sm font-semibold text-[#002050]"/>{x.translation&&<RichContent value={x.translation} className="mt-1 text-xs text-slate-500"/>}</div>)}</div>;
     case 'cloze':
       return <ClozeBlock c={c} threshold={trainingThreshold} graded={graded} onResult={(score, answer, passed)=>onTrainingResult?.(block.id, score, answer, passed)}/>;
     case 'matching':
@@ -354,10 +365,10 @@ export function BlockRenderer({ block, onQuizAnswer, onTrainingResult, onFileTra
 
     // ── AVANCÉS ────────────────────────────────────────────────
     case 'accordion':
-      return <AccordionBlock items={c.items || []} />;
+      return <div className="my-4">{c.title&&<p className="mb-2 font-bold text-[#002050]">{c.title}</p>}<AccordionBlock items={c.items || []} /></div>;
 
     case 'flashcards':
-      return <FlashcardsBlock cards={c.cards || []} onComplete={(score)=>onTrainingResult?.(block.id,score,{cards_seen:c.cards?.length||0},graded ? score>=trainingThreshold : true)} />;
+      return <div className="my-4">{c.title&&<p className="mb-2 font-bold text-[#002050]">{c.title}</p>}<FlashcardsBlock cards={c.cards || []} onComplete={(score)=>onTrainingResult?.(block.id,score,{cards_seen:c.cards?.length||0},graded ? score>=trainingThreshold : true)} /></div>;
 
     case 'interactive_table': {
       const headers = Array.isArray(c.headers) ? c.headers.map((x:any)=>String(x??'')) : [];
@@ -368,6 +379,7 @@ export function BlockRenderer({ block, onQuizAnswer, onTrainingResult, onFileTra
     case 'timeline':
       return (
         <div className="my-5 relative">
+          {c.title&&<p className="mb-4 font-bold text-[#002050]">{c.title}</p>}
           <div className="absolute left-5 top-0 bottom-0 w-0.5" style={{ background: '#E4E7EC' }} />
           <div className="space-y-4">
             {(c.steps || []).map((step: any, i: number) => (
@@ -376,7 +388,7 @@ export function BlockRenderer({ block, onQuizAnswer, onTrainingResult, onFileTra
                   style={{ background: '#002050', color: '#BF8813' }}>{i + 1}</div>
                 <div className="flex-1 pb-4">
                   <p className="font-bold" style={{ color: '#002050' }}>{step.title}</p>
-                  {step.description && <p className="text-sm mt-1" style={{ color: '#6B7280' }}>{step.description}</p>}
+                  {step.description && <RichContent value={step.description} className="text-sm mt-1 text-slate-500"/>}
                 </div>
               </div>
             ))}
@@ -386,12 +398,15 @@ export function BlockRenderer({ block, onQuizAnswer, onTrainingResult, onFileTra
 
     case 'columns':
       return (
-        <div className={`grid gap-4 my-4 ${(c.columns||[]).length===2?'md:grid-cols-2':(c.columns||[]).length>=3?'md:grid-cols-3':''}`}>
+        <div className="my-4">
+          {c.title&&<p className="mb-3 font-bold text-[#002050]">{c.title}</p>}
+          <div className={`grid gap-4 ${(c.columns||[]).length===2?'md:grid-cols-2':(c.columns||[]).length>=3?'md:grid-cols-3':''}`}>
           {(c.columns || []).map((col: any, i: number) => (
             <div key={col.id || i} className="p-4 rounded-xl border" style={{ borderColor: '#E4E7EC' }}>
-              <div className="text-sm" style={{ color: '#374151' }} dangerouslySetInnerHTML={{ __html: col.content || '' }} />
+              <RichContent value={col.content || ''} className="text-sm text-slate-700" />
             </div>
           ))}
+          </div>
         </div>
       );
 
@@ -405,19 +420,19 @@ export function BlockRenderer({ block, onQuizAnswer, onTrainingResult, onFileTra
     case 'code':
       return <pre className="overflow-x-auto rounded-lg bg-gray-950 p-4 text-xs text-gray-100"><code>{c.code || ''}</code></pre>;
     case 'checklist':
-      return <ChecklistBlock items={c.items || []} initialState={learnerState || {}} onChange={(state,completed)=>{onStateChange?.(block.id,state,completed); if((block as any).interaction_mode==='training'){const total=(c.items||[]).filter((x:any)=>x.required!==false).length||1; const done=(c.items||[]).filter((x:any,i:number)=>x.required!==false&&state[String(x.id||i)]).length; const score=Math.round(done/total*100); onTrainingResult?.(block.id,score,state,completed);}}}/>;
+      return <div className="my-4">{c.title&&<p className="mb-2 font-bold text-[#002050]">{c.title}</p>}<ChecklistBlock items={c.items || []} initialState={learnerState || {}} onChange={(state,completed)=>{onStateChange?.(block.id,state,completed); if((block as any).interaction_mode==='training'){const total=(c.items||[]).filter((x:any)=>x.required!==false).length||1; const done=(c.items||[]).filter((x:any,i:number)=>x.required!==false&&state[String(x.id||i)]).length; const score=Math.round(done/total*100); onTrainingResult?.(block.id,score,state,completed);}}}/></div>;
     case 'link_button':
       return <a href={c.url || '#'} target={c.open_new_tab ? '_blank' : undefined} rel="noreferrer" className="inline-flex rounded-lg px-4 py-2 text-sm font-semibold text-white" style={{ background: '#002050' }}>{c.label || 'Ouvrir le lien'}</a>;
     case 'embed':
       return c.url ? <div className="overflow-hidden rounded-xl border"><iframe src={c.url} title={c.title || 'Contenu intégré'} className="h-80 w-full" loading="lazy" /></div> : <p className="text-sm text-gray-400">Aucun contenu intégré.</p>;
     case 'gallery': {
       const images = (c.images || []).filter((img: any) => String(img?.url || '').trim());
-      return images.length ? <div className="grid grid-cols-2 gap-3 md:grid-cols-3">{images.map((img: any, i: number) => <figure key={i}><img src={img.url} alt={img.alt || ''} className="h-auto w-full rounded-lg object-contain" />{img.caption && <figcaption className="mt-1 text-xs text-gray-500">{img.caption}</figcaption>}</figure>)}</div> : <ResourceUnavailable block={block} label="Galerie" />;
+      return images.length ? <div className="my-4">{c.title&&<p className="mb-2 font-bold text-[#002050]">{c.title}</p>}<div className="grid grid-cols-2 gap-3 md:grid-cols-3">{images.map((img: any, i: number) => <figure key={i}><img src={img.url} alt={img.alt || ''} className="h-auto w-full rounded-lg object-contain" />{img.caption && <figcaption className="mt-1 text-xs text-gray-500">{img.caption}</figcaption>}</figure>)}</div></div> : <ResourceUnavailable block={block} label="Galerie" />;
     }
     case 'formula':
-      return <MathFormula latex={c.latex || ''} explanation={c.explanation || ''} />;
+      return <div className="my-4">{c.title&&<p className="mb-2 font-bold text-[#002050]">{c.title}</p>}<MathFormula latex={c.latex || ''} explanation={c.explanation || ''} /></div>;
     case 'chart':
-      return <ChartBlock c={c} />;
+      return <div className="my-4">{c.title&&<p className="mb-2 font-bold text-[#002050]">{c.title}</p>}<ChartBlock c={c} /></div>;
     case 'assignment_upload':
       return <AssignmentTraining c={c} training={block.interaction_mode === 'training'} onFileSubmit={onFileTrainingSubmit ? (file) => onFileTrainingSubmit(block.id, file) : undefined} />;
     case 'rubric':
@@ -489,9 +504,9 @@ function WrittenTraining({c,threshold,graded=true,onResult}:{c:Record<string,any
   return <div className="my-4 rounded-xl border p-4" style={{borderColor:'#E4E7EC'}}><p className="font-semibold text-[#002050]">{c.title||'Expression écrite'}</p>{c.prompt&&<p className="mt-1 text-sm text-slate-600">{c.prompt}</p>}<textarea value={text} onChange={e=>{setText(e.target.value);setDone(false)}} rows={7} className="mt-3 w-full rounded-lg border p-3 text-sm" placeholder="Rédigez votre réponse…"/><div className="mt-2 flex items-center justify-between text-xs text-slate-500"><span>{words} mot(s){min>1?` · minimum ${min}`:''}</span><button type="button" onClick={submit} disabled={!text.trim()} className="rounded-lg bg-[#002050] px-3 py-1.5 font-semibold text-white disabled:opacity-40">Terminer l’entraînement</button></div>{done&&<p className="mt-2 text-xs font-semibold text-emerald-700">Réponse enregistrée comme entraînement.</p>}</div>
 }
 function OpenQuestionTraining({c,threshold,graded=true,onResult}:{c:Record<string,any>;threshold:number;graded?:boolean;onResult?:(score:number,answer:any,passed:boolean)=>void}){
-  const [text,setText]=useState('');const [score,setScore]=useState<number|null>(null);const expected=String(c.expected_answer||'').trim();
+  const [text,setText]=useState('');const [score,setScore]=useState<number|null>(null);const expectedRich=String(c.expected_answer||'').trim();const expected=expectedRich.replace(/<[^>]*>/g,' ').replace(/&nbsp;/g,' ').replace(/\s+/g,' ').trim();
   const verify=()=>{const s=expected?similarityScore(expected,text):100;setScore(s);onResult?.(s,{text},s>=threshold)};
-  return <div className="my-4 rounded-xl border p-4" style={{borderColor:'#E4E7EC'}}><p className="font-semibold text-[#002050]">{c.question||c.title||'Question ouverte'}</p>{c.guidance&&<p className="mt-1 text-xs text-slate-500">{c.guidance}</p>}<textarea value={text} onChange={e=>{setText(e.target.value);setScore(null)}} rows={5} className="mt-3 w-full rounded-lg border p-3 text-sm"/><button type="button" onClick={verify} disabled={!text.trim()} className="mt-3 rounded-lg bg-[#002050] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40">{expected?'Vérifier':'Terminer l’entraînement'}</button>{score!==null&&(graded?<p className={`mt-2 text-xs font-semibold ${score>=threshold?'text-emerald-700':'text-red-700'}`}>{score}% · {score>=threshold?'Seuil atteint':'À retravailler'}</p>:<p className="mt-2 text-xs font-semibold text-emerald-700">Réponse enregistrée.</p>)}</div>
+  return <div className="my-4 rounded-xl border p-4" style={{borderColor:'#E4E7EC'}}>{c.title&&<p className="mb-2 font-bold text-[#002050]">{c.title}</p>}<RichContent value={c.question||'Question ouverte'} className="font-semibold text-[#002050]"/>{c.guidance&&<RichContent value={c.guidance} className="mt-1 text-xs text-slate-500"/>}<textarea value={text} onChange={e=>{setText(e.target.value);setScore(null)}} rows={5} className="mt-3 w-full rounded-lg border p-3 text-sm"/><button type="button" onClick={verify} disabled={!text.trim()} className="mt-3 rounded-lg bg-[#002050] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40">{expected?'Vérifier':'Terminer l’entraînement'}</button>{score!==null&&(graded?<p className={`mt-2 text-xs font-semibold ${score>=threshold?'text-emerald-700':'text-red-700'}`}>{score}% · {score>=threshold?'Seuil atteint':'À retravailler'}</p>:<p className="mt-2 text-xs font-semibold text-emerald-700">Réponse enregistrée.</p>)}</div>
 }
 function ChecklistBlock({items,initialState,onChange}:{items:any[];initialState:Record<string,any>;onChange?:(state:Record<string,any>,completed:boolean)=>void}){
   const [state,setState]=useState<Record<string,any>>(initialState||{});const update=(key:string,val:boolean)=>{const next={...state,[key]:val};setState(next);const required=items.filter(x=>x.required!==false);const completed=required.every((x:any,i:number)=>Boolean(next[String(x.id||items.indexOf(x))]));onChange?.(next,completed)};
@@ -542,8 +557,8 @@ function ExerciseTraining({c,training,onResult,onFileSubmit}:{c:Record<string,an
   const submit=async()=>{if(!canSubmit)return;setBusy(true);setStatus('');try{if(needsFile&&file&&onFileSubmit){const ok=await onFileSubmit(file,{text});setStatus(ok?'Exercice remis et enregistré.':'Échec de la remise.');}else{onResult?.(100,{text},true);setStatus('Entraînement enregistré.');}}finally{setBusy(false)}};
   return <div className="p-5 rounded-xl my-4 border-2" style={{borderColor:'#002050'}}>
     <p className="font-bold mb-3 text-[#002050]">Exercice{c.title?` : ${c.title}`:''}</p>
-    {c.instructions&&<p className="text-sm mb-2 text-slate-700"><strong>Consigne :</strong> {c.instructions}</p>}
-    {c.task&&<div className="rounded-lg bg-slate-50 p-3 text-sm font-semibold text-[#002050]">{c.task}</div>}
+    {c.instructions&&<div className="mb-2"><p className="text-xs font-bold uppercase tracking-wide text-slate-400">Consigne</p><RichContent value={c.instructions} className="text-sm text-slate-700"/></div>}
+    {c.task&&<div className="rounded-lg bg-slate-50 p-3"><RichContent value={c.task} className="text-sm font-semibold text-[#002050]"/></div>}
     {training&&needsText&&<textarea value={text} onChange={e=>setText(e.target.value)} rows={6} className="mt-4 w-full rounded-lg border p-3 text-sm" placeholder="Votre réponse…"/>}
     {training&&needsFile&&<label className="mt-4 block cursor-pointer rounded-xl border border-dashed p-4 text-center text-sm text-slate-600"><input type="file" className="hidden" disabled={busy} accept={(c.accepted_types||[]).map((x:string)=>`.${String(x).replace(/^\./,'')}`).join(',')} onChange={e=>setFile(e.target.files?.[0]||null)}/>{file?`Fichier sélectionné : ${file.name}`:'Choisir le fichier de réponse'}</label>}
     {training&&<button type="button" onClick={()=>void submit()} disabled={!canSubmit||busy} className="mt-3 rounded-lg bg-[#002050] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40">{busy?'Envoi en cours…':'Remettre l’exercice'}</button>}
@@ -601,7 +616,7 @@ function DocumentViewBlock({ block }: { block: Block }) {
   const c = block.content_json;
   const url = block.file_url || c.url || '';
   if (!url) return <ResourceUnavailable block={block} label={block.block_type === 'pdf' ? 'PDF' : 'Document Word'} />;
-  const title = String(c.title || block.title || (block.block_type === 'pdf' ? 'Document PDF' : 'Document Word'));
+  const title = resourceDisplayTitle(block, block.block_type === 'pdf' ? 'Document PDF' : 'Document Word');
   if (block.block_type === 'pdf') {
     return (
       <section className="my-4 overflow-hidden rounded-xl border" style={{ borderColor: '#E4E7EC' }}>
@@ -661,7 +676,7 @@ function ExcelBlock({ block }: { block: Block }) {
       <div className="flex items-center justify-between px-4 py-2.5" style={{ background: '#1E7A52' }}>
         <div className="flex items-center gap-2">
           <Table size={16} color="white" />
-          <span className="font-semibold text-sm text-white">{c.title || block.title || 'Tableau'}</span>
+          <span className="font-semibold text-sm text-white">{resourceDisplayTitle(block, 'Tableau')}</span>
         </div>
       </div>
       {rows.length > 0 ? (
