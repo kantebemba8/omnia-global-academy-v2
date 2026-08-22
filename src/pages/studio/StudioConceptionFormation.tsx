@@ -361,6 +361,19 @@ export default function StudioConceptionFormation() {
     return next;
   }
 
+  async function flushBlockUpdates() {
+    const pending = Object.values(blockSaveQueues.current);
+    if (!pending.length) return;
+    await Promise.allSettled(pending);
+  }
+
+  async function runQualityCheck() {
+    if (!course?.id) return;
+    await flushBlockUpdates();
+    setShowChecklist(true);
+    const data = await api('validate_checklist', { course_id: course.id });
+    setChecklist(data);
+  }
 
   async function reloadCourse(courseIdToLoad: string) {
     const data = await api('get_course', { course_id: courseIdToLoad });
@@ -768,13 +781,23 @@ export default function StudioConceptionFormation() {
     finally { setCoverGenerating(false); }
   }
 
-  async function goToQualityIssue(issue: { target?: string; lesson_id?: string; module_id?: string }) {
+  async function goToQualityIssue(issue: { target?: string; lesson_id?: string; module_id?: string; block_id?: string }) {
     setShowChecklist(false);
     if (issue.target === 'finalization') { setShowFinalization(true); setCurrentModule(null); setCurrentLesson(null); setBlocks([]); setSelectedBlock(null); return; }
     if (issue.target === 'information') { setShowFinalization(false); setCurrentModule(null); setCurrentLesson(null); setBlocks([]); setSelectedBlock(null); return; }
     const module = modules.find(m => m.id === issue.module_id || m.lessons?.some(l => l.id === issue.lesson_id));
     if (!module) return;
-    if (issue.lesson_id) { const lesson = module.lessons?.find(l => l.id === issue.lesson_id); if (lesson) { await selectLesson(module, lesson); return; } }
+    if (issue.lesson_id) {
+      const lesson = module.lessons?.find(l => l.id === issue.lesson_id);
+      if (lesson) {
+        setShowFinalization(false); setCurrentModule(module); setCurrentLesson(lesson); setSelectedBlock(null); setBlocks([]);
+        const data = await api('get_blocks', { lesson_id: lesson.id });
+        const nextBlocks = data.success ? (data.blocks || []) : [];
+        setBlocks(nextBlocks);
+        if (issue.block_id) setSelectedBlock(nextBlocks.find((block: Block) => block.id === issue.block_id) || null);
+        return;
+      }
+    }
     setShowFinalization(false); setCurrentModule(module); setCurrentLesson(null); setBlocks([]); setSelectedBlock(null);
   }
 
@@ -795,6 +818,7 @@ export default function StudioConceptionFormation() {
   // ─── Soumettre ────────────────────────────────────────────
   async function submit() {
     if (!course?.id) return;
+    await flushBlockUpdates();
     const check = await api('validate_checklist', { course_id: course.id });
     setChecklist(check);
     if (!check.valid) { setShowChecklist(true); showToast('Corrigez les erreurs avant de soumettre', 'error'); return; }
@@ -1145,7 +1169,7 @@ export default function StudioConceptionFormation() {
             <button type="button" onClick={() => setShowPreview(true)} className="flex shrink-0 items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold" style={{ borderColor: '#E4E7EC', color: '#002050' }}><Eye size={14} /> Aperçu</button>
             <button type="button" onClick={() => setAdvancedMode(v => !v)} className="shrink-0 rounded-lg border px-3 py-2 text-xs font-semibold" style={{ borderColor: '#E4E7EC', color: '#374151' }}>{advancedMode ? 'Mode avancé' : 'Mode simple'}</button>
             <button type="button" onClick={loadHistory} className="flex shrink-0 items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold" style={{ borderColor: '#E4E7EC', color: '#374151' }}><History size={14} /> Historique</button>
-            <button type="button" onClick={() => { setShowChecklist(true); if (course?.id) api('validate_checklist', { course_id: course.id }).then(d => setChecklist(d)); }} className="flex shrink-0 items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold" style={{ borderColor: '#E4E7EC', color: '#374151' }}><CheckCircle size={14} /> Qualité</button>
+            <button type="button" onClick={runQualityCheck} className="flex shrink-0 items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold" style={{ borderColor: '#E4E7EC', color: '#374151' }}><CheckCircle size={14} /> Qualité</button>
           </div>
 
           {/* Navigation structure formation */}
@@ -1257,7 +1281,7 @@ export default function StudioConceptionFormation() {
                 </div>
               ))}
               {endingSections.length < 2 && <button onClick={async()=>{if(!course.id){const created=await ensureCourseCreated();if(!created)return;} const d=await api('ensure_special_sections',{course_id:courseRef.current.id}); if(d.success){await reloadCourse(courseRef.current.id); showToast('Conclusion et examen final prêts à construire');}}} disabled={locked} className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg border border-dashed flex-shrink-0 disabled:opacity-40" style={{borderColor:'#BF8813',color:'#92400E'}}><Plus size={11}/> Conclusion & examen final</button>}
-              <button onClick={() => { setShowChecklist(true); if (course?.id) api('validate_checklist', { course_id: course.id }).then(d => setChecklist(d)); }} className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg border flex-shrink-0" style={{background:'white',color:'#1E7A52',borderColor:'#1E7A52'}}><CheckCircle size={11}/> Qualité</button>
+              <button onClick={runQualityCheck} className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg border flex-shrink-0" style={{background:'white',color:'#1E7A52',borderColor:'#1E7A52'}}><CheckCircle size={11}/> Qualité</button>
               <button onClick={()=>{setShowFinalization(true);setCurrentModule(null);setCurrentLesson(null);setBlocks([]);setSelectedBlock(null);}} className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg border flex-shrink-0" style={showFinalization?{background:'#002050',color:'white',borderColor:'#002050'}:{background:'white',color:'#002050',borderColor:'#002050'}}><ShieldCheck size={11}/> Finalisation</button>
             </div>
           </div>
@@ -1616,7 +1640,7 @@ export default function StudioConceptionFormation() {
                 style={showAI ? { borderColor: '#BF8813', color: '#BF8813', background: 'rgba(191,136,19,0.05)' } : { borderColor: '#E4E7EC', color: '#6B7280' }}>
                 <Sparkles size={12} /> Assistant IA
               </button>
-              <button onClick={() => { setShowChecklist(true); if (course?.id) api('validate_checklist', { course_id: course.id }).then(d => setChecklist(d)); }}
+              <button onClick={runQualityCheck}
                 className="flex items-center gap-1.5 px-3 py-1 rounded-lg border text-xs font-medium"
                 style={{ borderColor: '#E4E7EC', color: '#6B7280' }}>
                 <CheckCircle size={12} /> Qualité
