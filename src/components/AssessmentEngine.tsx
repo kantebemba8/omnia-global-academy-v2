@@ -47,6 +47,7 @@ type Question = {
   response_layout?: 'single' | 'per_question' | null;
   max_submission_size_mb?: number | null;
   resource_files?: Array<{ name: string; url: string }>;
+  source_lesson_block_id?: string | null;
 };
 
 type UploadedFile = {
@@ -93,6 +94,8 @@ type Assessment = {
   retry_instructions?: string;
   time_limit_minutes?: number | null;
   questions: Question[];
+  sections?: Array<{ id: string; title: string; description?: string | null; position?: number; target_points?: number | null }>;
+  total_points?: number;
   latest_attempt?: Attempt | null;
   correction?: Correction | null;
   can_retry: boolean;
@@ -170,7 +173,7 @@ export function AssessmentEngine({
     void load();
   }, [load]);
 
-  function effectiveResponseMode(question: AssessmentQuestion) {
+  function effectiveResponseMode(question: Question) {
     if (question.response_mode) return question.response_mode;
     if (question.question_type === 'case_study') return 'text';
     if (['exercise','assignment_upload','oral_response','pronunciation'].includes(question.question_type)) return 'file';
@@ -182,7 +185,7 @@ export function AssessmentEngine({
     return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw as { text?: string; responses?: string[]; files?: PendingFile[] } : {};
   }
 
-  function textComplete(question: AssessmentQuestion) {
+  function textComplete(question: Question) {
     const raw = answers[question.id];
     if (question.question_type === 'case_study' && (question.response_layout || 'per_question') === 'per_question') {
       const questions = Array.isArray(question.options?.questions) ? question.options.questions : [];
@@ -346,7 +349,18 @@ export function AssessmentEngine({
   }
 
   if (!assessment) {
-    return null;
+    return <div className="rounded-2xl border p-5" style={{ borderColor: BORDER }}>
+      <div className="flex items-start gap-3">
+        <AlertCircle size={20} className="mt-0.5 shrink-0 text-amber-600" />
+        <div className="min-w-0 flex-1">
+          <p className="font-semibold" style={{ color: BLUE }}>Évaluation indisponible</p>
+          <p className="mt-1 text-sm text-gray-600">Les données de cette évaluation n’ont pas pu être chargées. Rechargez-les sans quitter votre formation.</p>
+          <button type="button" onClick={() => void load()} className="mt-3 inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold" style={{ borderColor: GOLD, color: BLUE }}>
+            <RefreshCw size={15} /> Réessayer
+          </button>
+        </div>
+      </div>
+    </div>;
   }
 
   const latest = assessment.latest_attempt;
@@ -368,13 +382,7 @@ export function AssessmentEngine({
       <div className="mb-4 flex items-start justify-between gap-4">
         <div>
           <h2 className="font-semibold" style={{ color: BLUE }}>{assessment.title}</h2>
-          <p className="mt-1 text-sm text-gray-500">
-            Seuil de réussite : <b>{assessment.passing_score}%</b>{Number(assessment.total_points || 0) > 0 && <> · Barème : <b>{assessment.total_points} points</b></>}
-            {' · '}remédiation après {assessment.remediation_after_attempts} échec(s)
-            {assessment.retry_cooldown_hours > 0 ? ` · reprise après ${assessment.retry_cooldown_hours} h` : ''}
-            {assessment.time_limit_minutes ? ` · ${assessment.time_limit_minutes} min` : ''}
-          </p>
-          <p className="mt-1 text-xs text-gray-500">En cas d’échec, les tentatives restent possibles après la règle de reprise prévue.</p>
+          {assessment.time_limit_minutes ? <p className="mt-1 text-sm text-gray-500">Durée maximale : {assessment.time_limit_minutes} min</p> : null}
         </div>
         <Clock size={20} style={{ color: GOLD }} />
       </div>
@@ -387,8 +395,11 @@ export function AssessmentEngine({
             {passed ? <CheckCircle size={18} className="mt-0.5 text-green-700" /> : pending ? <Clock size={18} className="mt-0.5 text-amber-700" /> : <XCircle size={18} className="mt-0.5 text-red-700" />}
             <div className="text-sm">
               <p className="font-semibold" style={{ color: passed ? '#15803D' : pending ? '#B45309' : '#B91C1C' }}>
-                {passed ? `Évaluation réussie — ${latest.score ?? 0}%` : pending ? 'Copie envoyée — correction en attente' : `Dernier résultat — ${latest.score ?? 0}%`}
+                {passed ? `Évaluation réussie — ${latest.score ?? 0}%` : pending ? 'Copie envoyée — correction en attente' : `Évaluation non réussie — ${latest.score ?? 0}%`}
               </p>
+              {!pending && <p className="mt-1 text-xs text-gray-600">
+                Seuil requis : {assessment.passing_score}%{Number(assessment.total_points || 0) > 0 ? ` · Barème : ${assessment.total_points} points` : ''}
+              </p>}
               <p className="mt-1 text-xs text-gray-600">Tentative {latest.attempt_number}</p>
               {latest.feedback && <p className="mt-2 text-sm text-gray-700">{latest.feedback}</p>}
             </div>
@@ -435,11 +446,11 @@ export function AssessmentEngine({
             const showSection = Boolean(section && section.id !== previousSectionId);
             return <div key={question.id}>
               {showSection && <div className="mb-3 mt-2 rounded-xl border-l-4 bg-slate-50 p-4" style={{ borderLeftColor: GOLD }}>
-                <div className="flex flex-wrap items-center justify-between gap-2"><div><p className="font-bold" style={{ color: BLUE }}>{section?.title}</p>{section?.description && <p className="mt-1 text-xs text-slate-500">{section.description}</p>}</div>{section?.target_points != null && <span className="text-xs font-semibold text-slate-600">{section.target_points} pts</span>}</div>
+                <div className="flex flex-wrap items-center justify-between gap-2"><div><p className="font-bold" style={{ color: BLUE }}>{section?.title}</p>{section?.description && <p className="mt-1 text-xs text-slate-500">{section.description}</p>}</div>{latest && !pending && section?.target_points != null && <span className="text-xs font-semibold text-slate-600">{section.target_points} pts</span>}</div>
               </div>}
               <div className="rounded-xl bg-gray-50 p-4">
               <p className="mb-3 text-sm font-medium" style={{ color: BLUE }}>
-                {index + 1}. {question.prompt} <span className="text-xs text-gray-400">({question.points} pts)</span>
+                {index + 1}. {question.prompt} {latest && !pending && <span className="text-xs text-gray-400">({question.points} pts)</span>}
               </p>
 
               {(question.resource_files || []).length > 0 && (
@@ -500,6 +511,13 @@ export function AssessmentEngine({
 
               {['dictation', 'written_expression'].includes(question.question_type) && (
                 <textarea rows={question.question_type === 'written_expression' ? 8 : 5} className="w-full rounded-lg border p-3 text-sm" value={typeof answers[question.id] === 'string' ? answers[question.id] as string : ''} onChange={event => setAnswers(current => ({ ...current, [question.id]: event.target.value }))} placeholder={question.question_type === 'dictation' ? 'Transcrivez ce que vous entendez…' : 'Rédigez votre réponse…'} />
+              )}
+
+              {question.question_type === 'case_study' && (question.options?.context || question.options?.data) && (
+                <div className="mb-4 space-y-3 rounded-xl border bg-white p-4" style={{ borderColor: '#E4E7EC' }}>
+                  {question.options?.context && <div><p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Contexte</p><div className="mt-1 whitespace-pre-wrap text-sm text-slate-700">{String(question.options.context)}</div></div>}
+                  {question.options?.data && <div><p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Données</p><div className="mt-1 whitespace-pre-wrap text-sm text-slate-700">{String(question.options.data)}</div></div>}
+                </div>
               )}
 
               {['exercise','case_study'].includes(question.question_type) && (() => {

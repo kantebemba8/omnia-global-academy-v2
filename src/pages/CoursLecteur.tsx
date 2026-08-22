@@ -312,15 +312,7 @@ function CourseSidebar({ modules, currentLessonId, onSelectLesson, onGoExam, onG
     <div className="h-full overflow-y-auto" style={{ backgroundColor: '#FAFAFA' }}>
       <div className="border-b p-3" style={{borderColor:'#E4E7EC'}}>
         <button type="button" onClick={onToggleDataSaver} className="flex w-full items-center justify-between rounded-xl border px-3 py-2.5 text-left text-xs font-bold" style={{borderColor:dataSaver?'#BF8813':'#D1D5DB',background:dataSaver?'#FFFBEB':'#FFF',color:'#002050'}}>
-          <span className="inline-flex items-center gap-2"><div className="mb-3 rounded-xl border bg-white p-3" style={{borderColor:'#E4E7EC'}}>
-                  <p className="text-xs font-bold" style={{color:'#002050'}}>Devise pédagogique</p>
-                  <select className="mt-2 w-full rounded-lg border px-2 py-2 text-xs" value={pedagogicalCurrency || ''} disabled={savingPedagogicalCurrency} onChange={e=>void choosePedagogicalCurrency(e.target.value)}>
-                    <option value="">Devise de référence</option>
-                    {(lessonData?.localization?.available_currencies || []).map(code=><option key={code} value={code}>{code}</option>)}
-                  </select>
-                  <p className="mt-1 text-[10px] text-slate-500">Ce choix concerne uniquement les montants pédagogiques explicitement localisables. Les montants réels/factuels restent inchangés.</p>
-                </div>
-                <Gauge size={14}/>Économiseur de données</span>
+          <span className="inline-flex items-center gap-2"><Gauge size={14}/>Économiseur de données</span>
           <span className="text-[10px] uppercase" style={{color:dataSaver?'#8A650F':'#64748B'}}>{dataSaver?'Actif':'Inactif'}</span>
         </button>
       </div>
