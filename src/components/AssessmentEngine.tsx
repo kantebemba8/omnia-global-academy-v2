@@ -48,6 +48,7 @@ type Question = {
   max_submission_size_mb?: number | null;
   resource_files?: Array<{ name: string; url: string }>;
   source_lesson_block_id?: string | null;
+  presentation?: { prompt_html?: string; context_html?: string; data_html?: string; task_html?: string; question_html?: string[] };
 };
 
 type UploadedFile = {
@@ -102,6 +103,24 @@ type Assessment = {
   retry_blocked_until?: string | null;
   remediation_blocked?: boolean;
 };
+
+
+function escapeHtml(value: string) {
+  return String(value || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+}
+
+function richHtml(value: unknown) {
+  const raw = String(value ?? '').trim();
+  if (!raw) return '';
+  if (/<\/?(?:p|div|strong|b|em|i|u|ul|ol|li|a|br|span|blockquote)\b/i.test(raw)) return raw;
+  return raw.split(/\n{2,}/).map(paragraph => `<p>${escapeHtml(paragraph).replace(/\n/g, '<br />')}</p>`).join('');
+}
+
+function RichContent({ value, className = '' }: { value: unknown; className?: string }) {
+  const html = richHtml(value);
+  if (!html) return null;
+  return <div className={`prose prose-sm max-w-none leading-relaxed [&_p]:my-2 [&_ul]:my-2 [&_ol]:my-2 ${className}`} dangerouslySetInnerHTML={{ __html: html }} />;
+}
 
 function formatDate(value?: string | null) {
   if (!value) return '';
@@ -387,7 +406,7 @@ export function AssessmentEngine({
         <Clock size={20} style={{ color: GOLD }} />
       </div>
 
-      {assessment.instructions && <p className="mb-4 text-sm">{assessment.instructions}</p>}
+      {assessment.instructions && <RichContent value={assessment.instructions} className="mb-4 text-sm" />}
 
       {!preview && latest && (
         <div className={`mb-5 rounded-xl p-4 ${passed ? 'bg-green-50' : pending ? 'bg-amber-50' : 'bg-gray-50'}`}>
@@ -395,11 +414,9 @@ export function AssessmentEngine({
             {passed ? <CheckCircle size={18} className="mt-0.5 text-green-700" /> : pending ? <Clock size={18} className="mt-0.5 text-amber-700" /> : <XCircle size={18} className="mt-0.5 text-red-700" />}
             <div className="text-sm">
               <p className="font-semibold" style={{ color: passed ? '#15803D' : pending ? '#B45309' : '#B91C1C' }}>
-                {passed ? `Évaluation réussie — ${latest.score ?? 0}%` : pending ? 'Copie envoyée — correction en attente' : `Évaluation non réussie — ${latest.score ?? 0}%`}
+                {passed ? 'Évaluation réussie' : pending ? 'Évaluation envoyée' : 'Évaluation non réussie'}
               </p>
-              {!pending && <p className="mt-1 text-xs text-gray-600">
-                Seuil requis : {assessment.passing_score}%{Number(assessment.total_points || 0) > 0 ? ` · Barème : ${assessment.total_points} points` : ''}
-              </p>}
+              {pending ? <p className="mt-1 text-sm text-gray-700">{assessment.questions.some(question => question.grading_mode === 'human' || question.grading_mode === 'ai_human') ? 'Cette évaluation nécessite une correction humaine. Vous recevrez une notification lorsque votre résultat sera disponible.' : 'La correction est en cours. Vous recevrez une notification lorsque votre résultat sera disponible.'}</p> : <p className="mt-1 text-sm text-gray-700">Score : <b>{latest.score ?? 0}%</b>{Number(assessment.total_points || 0) > 0 ? <> · Barème : <b>{assessment.total_points} points</b></> : null} · Seuil requis : <b>{assessment.passing_score}%</b></p>}
               <p className="mt-1 text-xs text-gray-600">Tentative {latest.attempt_number}</p>
               {latest.feedback && <p className="mt-2 text-sm text-gray-700">{latest.feedback}</p>}
             </div>
@@ -446,12 +463,12 @@ export function AssessmentEngine({
             const showSection = Boolean(section && section.id !== previousSectionId);
             return <div key={question.id}>
               {showSection && <div className="mb-3 mt-2 rounded-xl border-l-4 bg-slate-50 p-4" style={{ borderLeftColor: GOLD }}>
-                <div className="flex flex-wrap items-center justify-between gap-2"><div><p className="font-bold" style={{ color: BLUE }}>{section?.title}</p>{section?.description && <p className="mt-1 text-xs text-slate-500">{section.description}</p>}</div>{latest && !pending && section?.target_points != null && <span className="text-xs font-semibold text-slate-600">{section.target_points} pts</span>}</div>
+                <div className="flex flex-wrap items-center justify-between gap-2"><div><p className="font-bold" style={{ color: BLUE }}>{section?.title}</p>{section?.description && <RichContent value={section.description} className="mt-1 text-xs text-slate-500" />}</div></div>
               </div>}
               <div className="rounded-xl bg-gray-50 p-4">
-              <p className="mb-3 text-sm font-medium" style={{ color: BLUE }}>
-                {index + 1}. {question.prompt} {latest && !pending && <span className="text-xs text-gray-400">({question.points} pts)</span>}
-              </p>
+              <div className="mb-3 flex items-start gap-1 text-sm font-medium" style={{ color: BLUE }}>
+                <span className="shrink-0">{index + 1}.</span><RichContent value={question.presentation?.prompt_html || question.prompt} className="min-w-0 flex-1 text-sm font-medium" />
+              </div>
 
               {(question.resource_files || []).length > 0 && (
                 <div className="mb-3 flex flex-wrap gap-2">
@@ -520,6 +537,13 @@ export function AssessmentEngine({
                 </div>
               )}
 
+              {question.question_type === 'case_study' && (question.presentation?.context_html || question.presentation?.data_html) && (
+                <div className="mb-4 space-y-3">
+                  {question.presentation?.context_html && <div className="rounded-xl border bg-white p-4"><p className="mb-2 text-xs font-black uppercase tracking-wide text-slate-500">Contexte</p><RichContent value={question.presentation.context_html} /></div>}
+                  {question.presentation?.data_html && <div className="rounded-xl border bg-white p-4"><p className="mb-2 text-xs font-black uppercase tracking-wide text-slate-500">Données</p><RichContent value={question.presentation.data_html} /></div>}
+                </div>
+              )}
+
               {['exercise','case_study'].includes(question.question_type) && (() => {
                 const responseMode = effectiveResponseMode(question);
                 const needsText = responseMode === 'text' || responseMode === 'text_file';
@@ -528,7 +552,7 @@ export function AssessmentEngine({
                 const questions = Array.isArray(question.options?.questions) ? question.options.questions : [];
                 const perQuestion = question.question_type === 'case_study' && (question.response_layout || 'per_question') === 'per_question' && questions.length > 0;
                 return <div className="space-y-3">
-                  {needsText && perQuestion && questions.map((item:any,itemIndex:number)=><label key={itemIndex} className="block text-sm"><span className="font-medium">{itemIndex+1}. {item.question || `Question ${itemIndex+1}`}</span><textarea rows={4} className="mt-1 w-full rounded-lg border p-3 text-sm" value={(submission.responses || [])[itemIndex] || ''} onChange={event=>setSubmissionResponse(question.id,itemIndex,event.target.value)} placeholder="Rédigez votre réponse…"/></label>)}
+                  {needsText && perQuestion && questions.map((item:any,itemIndex:number)=><label key={itemIndex} className="block text-sm"><div className="flex items-start gap-1 font-medium"><span className="shrink-0">{itemIndex+1}.</span><RichContent value={question.presentation?.question_html?.[itemIndex] || item.question || `Question ${itemIndex+1}`} className="min-w-0 flex-1" /></div><textarea rows={4} className="mt-1 w-full rounded-lg border p-3 text-sm" value={(submission.responses || [])[itemIndex] || ''} onChange={event=>setSubmissionResponse(question.id,itemIndex,event.target.value)} placeholder="Rédigez votre réponse…"/></label>)}
                   {needsText && !perQuestion && <textarea rows={question.question_type === 'case_study' ? 8 : 6} className="w-full rounded-lg border p-3 text-sm" value={submission.text || ''} onChange={event=>setSubmissionText(question.id,event.target.value)} placeholder={question.question_type === 'case_study' ? 'Rédigez votre analyse…' : 'Rédigez votre réponse…'} />}
                   {needsFile && <div>
                     <label className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm ${preview ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}>
@@ -560,18 +584,21 @@ export function AssessmentEngine({
 
       {result && !latest && !preview && (
         <div className={`mt-4 rounded-xl p-4 ${result.passed ? 'bg-green-50' : 'bg-amber-50'}`}>
-          {result.passed ? <div className="flex gap-2 text-green-700"><CheckCircle size={18} />Évaluation réussie : {result.score}%</div> : result.pending_review ? <div className="flex gap-2 text-amber-700"><Clock size={18} />Réponse envoyée, correction en attente.</div> : <div className="flex gap-2 text-red-700"><XCircle size={18} />Score : {result.score}% — seuil requis {assessment.passing_score}%.</div>}
+          {result.passed ? <div className="flex gap-2 text-green-700"><CheckCircle size={18} />Évaluation réussie : {result.score}%</div> : result.pending_review ? <div className="flex gap-2 text-amber-700"><Clock size={18} />Évaluation envoyée. Vous recevrez une notification lorsque la correction sera disponible.</div> : <div className="flex gap-2 text-red-700"><XCircle size={18} />Score : {result.score}% — seuil requis {assessment.passing_score}%.</div>}
         </div>
       )}
 
       {preview ? (
-        <div className="mt-5 rounded-xl border border-blue-100 bg-blue-50 p-4 text-sm text-blue-900">
-          <div className="flex items-start gap-2"><CheckCircle size={17} className="mt-0.5 shrink-0" /><div><p className="font-semibold">Simulation en lecture seule</p><p className="mt-1 text-xs">Vous pouvez vérifier toutes les questions et interactions. L’envoi, les dépôts de fichiers, la note, les tentatives et la progression sont volontairement désactivés dans cette prévisualisation.</p></div></div>
+        <div className="mt-5 space-y-3">
+          <button type="button" disabled className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white opacity-40" style={{ backgroundColor: BLUE }}><Send size={15} />Soumettre l’évaluation</button>
+          <div className="rounded-xl border border-blue-100 bg-blue-50 p-4 text-sm text-blue-900">
+            <div className="flex items-start gap-2"><CheckCircle size={17} className="mt-0.5 shrink-0" /><div><p className="font-semibold">Simulation en lecture seule</p><p className="mt-1 text-xs">Le bouton de soumission est visible pour reproduire l’expérience apprenant, mais aucune réponse, copie, tentative, note ou progression n’est enregistrée en prévisualisation.</p></div></div>
+          </div>
         </div>
       ) : !passed && !pending && !blocked && (
         <button disabled={!complete || sending} onClick={submit} className="mt-5 inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-40" style={{ backgroundColor: BLUE }}>
           {sending ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
-          {uploading ? 'Téléversement des fichiers…' : 'Envoyer l’évaluation'}
+          {uploading ? 'Téléversement des fichiers…' : 'Soumettre l’évaluation'}
         </button>
       )}
     </section>

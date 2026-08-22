@@ -241,7 +241,7 @@ function CourseSidebar({ modules, currentLessonId, onSelectLesson, onGoExam, onG
   modules: ModuleItem[];
   currentLessonId: string | null;
   onSelectLesson: (id: string) => void;
-  onGoExam: (modId: string) => void;
+  onGoExam: (modId: string, summaryLessonId?: string) => void;
   onGoFinal: () => void;
   finalUnlocked: boolean;
   isOnline: boolean;
@@ -349,7 +349,7 @@ function CourseSidebar({ modules, currentLessonId, onSelectLesson, onGoExam, onG
                 <div>
                   {module.lessons.map(lesson => renderLessonButton(lesson, module))}
                   {module.is_unlocked && module.exam_required !== false && (
-                    <button onClick={() => isOnline && module.exam_unlocked && onGoExam(module.module_id)} disabled={!isOnline || !module.exam_unlocked} className="w-full flex items-center gap-2.5 pl-6 pr-4 py-2 text-left hover:bg-gray-50 transition-colors" style={{ opacity: isOnline && module.exam_unlocked ? 1 : 0.4, cursor: isOnline && module.exam_unlocked ? 'pointer' : 'default' }}>
+                    <button onClick={() => { const summaryLesson = module.lessons.find(lesson => lesson.stage_type === 'module_summary'); if (isOnline && module.exam_unlocked) onGoExam(module.module_id, summaryLesson?.lesson_id); }} disabled={!isOnline || !module.exam_unlocked} className="w-full flex items-center gap-2.5 pl-6 pr-4 py-2 text-left hover:bg-gray-50 transition-colors" style={{ opacity: isOnline && module.exam_unlocked ? 1 : 0.4, cursor: isOnline && module.exam_unlocked ? 'pointer' : 'default' }}>
                       <ClipboardList size={14} style={{ color: module.exam_passed ? '#1E7A52' : '#BF8813', flexShrink: 0 }} />
                       <span className="text-xs font-semibold" style={{ color: module.exam_passed ? '#1E7A52' : '#BF8813' }}>
                         {module.exam_passed ? `Évaluation du module ✓ (${module.exam_score}%)` : isOnline ? 'Évaluation du module' : 'Évaluation disponible en ligne'}
@@ -1201,9 +1201,9 @@ export function CoursLecteur() {
                   setProgramOpen(false);
                   goToLesson(lessonId);
                 }}
-                onGoExam={(modId) => {
+                onGoExam={(modId, summaryLessonId) => {
                   setProgramOpen(false);
-                  navigate(`/cours/${courseId}/examen-module/${modId}${previewRouteQuery}`);
+                  navigate(`/cours/${courseId}/examen-module/${modId}${previewRouteQuery}`, { state: { returnLessonId: summaryLessonId || null } });
                 }}
                 onGoFinal={() => {
                   setProgramOpen(false);
@@ -1415,7 +1415,7 @@ export function CoursLecteur() {
                   reached={effectiveCpd} isActive={isActive} assessmentPassed={quizPassed}
                   isCompleted={isCompleted} />
                 {lesson.stage_type === 'module_summary' && isOnline && currentMod?.exam_unlocked && !currentMod.exam_passed && (
-                  <button onClick={() => navigate(`/cours/${courseId}/examen-module/${currentMod.module_id}${previewRouteQuery}`)}
+                  <button onClick={() => navigate(`/cours/${courseId}/examen-module/${currentMod.module_id}${previewRouteQuery}`, { state: { returnLessonId: currentLessonId } })}
                     className="text-xs font-bold px-3 py-1.5 rounded-lg hover:opacity-80"
                     style={{ backgroundColor: '#BF8813', color: '#FFF' }}>Passer l'examen</button>
                 )}
