@@ -45,6 +45,23 @@ async function rubricCriteriaForTarget(sb:any,targetBlockId:string){
  return (rubrics||[]).flatMap((row:any)=>Array.isArray(row.content_json?.criteria)?row.content_json.criteria:[]);
 }
 function rubricPointTotal(criteria:any){return (Array.isArray(criteria)?criteria:[]).reduce((sum:number,item:any)=>sum+Math.max(0,Number(item?.points||0)),0)}
+function gradingModeLabel(mode:any){return mode==="automatic"?"Automatique":mode==="ai"?"IA":mode==="ai_human"?"IA + validation humaine":"Évaluateur humain";}
+function safeJsonObject(text:any){const raw=String(text||"").trim().replace(/^```(?:json)?\s*/i,"").replace(/\s*```$/,"");try{return JSON.parse(raw)}catch{const a=raw.indexOf("{"),b=raw.lastIndexOf("}");if(a>=0&&b>a){try{return JSON.parse(raw.slice(a,b+1))}catch{}}return null}}
+async function gradeAnswerWithAi(sb:any,params:{userId:string;courseId:string;assessmentId:string;question:any;answer:any}){
+ const q=params.question;const max=Math.max(0,Number(q.points||0));const rubric=Array.isArray(q.rubric)?q.rubric:[];
+ const answerText=typeof params.answer==="string"?params.answer:JSON.stringify(params.answer??null);
+ if(!answerText||answerText==="null"||answerText.length>50000)return {ok:false,error:"AI_ANSWER_UNSUPPORTED"};
+ const rubricText=rubric.length?rubric.map((c:any,i:number)=>`${i+1}. ${String(c?.label||c?.criterion||c?.title||"Critère")} — ${Math.max(0,Number(c?.points||0))} points${c?.description?` — ${String(c.description)}`:""}`).join("\n"):"Aucune grille détaillée. Évaluez strictement selon la consigne et le maximum de points.";
+ const system=`Vous êtes le moteur de correction pédagogique d'Omnia Global Academy. Corrigez uniquement à partir de la consigne, de la réponse et de la grille fournies. N'ajoutez jamais de points. Le score doit être compris entre 0 et le maximum. Répondez uniquement en JSON valide: {"score":number,"feedback":"texte bref","criteria":[{"criterion":"texte","score":number,"max":number,"feedback":"texte"}]}.`;
+ const prompt=`QUESTION:\n${String(q.prompt||"")}\n\nRÉPONSE APPRENANT:\n${answerText}\n\nBARÈME MAXIMUM: ${max}\n\nGRILLE:\n${rubricText}\n\nAttribuez les points. Le total des critères ne doit jamais dépasser ${max}.`;
+ try{
+  const result=await runAnthropicText(sb,{context:{module:"studio",action:"assessment_ai_grading",userId:params.userId,courseId:params.courseId,metadata:{assessment_id:params.assessmentId,question_id:q.id}},system,prompt,tier:"quality",effort:"medium",maxTokens:3500});
+  const parsed=safeJsonObject(result.text);if(!parsed||!Number.isFinite(Number(parsed.score)))return {ok:false,error:"AI_INVALID_GRADING_RESPONSE"};
+  const score=Math.min(max,Math.max(0,Math.round(Number(parsed.score)*100)/100));
+  return {ok:true,score,feedback:String(parsed.feedback||""),criteria:Array.isArray(parsed.criteria)?parsed.criteria:[],provider:result.provider,model:result.model,request_id:result.requestId};
+ }catch(error){console.error("ASSESSMENT_AI_GRADING_FAILED",q.id,error);return {ok:false,error:(error as any)?.code||"AI_GRADING_FAILED"}}
+}
+
 async function decorateStudioBlock(sb:any,block:any){
  const content=await signNestedStudioRefs(sb,{...(block?.content_json||{})});
  const streamUid=String(content.cloudflare_stream_uid||"").trim();
@@ -850,6 +867,7 @@ Deno.serve(async(req)=>{
    const sectionId=String(b.section_id||"");if(!sectionId)return json({success:false,error:"SECTION_ID_REQUIRED"},400);
    const {data:section}=await sb.from("assessment_sections").select("id,assessment_id,course_assessments!assessment_sections_assessment_id_fkey(course_id)").eq("id",sectionId).maybeSingle();const course=(section as any)?.course_assessments?.course_id;if(!section||!course||!(await owns(sb,userId,String(course),"can_manage_lessons")))return json({success:false,error:"FORBIDDEN"},403);
    const patch:any={updated_at:new Date().toISOString()};if(b.title!==undefined){const title=String(b.title||"").trim();if(!title)return json({success:false,error:"SECTION_TITLE_REQUIRED"},400);patch.title=title;}if(b.description!==undefined)patch.description=String(b.description||"");if(b.target_points!==undefined)patch.target_points=b.target_points===null||b.target_points===""?null:Math.max(0.1,Number(b.target_points));if(b.position!==undefined)patch.position=Math.max(0,Number(b.position)||0);
+   if(b.grading_mode!==undefined){const mode=String(b.grading_mode);if(!["automatic","ai","human","ai_human"].includes(mode))return json({success:false,error:"INVALID_GRADING_MODE"},400);if(mode==="automatic"&&!["qcm","true_false","cloze","matching","sentence_order","dictation","listening_comprehension"].includes(String((question as any).question_type||"")))return json({success:false,error:"AUTOMATIC_MODE_NOT_SUPPORTED_FOR_QUESTION_TYPE"},400);patch.grading_mode=mode;}
    const {data,error}=await sb.from("assessment_sections").update(patch).eq("id",sectionId).select("*").single();if(error)throw error;return json({success:true,section:data});
   }
   if(action==="assessment_section_delete"){
@@ -859,7 +877,7 @@ Deno.serve(async(req)=>{
   }
   if(action==="assessment_question_design_update"){
    const questionId=String(b.question_id||"");if(!questionId)return json({success:false,error:"QUESTION_ID_REQUIRED"},400);
-   const {data:question,error:qError}=await sb.from("assessment_questions").select("id,assessment_id,course_assessments!assessment_questions_assessment_id_fkey(course_id)").eq("id",questionId).maybeSingle();if(qError)throw qError;const course=(question as any)?.course_assessments?.course_id;if(!question||!course||!(await owns(sb,userId,String(course),"can_manage_lessons")))return json({success:false,error:"FORBIDDEN"},403);
+   const {data:question,error:qError}=await sb.from("assessment_questions").select("id,assessment_id,question_type,course_assessments!assessment_questions_assessment_id_fkey(course_id)").eq("id",questionId).maybeSingle();if(qError)throw qError;const course=(question as any)?.course_assessments?.course_id;if(!question||!course||!(await owns(sb,userId,String(course),"can_manage_lessons")))return json({success:false,error:"FORBIDDEN"},403);
    const patch:any={updated_at:new Date().toISOString()};if(b.points!==undefined){const points=Number(b.points);if(!Number.isFinite(points)||points<=0||points>10000)return json({success:false,error:"INVALID_QUESTION_POINTS"},400);patch.points=Math.round(points*100)/100;}
    if(b.section_id!==undefined){if(b.section_id){const {data:section}=await sb.from("assessment_sections").select("id").eq("id",String(b.section_id)).eq("assessment_id",question.assessment_id).maybeSingle();if(!section)return json({success:false,error:"SECTION_OUTSIDE_ASSESSMENT"},400);patch.section_id=section.id;}else patch.section_id=null;}
    if(b.position!==undefined)patch.position=Math.max(0,Number(b.position)||0);
@@ -1399,10 +1417,23 @@ Deno.serve(async(req)=>{
     else if(qn.question_type==="sentence_order"){const accepted=Array.isArray(qn.correct_answer)?qn.correct_answer:[qn.correct_answer];const received=Array.isArray(ans)?ans.join(" "):String(ans||"");autoScore=accepted.some((x:any)=>evalTextNorm(x)===evalTextNorm(received))?Number(qn.points):0;}
     else if(qn.question_type==="dictation"){autoScore=Number(qn.points)*(evalSimilarity(qn.correct_answer,ans)/100);}
     else if(qn.question_type==="listening_comprehension"){const expected=Array.isArray(qn.correct_answer)?qn.correct_answer:[];const received=Array.isArray(ans)?ans:[];const gradable=expected.map((x:any,i:number)=>({x,i})).filter((x:any)=>String(x.x??"").trim());const scorePct=gradable.length?gradable.reduce((sum:number,item:any)=>sum+evalSimilarity(item.x,received[item.i]||""),0)/gradable.length:0;autoScore=Number(qn.points)*(scorePct/100);}
-    else {pending=true;review="pending";}
-    if(autoScore!==null)earned+=autoScore;
-    const files=Array.isArray(ans?.files)?ans.files:[];
-    const {data:answerRow,error:answerError}=await sb.from("assessment_answers").insert({attempt_id:attempt.id,question_id:qn.id,answer_json:ans===undefined?null:ans,submission_files:files,auto_score:autoScore,final_score:autoScore,review_status:review}).select("id").single();if(answerError)throw answerError;
+    else {
+     const mode=String(qn.grading_mode||"human");
+     if(mode==="ai"||mode==="ai_human"){
+      const aiResult=await gradeAnswerWithAi(sb,{userId,courseId:a.course_id,assessmentId,question:qn,answer:ans});
+      if(aiResult.ok){
+       autoScore=Number(aiResult.score);review=mode==="ai"?"not_required":"pending";
+       if(mode==="ai_human")pending=true;
+       (qn as any).__ai_result=aiResult;
+      }else{
+       // Fail-safe: une indisponibilité IA ne doit jamais fabriquer une note.
+       pending=true;review="pending";(qn as any).__ai_result=aiResult;
+      }
+     }else {pending=true;review="pending";}
+    }
+    if(autoScore!==null&&String(qn.grading_mode)!=="ai_human")earned+=autoScore;
+    const files=Array.isArray(ans?.files)?ans.files:[];const aiResult=(qn as any).__ai_result;
+    const {data:answerRow,error:answerError}=await sb.from("assessment_answers").insert({attempt_id:attempt.id,question_id:qn.id,answer_json:ans===undefined?null:ans,submission_files:files,auto_score:String(qn.grading_mode)==="automatic"?autoScore:null,final_score:String(qn.grading_mode)==="ai"?autoScore:(String(qn.grading_mode)==="automatic"?autoScore:null),review_status:review,ai_score:aiResult?.ok?Number(aiResult.score):null,ai_feedback:aiResult?.ok?String(aiResult.feedback||""):null,ai_grading_json:aiResult?.ok?{criteria:aiResult.criteria||[],request_id:aiResult.request_id||null}:{error:aiResult?.error||null},ai_provider:aiResult?.ok?aiResult.provider:null,ai_model:aiResult?.ok?aiResult.model:null,ai_graded_at:aiResult?.ok?new Date().toISOString():null,human_validated_ai:false}).select("id").single();if(answerError)throw answerError;
     for(const f of files){if(!f?.storage_path)continue;const {error:fileError}=await sb.from("assessment_submission_files").insert({attempt_id:attempt.id,answer_id:answerRow.id,owner_user_id:userId,bucket_name:"assessment-submissions",storage_path:f.storage_path,file_name:f.file_name||f.name||"fichier",mime_type:f.mime_type||f.type||null,size_bytes:Number(f.size_bytes||f.size||0)});if(fileError)throw fileError;}
    }
    const score=total?Math.round((earned/total)*10000)/100:0;const passed=!pending&&score>=Number(a.passing_score);const failedCount=attemptNo;const remediationRequired=!pending&&!passed&&String(a.remediation_mode||"none")!=="none"&&failedCount>=Number(a.remediation_after_attempts||a.max_attempts||3);const retryAvailableAt=!pending&&!passed&&Number(a.retry_cooldown_hours||0)>0?new Date(Date.now()+Number(a.retry_cooldown_hours)*3600000).toISOString():null;
@@ -1453,7 +1484,7 @@ Retourne uniquement un JSON valide : {"suggested_points": nombre entre 0 et ${ma
    const {data:att,error:attemptError}=await sb.from("assessment_attempts").select("*,course_assessments(id,passing_score,scope,course_id,lesson_id,retry_cooldown_hours,remediation_after_attempts,remediation_mode,result_release_mode,competency_labels,jury_required,appeal_enabled,appeal_deadline_days)").eq("id",attemptId).single();
    if(attemptError)throw attemptError;if(!(await owns(sb,userId,att.course_id)))return json({success:false,error:"FORBIDDEN"},403);
    const assessment=(att as any).course_assessments||{};if(b.publish===true&&assessment.jury_required===true)return json({success:false,error:"JURY_DECISION_REQUIRED",message:"Cette évaluation exige une décision du jury. Enregistrez la correction en brouillon puis transmettez la copie au jury."},409);const status=b.publish===true?"published":"draft";let score=Math.min(100,Math.max(0,Number(b.score||0)));const file=b.corrected_file||{};
-   const submittedScores=Array.isArray(b.answer_scores)?b.answer_scores:[];if(submittedScores.length){const {data:answerRows,error:answerRowsError}=await sb.from("assessment_answers").select("id,auto_score,final_score,review_status,assessment_questions(points)").eq("attempt_id",attemptId);if(answerRowsError)throw answerRowsError;let earned=0,total=0;for(const row of answerRows||[]){const maxPoints=Math.max(0,Number((row as any).assessment_questions?.points||0));total+=maxPoints;const supplied=submittedScores.find((x:any)=>String(x.answer_id)===String(row.id));let finalScore=row.review_status==="not_required"?Number(row.auto_score||0):Number(supplied?.score);if(!Number.isFinite(finalScore)||finalScore<0||finalScore>maxPoints)return json({success:false,error:"INVALID_ANSWER_SCORE",answer_id:row.id,max_points:maxPoints},400);earned+=finalScore;await sb.from("assessment_answers").update({final_score:finalScore,review_status:"reviewed",grader_feedback:String(b.comment||""),updated_at:new Date().toISOString()}).eq("id",row.id);}score=total?Math.round(earned/total*10000)/100:0;}
+   const submittedScores=Array.isArray(b.answer_scores)?b.answer_scores:[];if(submittedScores.length){const {data:answerRows,error:answerRowsError}=await sb.from("assessment_answers").select("id,auto_score,final_score,ai_score,ai_feedback,ai_grading_json,review_status,assessment_questions(points,grading_mode)").eq("attempt_id",attemptId);if(answerRowsError)throw answerRowsError;let earned=0,total=0;for(const row of answerRows||[]){const maxPoints=Math.max(0,Number((row as any).assessment_questions?.points||0));total+=maxPoints;const supplied=submittedScores.find((x:any)=>String(x.answer_id)===String(row.id));const mode=String((row as any).assessment_questions?.grading_mode||"human");let finalScore=row.review_status==="not_required"?Number(row.auto_score||row.final_score||0):Number(supplied?.score);if(!Number.isFinite(finalScore)&&mode==="ai_human"&&Number.isFinite(Number((row as any).ai_score)))finalScore=Number((row as any).ai_score);if(!Number.isFinite(finalScore)||finalScore<0||finalScore>maxPoints)return json({success:false,error:"INVALID_ANSWER_SCORE",answer_id:row.id,max_points:maxPoints},400);earned+=finalScore;await sb.from("assessment_answers").update({final_score:finalScore,review_status:"reviewed",human_validated_ai:mode==="ai_human",grader_feedback:String(supplied?.feedback||b.comment||""),updated_at:new Date().toISOString()}).eq("id",row.id);}score=total?Math.round(earned/total*10000)/100:0;}
    if(file.storage_path){const expectedPrefix=`${att.course_id}/${attemptId}/${userId}/`;if((file.bucket_name||"assessment-corrections")!=="assessment-corrections"||!String(file.storage_path).startsWith(expectedPrefix))return json({success:false,error:"INVALID_CORRECTION_FILE"},400);if(Number(file.size_bytes||file.size||0)>52428800)return json({success:false,error:"FILE_TOO_LARGE"},400);}
    const {count:submissionFileCount}=await sb.from("assessment_submission_files").select("id",{count:"exact",head:true}).eq("attempt_id",attemptId);
    const {data:existingCorrection}=await sb.from("assessment_corrections").select("corrected_storage_path").eq("attempt_id",attemptId).eq("grader_id",userId).maybeSingle();

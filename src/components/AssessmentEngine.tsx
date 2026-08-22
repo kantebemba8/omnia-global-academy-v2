@@ -36,6 +36,7 @@ async function call(action: string, payload: Record<string, unknown>) {
 type Question = {
   id: string;
   section_id?: string | null;
+  grading_mode?: 'automatic' | 'ai' | 'human' | 'ai_human';
   question_type: 'qcm' | 'true_false' | 'open_question' | 'exercise' | 'assignment_upload' | 'case_study' | 'cloze' | 'dictation' | 'pronunciation' | 'matching' | 'sentence_order' | 'oral_response' | 'listening_comprehension' | 'written_expression';
   prompt: string;
   options?: any;
