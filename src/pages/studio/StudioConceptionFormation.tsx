@@ -33,6 +33,8 @@ interface Block {
   is_required?: boolean;
   training_passing_score?: number;
   training_is_graded?: boolean;
+  rubric_block_ids?: string[];
+  correction_block_ids?: string[];
   linked_block_ids?: string[];
   rag_enabled?: boolean;
   preview_allowed?: boolean;
@@ -1398,8 +1400,8 @@ export default function StudioConceptionFormation() {
               <div className="max-w-4xl mx-auto space-y-4">
                 <div className="bg-white rounded-xl border p-5" style={{borderColor:'#E4E7EC'}}>
                   <h2 className="text-lg font-bold" style={{color:'#002050'}}>Finalisation</h2>
-                  <p className="mt-1 text-sm text-gray-500">Configurez les évaluations et la réussite, la certification, la commercialisation et les contenus Live/Replays avant la vérification finale.</p>
-                  <button type="button" onClick={openAssessmentPolicy} disabled={openingAssessmentPolicy || locked} className="mt-4 inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold disabled:opacity-50" style={{borderColor:'#002050',color:'#002050'}}><ClipboardCheck size={15}/>Évaluations, réussite et progression</button>
+                  <p className="mt-1 text-sm text-gray-500">Vérifiez la cohérence des évaluations définies pendant le Build, puis contrôlez la certification, la commercialisation et les contenus Live/Replays avant soumission.</p>
+                  <button type="button" onClick={openAssessmentPolicy} disabled={openingAssessmentPolicy || locked} className="mt-4 inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold disabled:opacity-50" style={{borderColor:'#002050',color:'#002050'}}><ClipboardCheck size={15}/>Contrôler les évaluations, la réussite et la progression</button>
                 </div>
                 {course.id && course.studio_status && !['draft','changes_requested'].includes(String(course.studio_status)) && <StudioQualityStatusPanel courseId={course.id} />}
                 <CourseAdvancedSettingsPanel course={course} locked={locked} onPatch={(patch)=>setCourse(c=>({...c,...patch}))} onSaved={(msg)=>showToast(msg, msg.toLowerCase().includes('erreur') ? 'error' : 'success')} />
@@ -2252,6 +2254,47 @@ function BlockPreview({ block, def, locked, onChange, onGenerateTts, onGenerateS
   }
 }
 
+
+function PedagogicalLocalizationEditor({ block, locked, onUpdate }: { block: Block; locked: boolean; onUpdate: (updates: Partial<Block>) => void }) {
+  const settings = block.settings_json || {};
+  const loc = settings.pedagogical_localization && typeof settings.pedagogical_localization === 'object' ? settings.pedagogical_localization : {};
+  const amounts = Array.isArray(loc.amounts) ? loc.amounts : [];
+  const save = (next: any[]) => onUpdate({ settings_json: { ...settings, pedagogical_localization: { ...loc, amounts: next } } });
+  const updateAmount = (index:number, patch:Record<string,any>) => save(amounts.map((row:any,i:number)=>i===index?{...row,...patch}:row));
+  const add = () => save([...amounts,{key:`amount_${amounts.length+1}`,nature:'pedagogical',reference_value:0,reference_currency:'EUR',localize:true,variants:{}}]);
+  const localizable = ['text','callout','remember','objective','example','summary','important','case_study','open_question','exercise','qcm','true_false','matching','interactive_table','written_expression','definition','correction','bullet_list','numbered_list'].includes(block.block_type);
+  if (!localizable) return null;
+  return <details className="rounded-xl border p-3" style={{borderColor:'#DDE5F0',background:'#F8FAFC'}}>
+    <summary className="cursor-pointer text-xs font-bold" style={{color:'#002050'}}>Localisation pédagogique des montants</summary>
+    <div className="mt-3 space-y-3">
+      <p className="text-[11px] text-slate-500">Aucun nombre n’est modifié automatiquement. Déclarez uniquement les montants qui peuvent être localisés, puis insérez leur marqueur dans le contenu.</p>
+      {amounts.map((row:any,index:number)=>{
+        const variants=row.variants&&typeof row.variants==='object'?row.variants:{};
+        const variantsText=Object.entries(variants).map(([code,value])=>`${code}=${value}`).join('; ');
+        const marker=`{{oga_amount:${String(row.key||'amount')}}}`;
+        return <div key={index} className="rounded-lg border bg-white p-3" style={{borderColor:'#E4E7EC'}}>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <label className="text-[11px] font-semibold text-slate-600">Identifiant<input className="mt-1 w-full rounded border px-2 py-2 text-xs" value={row.key||''} disabled={locked} onChange={e=>updateAmount(index,{key:e.target.value.replace(/[^A-Za-z0-9_-]/g,'_')})}/></label>
+            <label className="text-[11px] font-semibold text-slate-600">Nature<select className="mt-1 w-full rounded border px-2 py-2 text-xs" value={row.nature||'pedagogical'} disabled={locked} onChange={e=>updateAmount(index,{nature:e.target.value,localize:e.target.value==='pedagogical'?row.localize!==false:false})}><option value="pedagogical">Pédagogique / simulation</option><option value="real">Réel / factuel — conserver</option></select></label>
+            <label className="text-[11px] font-semibold text-slate-600">Valeur de référence<input type="number" step="0.01" className="mt-1 w-full rounded border px-2 py-2 text-xs" value={Number(row.reference_value||0)} disabled={locked} onChange={e=>updateAmount(index,{reference_value:Number(e.target.value)||0})}/></label>
+            <label className="text-[11px] font-semibold text-slate-600">Devise de référence<input maxLength={3} className="mt-1 w-full rounded border px-2 py-2 text-xs uppercase" value={String(row.reference_currency||'EUR')} disabled={locked} onChange={e=>updateAmount(index,{reference_currency:e.target.value.toUpperCase().replace(/[^A-Z]/g,'').slice(0,3)})}/></label>
+          </div>
+          {row.nature!=='real' && <label className="mt-2 flex items-center gap-2 text-xs font-semibold text-slate-600"><input type="checkbox" checked={row.localize!==false} disabled={locked} onChange={e=>updateAmount(index,{localize:e.target.checked})}/>Ce montant peut être localisé</label>}
+          {row.nature!=='real' && row.localize!==false && <label className="mt-2 block text-[11px] font-semibold text-slate-600">Variantes stables par devise
+            <input className="mt-1 w-full rounded border px-2 py-2 text-xs" value={variantsText} disabled={locked} placeholder="XOF=31500000; USD=52000" onChange={e=>{const next:Record<string,number>={};for(const part of e.target.value.split(';')){const [code,val]=part.split('=').map(x=>x?.trim());if(/^[A-Za-z]{3}$/.test(code||'')&&Number.isFinite(Number(val)))next[String(code).toUpperCase()]=Number(val)}updateAmount(index,{variants:next})}}/>
+          </label>}
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <code className="rounded bg-slate-100 px-2 py-1 text-[11px]">{marker}</code>
+            {!locked && <button type="button" className="rounded border px-2 py-1 text-[11px] font-semibold" onClick={()=>navigator.clipboard?.writeText(marker)}>Copier le marqueur</button>}
+            {!locked && <button type="button" className="rounded border border-red-200 px-2 py-1 text-[11px] font-semibold text-red-700" onClick={()=>save(amounts.filter((_:any,i:number)=>i!==index))}>Supprimer</button>}
+          </div>
+        </div>
+      })}
+      {!locked && <button type="button" onClick={add} className="rounded-lg border px-3 py-2 text-xs font-semibold" style={{borderColor:'#002050',color:'#002050'}}>+ Ajouter un montant localisable</button>}
+    </div>
+  </details>;
+}
+
 // ─── Panneau réglages du bloc ─────────────────────────────────
 function BlockSettings({ block, locked, onUpdate, onAI, onRemoveResource, courseId, moduleId, lessonId, lessonBlocks }: {
   block: Block; locked: boolean;
@@ -2265,6 +2308,13 @@ function BlockSettings({ block, locked, onUpdate, onAI, onRemoveResource, course
   const relationCandidates = (lessonBlocks || []).filter(item => item.id !== block.id && relationActivityTypes.has(item.block_type));
   const correctionCandidates = relationCandidates.filter(item => item.interaction_mode !== 'assessment');
   const linkedIds = Array.isArray(block.linked_block_ids) ? block.linked_block_ids.map(String) : [];
+  const incomingRubricIds = Array.isArray(block.rubric_block_ids) ? block.rubric_block_ids.map(String) : [];
+  const incomingCorrectionIds = Array.isArray(block.correction_block_ids) ? block.correction_block_ids.map(String) : [];
+  const rubricBlocks = (lessonBlocks || []).filter(item => item.block_type === 'rubric' && item.id !== block.id);
+  const correctionBlocks = (lessonBlocks || []).filter(item => item.block_type === 'correction' && item.id !== block.id);
+  const autoGradingTypes = new Set(['qcm','true_false','cloze','matching','sentence_order','dictation','listening_comprehension']);
+  const responseMode = String(c.response_mode || (c.learner_upload_required === true ? 'file' : 'text'));
+  const fileBasedResponse = ['assignment_upload','oral_response','pronunciation'].includes(block.block_type) || (['exercise','case_study'].includes(block.block_type) && responseMode !== 'text');
   const blockLabel = (item: Block) => String(item.title || item.content_json?.title || item.content_json?.question || item.content_json?.statement || BLOCK_DEFS.find(def => def.type === item.block_type)?.label || item.block_type).trim();
   const inputCls = 'w-full px-3 py-2.5 border rounded-lg text-sm focus:outline-none focus:border-[#002050]';
   const style = { borderColor: '#E4E7EC' };
@@ -2468,17 +2518,51 @@ function BlockSettings({ block, locked, onUpdate, onAI, onRemoveResource, course
               <input type="number" min={1} max={100} className={inputCls} style={style} value={Number(block.training_passing_score ?? 80)} disabled={locked} onChange={e => onUpdate({ training_passing_score: Math.min(100, Math.max(1, Number(e.target.value) || 80)) })}/>
             </div> : <p className="rounded-lg bg-emerald-50 px-3 py-2 text-[11px] text-emerald-800">Non noté : aucune note ni seuil de réussite. Si l’activité est obligatoire, une tentative/soumission suffit pour progresser.</p>}
           </>}
-          {block.interaction_mode === 'assessment' && <div>
-            <label className="block text-xs mb-1" style={{ color: '#6B7280' }}>Compte dans</label>
-            <select className={inputCls} style={style} value={block.assessment_scope || 'lesson'} disabled={locked} onChange={e => onUpdate({ assessment_scope: e.target.value as Block['assessment_scope'] })}>
-              <option value="lesson">Évaluation de la leçon</option>
-              <option value="module">Évaluation du module</option>
-              <option value="final">Évaluation finale</option>
-            </select>
-            <p className="mt-1 text-[11px] text-gray-500">Le caractère obligatoire de l’évaluation et son seuil sont configurés dans Finalisation.</p>
+          {block.interaction_mode === 'assessment' && <div className="space-y-3">
+            <div>
+              <label className="block text-xs mb-1" style={{ color: '#6B7280' }}>Compte dans</label>
+              <select className={inputCls} style={style} value={block.assessment_scope || 'lesson'} disabled={locked} onChange={e => onUpdate({ assessment_scope: e.target.value as Block['assessment_scope'] })}>
+                <option value="lesson">Évaluation de la leçon</option>
+                <option value="module">Évaluation du module</option>
+                <option value="final">Évaluation finale</option>
+              </select>
+            </div>
+            <label className="flex items-center gap-2 text-xs font-semibold text-gray-700"><input type="checkbox" checked={block.settings_json?.assessment_required === true} disabled={locked} onChange={e=>onUpdate({settings_json:{...(block.settings_json||{}),assessment_required:e.target.checked}})}/>Évaluation obligatoire pour progresser / certifier</label>
+            <div>
+              <label className="block text-xs mb-1" style={{color:'#6B7280'}}>Seuil de réussite de l’évaluation (%)</label>
+              <input type="number" min={1} max={100} className={inputCls} style={style} value={Number(block.settings_json?.assessment_passing_score ?? 80)} disabled={locked} onChange={e=>onUpdate({settings_json:{...(block.settings_json||{}),assessment_passing_score:Math.min(100,Math.max(1,Number(e.target.value)||80))}})}/>
+            </div>
+            <div>
+              <label className="block text-xs mb-1" style={{color:'#6B7280'}}>Points maximum de ce bloc</label>
+              <input type="number" min={0.1} step={0.5} className={inputCls} style={style} value={Number(c.points ?? 10)} disabled={locked} onChange={e=>onUpdate({content_json:{...c,points:Math.max(0.1,Number(e.target.value)||0.1)}})}/>
+            </div>
+            <div>
+              <label className="block text-xs mb-1" style={{color:'#6B7280'}}>Mode de correction</label>
+              {autoGradingTypes.has(block.block_type) ? <div className="rounded-lg bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800">Automatique — réponse objectivement vérifiable</div> :
+              <select className={inputCls} style={style} value={fileBasedResponse ? 'human' : String(c.grading_mode || 'human')} disabled={locked || fileBasedResponse} onChange={e=>onUpdate({content_json:{...c,grading_mode:e.target.value}})}>
+                <option value="ai">Intelligence artificielle</option>
+                <option value="human">Évaluateur humain</option>
+                <option value="ai_human">IA + validation humaine</option>
+              </select>}
+              {fileBasedResponse && <p className="mt-1 text-[11px] text-amber-700">Une pièce jointe est demandée : correction humaine obligatoire tant qu’OGA ne dispose pas d’un pipeline fiable d’extraction des fichiers remis.</p>}
+            </div>
+            {!autoGradingTypes.has(block.block_type) && <div className="rounded-lg border bg-white p-3" style={{borderColor:'#E4E7EC'}}>
+              <p className="text-xs font-bold" style={{color:'#002050'}}>Grille d’évaluation associée</p>
+              {rubricBlocks.length ? rubricBlocks.map(item=><label key={item.id} className="mt-2 flex items-center gap-2 text-xs"><input type="checkbox" checked={incomingRubricIds.includes(String(item.id))} disabled={locked} onChange={e=>{const next=e.target.checked?[...incomingRubricIds,String(item.id)]:incomingRubricIds.filter(id=>id!==String(item.id));onUpdate({rubric_block_ids:next})}}/>{blockLabel(item)}</label>) : <p className="mt-1 text-[11px] text-slate-500">Aucune grille dans cette leçon.</p>}
+            </div>}
+            <div className="rounded-lg border bg-white p-3" style={{borderColor:'#E4E7EC'}}>
+              <p className="text-xs font-bold" style={{color:'#002050'}}>Correction pédagogique associée</p>
+              <select className={`${inputCls} mt-2`} style={style} value={incomingCorrectionIds[0] || ''} disabled={locked} onChange={e=>onUpdate({correction_block_ids:e.target.value?[e.target.value]:[]})}>
+                <option value="">Aucune correction liée</option>
+                {correctionBlocks.map(item=><option key={item.id} value={item.id}>{blockLabel(item)}</option>)}
+              </select>
+            </div>
+            <p className="rounded-lg bg-blue-50 px-3 py-2 text-[11px] text-blue-800">Les paramètres sont définis ici pendant le Build. La Finalisation sert uniquement à contrôler leur cohérence avant publication.</p>
           </div>}
         </div>
       )}
+
+      <PedagogicalLocalizationEditor block={block} locked={locked} onUpdate={onUpdate} />
 
       {/* Source image */}
       {block.block_type === 'image' && (

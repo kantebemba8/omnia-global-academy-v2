@@ -62,6 +62,7 @@ const PROFILE_TEXT_FIELDS: Record<string, number> = {
   availability_text: 300,
   public_email: 255,
   public_phone: 80,
+  preferred_pedagogical_currency: 3,
 };
 
 const PROFILE_ARRAY_FIELDS: Record<string, { maxItems: number; maxLength: number }> = {
@@ -921,6 +922,11 @@ Deno.serve(async (req: Request) => {
     }
 
     const profileUpdates = sanitizeProfile(requestedProfile);
+    if (profileUpdates.preferred_pedagogical_currency !== undefined && profileUpdates.preferred_pedagogical_currency !== null) {
+      const currency = String(profileUpdates.preferred_pedagogical_currency).toUpperCase();
+      if (!/^[A-Z]{3}$/.test(currency)) return json({ error: "INVALID_PEDAGOGICAL_CURRENCY" }, 400);
+      profileUpdates.preferred_pedagogical_currency = currency;
+    }
     const legacyVisibilityRequested = PROFILE_BOOLEAN_FIELDS.some(field => requestedProfile[field] !== undefined);
     if (profileUpdates.field_visibility && typeof profileUpdates.field_visibility === "object") {
       const map = profileUpdates.field_visibility as Record<string, boolean>;

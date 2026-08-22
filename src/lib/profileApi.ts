@@ -81,6 +81,7 @@ export type UnifiedProfile = {
   public_phone: string | null;
   visibility: 'public' | 'members' | 'private';
   preferred_language: 'fr' | 'en' | 'es' | 'pt' | 'ar' | 'zh' | 'ru' | 'de' | 'bm';
+  preferred_pedagogical_currency?: string | null;
   show_email: boolean;
   show_phone: boolean;
   show_location: boolean;

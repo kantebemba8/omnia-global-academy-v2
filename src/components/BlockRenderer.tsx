@@ -7,6 +7,7 @@ import {
 import { ScormPlayer } from './ScormPlayer';
 import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { canonicalizeBlockContent } from '../lib/courseBuilderV3';
+import { applyPedagogicalLocalization, localizePedagogicalString } from '../lib/pedagogicalLocalization';
 
 interface Block {
   id: string;
@@ -33,6 +34,8 @@ interface BlockRendererProps {
   learnerState?: Record<string, any>;
   onStateChange?: (blockId: string, state: Record<string, any>, completed: boolean) => void;
   isOnline?: boolean;
+  pedagogicalCurrency?: string | null;
+  pedagogicalLocale?: string;
 }
 
 // ─── Utilitaire taille fichier ─────────────────────────────────
@@ -78,8 +81,11 @@ function ResourceUnavailable({ block, label }: { block: Block; label: string }) 
 // ══════════════════════════════════════════════════════════════
 // BLOCK RENDERER PRINCIPAL
 // ══════════════════════════════════════════════════════════════
-export function BlockRenderer({ block, onQuizAnswer, onTrainingResult, onFileTrainingSubmit, learnerState, onStateChange, isOnline = true }: BlockRendererProps) {
-  const c = canonicalizeBlockContent(block.block_type, block.content_json);
+export function BlockRenderer({ block, onQuizAnswer, onTrainingResult, onFileTrainingSubmit, learnerState, onStateChange, isOnline = true, pedagogicalCurrency = null, pedagogicalLocale = 'fr-FR' }: BlockRendererProps) {
+  const rawContent = canonicalizeBlockContent(block.block_type, block.content_json);
+  const c = applyPedagogicalLocalization(rawContent, block.settings_json, pedagogicalCurrency, pedagogicalLocale);
+  const localizedBlockTitle = localizePedagogicalString(block.title || '', block.settings_json, pedagogicalCurrency, pedagogicalLocale);
+  block = localizedBlockTitle && localizedBlockTitle !== block.title ? { ...block, title: localizedBlockTitle } : block;
   const graded = block.training_is_graded !== false;
   const trainingThreshold = Number(block.training_passing_score ?? 80);
   const onlineOnlyTypes = new Set(['video', 'audio', 'pdf', 'word', 'download', 'excel', 'scorm', 'embed']);
@@ -957,7 +963,7 @@ class BlockRenderBoundary extends Component<{ children: ReactNode; blockType: st
 }
 
 // ─── Export : Rendu d'une leçon complète ─────────────────────
-export function LessonBlocksRenderer({ blocks, contentText, onQuizAnswer, onTrainingResult, onFileTrainingSubmit, learnerStateByBlock = {}, completedInteractionBlockIds = [], revealAllCorrections = false, onStateChange, isOnline = true }: {
+export function LessonBlocksRenderer({ blocks, contentText, onQuizAnswer, onTrainingResult, onFileTrainingSubmit, learnerStateByBlock = {}, completedInteractionBlockIds = [], revealAllCorrections = false, onStateChange, isOnline = true, pedagogicalCurrency = null, pedagogicalLocale = 'fr-FR' }: {
   blocks: Block[];
   contentText?: string;
   onQuizAnswer?: (blockId: string, answer: any, correct: boolean) => void;
@@ -968,6 +974,8 @@ export function LessonBlocksRenderer({ blocks, contentText, onQuizAnswer, onTrai
   revealAllCorrections?: boolean;
   onStateChange?: (blockId: string, state: Record<string, any>, completed: boolean) => void;
   isOnline?: boolean;
+  pedagogicalCurrency?: string | null;
+  pedagogicalLocale?: string;
 }) {
   // Compatibilité ascendante : si pas de blocs, afficher content_text
   if (!blocks || blocks.length === 0) {
@@ -1004,7 +1012,7 @@ export function LessonBlocksRenderer({ blocks, contentText, onQuizAnswer, onTrai
           return (
             <div key={block.id} className={`mx-auto w-full ${widthClass}`}>
               {block.title && !titleHandledTypes.has(block.block_type) && <h4 className="mb-2 mt-4 text-base font-bold" style={{color:'#002050'}}>{block.title}</h4>}
-              <BlockRenderBoundary blockType={block.block_type}><BlockRenderer block={block} onQuizAnswer={onQuizAnswer} onTrainingResult={block.interaction_mode === 'training' ? onTrainingResult : undefined} onFileTrainingSubmit={block.interaction_mode === 'training' ? onFileTrainingSubmit : undefined} learnerState={learnerStateByBlock[block.id] || {}} onStateChange={onStateChange} isOnline={isOnline} /></BlockRenderBoundary>
+              <BlockRenderBoundary blockType={block.block_type}><BlockRenderer block={block} onQuizAnswer={onQuizAnswer} onTrainingResult={block.interaction_mode === 'training' ? onTrainingResult : undefined} onFileTrainingSubmit={block.interaction_mode === 'training' ? onFileTrainingSubmit : undefined} learnerState={learnerStateByBlock[block.id] || {}} onStateChange={onStateChange} isOnline={isOnline} pedagogicalCurrency={pedagogicalCurrency} pedagogicalLocale={pedagogicalLocale} /></BlockRenderBoundary>
             </div>
           );
         });
