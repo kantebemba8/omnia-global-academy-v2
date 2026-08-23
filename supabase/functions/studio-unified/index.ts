@@ -196,7 +196,7 @@ function detectImportLanguage(text:string){const t=String(text||'').slice(0,1200
 function stripMarkup(value:unknown){return String(value||"").replace(/<script[\s\S]*?<\/script>/gi," ").replace(/<style[\s\S]*?<\/style>/gi," ").replace(/<[^>]+>/g," ").replace(/\s+/g," ").trim()}
 function wordCount(value:unknown){const text=stripMarkup(value);return text?text.split(/\s+/).filter(Boolean).length:0}
 const COURSE_TEXT_WPM=250;
-const COURSE_DURATION_ENGINE_VERSION="v2_active_time_250wpm";
+const COURSE_DURATION_ENGINE_VERSION="v2_1_active_time_250wpm_published_sync";
 function clampDuration(value:number,min:number,max:number){return Math.min(max,Math.max(min,value))}
 function durationSecondsFromContent(c:any){return Math.max(0,Number(c?.duration_seconds||c?.media_duration_seconds||c?.audio_duration_seconds||c?.video_duration_seconds||0))}
 function blockActiveMinutes(block:any){

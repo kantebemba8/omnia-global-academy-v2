@@ -181,7 +181,9 @@ export function CoursDetail() {
   const realModules = modules.filter((m:any) => (m.section_type || (m.is_intro ? 'introduction' : m.is_conclusion ? 'conclusion' : m.is_final_exam ? 'final_exam' : 'module')) === 'module');
   const totalLessons = realModules.reduce((sum:number, m:any) => sum + ((m.lessons as any[]) || []).filter((lesson:any) => (lesson.stage_type || (lesson.is_module_intro ? 'module_presentation' : 'lesson')) === 'lesson').length, 0);
   const totalModules = realModules.length;
-  const cpd = course.cpd_hours as number ?? 0;
+  const cpd = Number(course.cpd_hours || 0);
+  const estimatedDurationSeconds = Math.max(0, Number(course.total_duration_seconds || 0));
+  const estimatedDurationLabel = estimatedDurationSeconds > 0 ? (() => { const totalMinutes = Math.max(1, Math.round(estimatedDurationSeconds / 60)); const hours = Math.floor(totalMinutes / 60); const minutes = totalMinutes % 60; return hours > 0 ? `${hours} h${minutes ? ` ${minutes} min` : ''}` : `${minutes} min`; })() : null;
   const levelColor = LEVEL_COLORS[course.level as string] ?? '#6B7280';
   const isFree = course.is_free as boolean;
   const averageRating = Number(course.average_rating || 0);
@@ -279,7 +281,8 @@ export function CoursDetail() {
             {creator.school_name && (
               <p className="text-sm mb-2" style={{ color: 'rgba(255,255,255,0.70)' }}>École : <span>{String(creator.school_name)}</span></p>
             )}
-            {cpd > 0 && <p className="text-sm mt-2" style={{ color: 'rgba(255,255,255,0.70)' }}>⏱ {cpd} h d’apprentissage reconnu</p>}
+            {estimatedDurationLabel && <p className="text-sm mt-2" style={{ color: 'rgba(255,255,255,0.70)' }}>⏱ Durée estimée · {estimatedDurationLabel}</p>}
+            {course.cpd_accredited && cpd > 0 && <p className="text-xs mt-1" style={{ color: 'rgba(255,255,255,0.58)' }}>Reconnaissance · {cpd} h</p>}
           </div>
 
           {/* Purchase card */}
@@ -573,7 +576,7 @@ export function CoursDetail() {
         {modules.length > 0 && (
           <section>
             <h2 className="font-bold mb-2" style={{ color: '#002050', fontSize: '22px' }}>Programme de la formation</h2>
-            <p className="text-sm mb-5" style={{ color: '#6B7280' }}>{totalModules} module{totalModules > 1 ? 's' : ''} · {totalLessons} leçon{totalLessons > 1 ? 's' : ''}{cpd > 0 ? ` · ${cpd} h reconnues` : ''}</p>
+            <p className="text-sm mb-5" style={{ color: '#6B7280' }}>{totalModules} module{totalModules > 1 ? 's' : ''} · {totalLessons} leçon{totalLessons > 1 ? 's' : ''}{estimatedDurationLabel ? ` · ${estimatedDurationLabel}` : ''}</p>
             <div className="space-y-2">
               {modules.map((mod, mi) => {
                 const mid = mod.id as string;

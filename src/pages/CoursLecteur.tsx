@@ -281,7 +281,7 @@ function CourseSidebar({ modules, currentLessonId, onSelectLesson, onGoExam, onG
   const renderLessonButton = (lesson: LessonItem, module: ModuleItem) => {
     const current = lesson.lesson_id === currentLessonId;
     const availableOffline = offlineLessonIds.has(lesson.lesson_id);
-    const canOpen = module.is_unlocked && (isOnline || availableOffline);
+    const canOpen = module.is_unlocked && lesson.is_unlocked !== false && (isOnline || availableOffline);
     const stage = lesson.stage_type || (lesson.is_module_intro ? 'module_presentation' : 'lesson');
     const stageLabel = stage === 'module_presentation' ? 'Présentation' : stage === 'module_summary' ? 'Synthèse' : stage === 'introduction' ? 'Introduction' : stage === 'conclusion' ? 'Conclusion' : stage === 'final_exam' ? 'Examen final' : null;
     return (
