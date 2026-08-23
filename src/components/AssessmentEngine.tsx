@@ -105,21 +105,45 @@ type Assessment = {
 };
 
 
-function escapeHtml(value: string) {
-  return String(value || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+function decodeAssessmentEntities(value: string) {
+  const named: Record<string,string> = { nbsp: ' ', amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", '#39': "'" };
+  return String(value || '')
+    .replace(/&(#x[0-9a-f]+|#\d+|nbsp|amp|lt|gt|quot|apos|#39);/gi, (_match, entity) => {
+      const key = String(entity).toLowerCase();
+      if (key.startsWith('#x')) {
+        const code = Number.parseInt(key.slice(2), 16);
+        return Number.isFinite(code) ? String.fromCodePoint(code) : ' ';
+      }
+      if (key.startsWith('#') && /^#\d+$/.test(key)) {
+        const code = Number.parseInt(key.slice(1), 10);
+        return Number.isFinite(code) ? String.fromCodePoint(code) : ' ';
+      }
+      return named[key] ?? ' ';
+    });
 }
 
-function richHtml(value: unknown) {
-  const raw = String(value ?? '').trim();
-  if (!raw) return '';
-  if (/<\/?(?:p|div|strong|b|em|i|u|ul|ol|li|a|br|span|blockquote)\b/i.test(raw)) return raw;
-  return raw.split(/\n{2,}/).map(paragraph => `<p>${escapeHtml(paragraph).replace(/\n/g, '<br />')}</p>`).join('');
+function plainAssessmentText(value: unknown) {
+  let raw = String(value ?? '');
+  if (!raw.trim()) return '';
+  raw = decodeAssessmentEntities(decodeAssessmentEntities(raw));
+  return raw
+    .replace(/<br\s*\/?\s*>/gi, '\n')
+    .replace(/<li\b[^>]*>/gi, '• ')
+    .replace(/<\/(?:p|div|li|h[1-6]|blockquote)>/gi, '\n')
+    .replace(/<!--[^]*?-->/g, ' ').replace(/<\/?[a-z][^>]*>/gi, ' ')
+    .replace(/\u00a0/g, ' ')
+    .replace(/\r/g, '')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n[ \t]+/g, '\n')
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }
 
-function RichContent({ value, className = '' }: { value: unknown; className?: string }) {
-  const html = richHtml(value);
-  if (!html) return null;
-  return <div className={`prose prose-sm max-w-none leading-relaxed [&_p]:my-2 [&_ul]:my-2 [&_ol]:my-2 ${className}`} dangerouslySetInnerHTML={{ __html: html }} />;
+function PlainContent({ value, className = '' }: { value: unknown; className?: string }) {
+  const text = plainAssessmentText(value);
+  if (!text) return null;
+  return <div className={`whitespace-pre-wrap leading-relaxed ${className}`}>{text}</div>;
 }
 
 function formatDate(value?: string | null) {
@@ -406,7 +430,7 @@ export function AssessmentEngine({
         <Clock size={20} style={{ color: GOLD }} />
       </div>
 
-      {assessment.instructions && <RichContent value={assessment.instructions} className="mb-4 text-sm" />}
+      {assessment.instructions && <PlainContent value={assessment.instructions} className="mb-4 text-sm" />}
 
       {!preview && latest && (
         <div className={`mb-5 rounded-xl p-4 ${passed ? 'bg-green-50' : pending ? 'bg-amber-50' : 'bg-gray-50'}`}>
@@ -463,11 +487,11 @@ export function AssessmentEngine({
             const showSection = Boolean(section && section.id !== previousSectionId);
             return <div key={question.id}>
               {showSection && <div className="mb-3 mt-2 rounded-xl border-l-4 bg-slate-50 p-4" style={{ borderLeftColor: GOLD }}>
-                <div className="flex flex-wrap items-center justify-between gap-2"><div><p className="font-bold" style={{ color: BLUE }}>{section?.title}</p>{section?.description && <RichContent value={section.description} className="mt-1 text-xs text-slate-500" />}</div></div>
+                <div className="flex flex-wrap items-center justify-between gap-2"><div><p className="font-bold" style={{ color: BLUE }}>{section?.title}</p>{section?.description && <PlainContent value={section.description} className="mt-1 text-xs text-slate-500" />}</div></div>
               </div>}
               <div className="rounded-xl bg-gray-50 p-4">
               <div className="mb-3 flex items-start gap-1 text-sm font-medium" style={{ color: BLUE }}>
-                <span className="shrink-0">{index + 1}.</span><RichContent value={question.presentation?.prompt_html || question.prompt} className="min-w-0 flex-1 text-sm font-medium" />
+                <span className="shrink-0">{index + 1}.</span><PlainContent value={question.presentation?.prompt_html || question.prompt} className="min-w-0 flex-1 text-sm font-medium" />
               </div>
 
               {(question.resource_files || []).length > 0 && (
@@ -530,19 +554,16 @@ export function AssessmentEngine({
                 <textarea rows={question.question_type === 'written_expression' ? 8 : 5} className="w-full rounded-lg border p-3 text-sm" value={typeof answers[question.id] === 'string' ? answers[question.id] as string : ''} onChange={event => setAnswers(current => ({ ...current, [question.id]: event.target.value }))} placeholder={question.question_type === 'dictation' ? 'Transcrivez ce que vous entendez…' : 'Rédigez votre réponse…'} />
               )}
 
-              {question.question_type === 'case_study' && (question.options?.context || question.options?.data) && (
-                <div className="mb-4 space-y-3 rounded-xl border bg-white p-4" style={{ borderColor: '#E4E7EC' }}>
-                  {question.options?.context && <div><p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Contexte</p><div className="mt-1 whitespace-pre-wrap text-sm text-slate-700">{String(question.options.context)}</div></div>}
-                  {question.options?.data && <div><p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Données</p><div className="mt-1 whitespace-pre-wrap text-sm text-slate-700">{String(question.options.data)}</div></div>}
-                </div>
-              )}
+              {question.question_type === 'case_study' && (() => {
+                const contextValue = question.presentation?.context_html || question.options?.context;
+                const dataValue = question.presentation?.data_html || question.options?.data;
+                if (!contextValue && !dataValue) return null;
+                return <div className="mb-4 space-y-3">
+                  {contextValue && <div className="rounded-xl border bg-white p-4"><p className="mb-2 text-xs font-black uppercase tracking-wide text-slate-500">Contexte</p><PlainContent value={contextValue} className="text-sm text-slate-700" /></div>}
+                  {dataValue && <div className="rounded-xl border bg-white p-4"><p className="mb-2 text-xs font-black uppercase tracking-wide text-slate-500">Données</p><PlainContent value={dataValue} className="text-sm text-slate-700" /></div>}
+                </div>;
+              })()}
 
-              {question.question_type === 'case_study' && (question.presentation?.context_html || question.presentation?.data_html) && (
-                <div className="mb-4 space-y-3">
-                  {question.presentation?.context_html && <div className="rounded-xl border bg-white p-4"><p className="mb-2 text-xs font-black uppercase tracking-wide text-slate-500">Contexte</p><RichContent value={question.presentation.context_html} /></div>}
-                  {question.presentation?.data_html && <div className="rounded-xl border bg-white p-4"><p className="mb-2 text-xs font-black uppercase tracking-wide text-slate-500">Données</p><RichContent value={question.presentation.data_html} /></div>}
-                </div>
-              )}
 
               {['exercise','case_study'].includes(question.question_type) && (() => {
                 const responseMode = effectiveResponseMode(question);
@@ -552,7 +573,7 @@ export function AssessmentEngine({
                 const questions = Array.isArray(question.options?.questions) ? question.options.questions : [];
                 const perQuestion = question.question_type === 'case_study' && (question.response_layout || 'per_question') === 'per_question' && questions.length > 0;
                 return <div className="space-y-3">
-                  {needsText && perQuestion && questions.map((item:any,itemIndex:number)=><label key={itemIndex} className="block text-sm"><div className="flex items-start gap-1 font-medium"><span className="shrink-0">{itemIndex+1}.</span><RichContent value={question.presentation?.question_html?.[itemIndex] || item.question || `Question ${itemIndex+1}`} className="min-w-0 flex-1" /></div><textarea rows={4} className="mt-1 w-full rounded-lg border p-3 text-sm" value={(submission.responses || [])[itemIndex] || ''} onChange={event=>setSubmissionResponse(question.id,itemIndex,event.target.value)} placeholder="Rédigez votre réponse…"/></label>)}
+                  {needsText && perQuestion && questions.map((item:any,itemIndex:number)=><label key={itemIndex} className="block text-sm"><div className="flex items-start gap-1 font-medium"><span className="shrink-0">{itemIndex+1}.</span><PlainContent value={question.presentation?.question_html?.[itemIndex] || item.question || `Question ${itemIndex+1}`} className="min-w-0 flex-1" /></div><textarea rows={4} className="mt-1 w-full rounded-lg border p-3 text-sm" value={(submission.responses || [])[itemIndex] || ''} onChange={event=>setSubmissionResponse(question.id,itemIndex,event.target.value)} placeholder="Rédigez votre réponse…"/></label>)}
                   {needsText && !perQuestion && <textarea rows={question.question_type === 'case_study' ? 8 : 6} className="w-full rounded-lg border p-3 text-sm" value={submission.text || ''} onChange={event=>setSubmissionText(question.id,event.target.value)} placeholder={question.question_type === 'case_study' ? 'Rédigez votre analyse…' : 'Rédigez votre réponse…'} />}
                   {needsFile && <div>
                     <label className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm ${preview ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}>

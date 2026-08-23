@@ -83,7 +83,7 @@ function assessmentQuestionDataFromBlock(block:any){
  else if(questionType==="listening_comprehension"){const questions=Array.isArray(content.questions)?content.questions:[];correctAnswer=questions.map((q:any)=>q.expected_answer??q.answer??q.correct_answer??"");publicOptions={questions:questions.map((q:any)=>({question:String(q.question||""),type:String(q.type||"text")}))};}
  else if(questionType==="case_study"){const questions=Array.isArray(content.questions)?content.questions:[];publicOptions={context:String(content.context||""),data:String(content.data||""),task:String(content.task||""),questions:questions.map((q:any)=>({question:String(typeof q==="string"?q:q?.question||q?.text||"")})).filter((q:any)=>q.question)};}
  const languagePrompt=questionType==="listening_comprehension"?(content.title||content.instructions||"Compréhension orale"):questionType==="dictation"?(content.instructions||"Transcrivez fidèlement l’audio."):questionType==="oral_response"?(content.prompt||"Réponse orale"):questionType==="pronunciation"?(content.instructions||"Prononcez les éléments demandés."):questionType==="written_expression"?(content.prompt||"Expression écrite"):questionType==="case_study"?(content.task||content.context||"Étude de cas"):null;
- return {question_type:questionType,prompt:languagePrompt||String(content.question||content.statement||content.title||content.instructions||"Question à compléter").replace(/<[^>]*>/g," ").replace(/\s+/g," ").trim(),points:Math.max(.1,Number(content.points??10)),grading_mode:gradingMode,response_mode:responseMode,response_layout:questionType==="case_study"?String(content.response_layout||"per_question"):null,options:publicOptions,correct_answer:correctAnswer,explanation:content.explanation||"",localization_json:block.settings_json?.pedagogical_localization&&typeof block.settings_json.pedagogical_localization==="object"?block.settings_json.pedagogical_localization:{}};
+ return {question_type:questionType,prompt:assessmentPlainText(languagePrompt||String(content.question||content.statement||content.title||content.instructions||"Question à compléter")),points:Math.max(.1,Number(content.points??10)),grading_mode:gradingMode,response_mode:responseMode,response_layout:questionType==="case_study"?String(content.response_layout||"per_question"):null,options:sanitizeAssessmentValue(publicOptions),correct_answer:sanitizeAssessmentValue(correctAnswer),explanation:assessmentPlainText(content.explanation||""),localization_json:block.settings_json?.pedagogical_localization&&typeof block.settings_json.pedagogical_localization==="object"?block.settings_json.pedagogical_localization:{}};
 }
 async function syncExistingOfficialAssessmentFromBlock(sb:any,block:any){
  const sourceId=String(block.id||"");if(!sourceId)return;
@@ -193,10 +193,10 @@ const AUTO_COPY:Record<string,Record<string,string>>={
 function autoCopy(language:unknown,key:string){const lang=normalizedCourseLanguage(language);return AUTO_COPY[lang]?.[key]||AUTO_COPY.en[key]||key}
 function detectImportLanguage(text:string){const t=String(text||'').slice(0,12000);if(/[\u0600-\u06ff]/.test(t))return'ar';if(/[\u4e00-\u9fff]/.test(t))return'zh';if(/[\u0400-\u04ff]/.test(t))return'ru';const low=` ${t.toLowerCase()} `;const scores:any={fr:[' le ',' la ',' les ',' des ',' une ',' pour ',' avec '],en:[' the ',' and ',' with ',' for ',' this ',' course '],es:[' el ',' la ',' los ',' una ',' para ',' con ',' curso '],pt:[' o ',' a ',' os ',' uma ',' para ',' com ',' curso '],de:[' der ',' die ',' das ',' und ',' mit ',' für ',' kurs ']};let best='fr',bestScore=-1;for(const [lang,words] of Object.entries(scores)){const score=(words as string[]).reduce((n,w)=>n+(low.split(w).length-1),0);if(score>bestScore){best=lang;bestScore=score}}return best}
 
-function stripMarkup(value:unknown){return String(value||"").replace(/<script[\s\S]*?<\/script>/gi," ").replace(/<style[\s\S]*?<\/style>/gi," ").replace(/<[^>]+>/g," ").replace(/\s+/g," ").trim()}
+function stripMarkup(value:unknown){return String(value||"").replace(/<script[\s\S]*?<\/script>/gi," ").replace(/<style[\s\S]*?<\/style>/gi," ").replace(/<!--[\s\S]*?-->/g," ").replace(/<\/?[a-z][^>]*>/gi," ").replace(/\s+/g," ").trim()}
 function wordCount(value:unknown){const text=stripMarkup(value);return text?text.split(/\s+/).filter(Boolean).length:0}
 const COURSE_TEXT_WPM=250;
-const COURSE_DURATION_ENGINE_VERSION="v2_2_active_time_250wpm_published_autosync";
+const COURSE_DURATION_ENGINE_VERSION="v2_3_active_time_250wpm_assessment_separation";
 function clampDuration(value:number,min:number,max:number){return Math.min(max,Math.max(min,value))}
 function durationSecondsFromContent(c:any){return Math.max(0,Number(c?.duration_seconds||c?.media_duration_seconds||c?.audio_duration_seconds||c?.video_duration_seconds||0))}
 function blockActiveMinutes(block:any){
@@ -241,27 +241,72 @@ function blockActiveMinutes(block:any){
  const words=wordCount(textual);
  return words>0?words/COURSE_TEXT_WPM:0;
 }
+function assessmentPlainText(value:any){
+ let raw=String(value??"");if(!raw.trim())return "";
+ raw=decodeXmlEntities(decodeXmlEntities(raw)).replace(/&nbsp;|&#160;|&#xA0;/gi," ");
+ return raw.replace(/<br\s*\/?\s*>/gi,"\n").replace(/<li\b[^>]*>/gi,"• ").replace(/<\/(?:p|div|li|h[1-6]|blockquote)>/gi,"\n").replace(/<!--[\s\S]*?-->/g," ").replace(/<\/?[a-z][^>]*>/gi," ").replace(/\u00a0/g," ").replace(/\r/g,"").replace(/[ \t]+\n/g,"\n").replace(/\n[ \t]+/g,"\n").replace(/[ \t]{2,}/g," ").replace(/\n{3,}/g,"\n\n").trim();
+}
+function sanitizeAssessmentValue(value:any,depth=0):any{
+ if(depth>6||value==null)return value;
+ if(typeof value==="string")return assessmentPlainText(value);
+ if(Array.isArray(value))return value.map(item=>sanitizeAssessmentValue(item,depth+1));
+ if(typeof value!=="object")return value;
+ const out:any={};for(const key of Object.keys(value))out[key]=sanitizeAssessmentValue(value[key],depth+1);return out;
+}
+function assessmentStableJson(value:any):string{
+ if(value==null)return "null";
+ if(Array.isArray(value))return `[${value.map(assessmentStableJson).join(",")}]`;
+ if(typeof value==="object")return `{${Object.keys(value).sort().map(key=>`${JSON.stringify(key)}:${assessmentStableJson(value[key])}`).join(",")}}`;
+ return JSON.stringify(value);
+}
+function assessmentQuestionSignature(question:any){
+ return assessmentStableJson({
+  type:String(question?.question_type||""),
+  prompt:assessmentPlainText(question?.prompt||"").toLowerCase(),
+  options:sanitizeAssessmentValue(question?.options||null),
+  response_mode:String(question?.response_mode||""),
+  response_layout:String(question?.response_layout||"")
+ });
+}
+function canonicalAssessmentQuestions(rows:any[]){
+ const sourceSignatures=new Set<string>();for(const row of rows||[])if(String(row?.source_lesson_block_id||""))sourceSignatures.add(assessmentQuestionSignature(row));
+ const seenSourceIds=new Set<string>(),seenLegacySignatures=new Set<string>();const out:any[]=[];
+ for(const row of rows||[]){
+  const sourceId=String(row?.source_lesson_block_id||"");const signature=assessmentQuestionSignature(row);
+  if(sourceId){if(seenSourceIds.has(sourceId))continue;seenSourceIds.add(sourceId);out.push(row);continue;}
+  if(sourceSignatures.has(signature)||seenLegacySignatures.has(signature))continue;
+  seenLegacySignatures.add(signature);out.push(row);
+ }
+ return out;
+}
 function stableQuestionOrder(rows:any[],assessmentId:string,userId:string,attemptNumber:number){
  function hash(value:string){let h=2166136261>>>0;for(let i=0;i<value.length;i++){h^=value.charCodeAt(i);h=Math.imul(h,16777619)>>>0;}return h>>>0}
  return [...rows].sort((a:any,b:any)=>hash(`${assessmentId}:${userId}:${attemptNumber}:${a.id}`)-hash(`${assessmentId}:${userId}:${attemptNumber}:${b.id}`));
 }
 function selectAssessmentQuestions(rows:any[],assessment:any,userId:string,attemptNumber:number){
- const ordered=assessment?.randomize_questions===true?stableQuestionOrder(rows,String(assessment.id),userId,attemptNumber):[...rows].sort((a:any,b:any)=>Number(a.position||0)-Number(b.position||0));
+ const canonical=canonicalAssessmentQuestions(rows||[]);
+ const ordered=assessment?.randomize_questions===true?stableQuestionOrder(canonical,String(assessment.id),userId,attemptNumber):[...canonical].sort((a:any,b:any)=>Number(a.position||0)-Number(b.position||0));
  const limit=Math.max(0,Number(assessment?.random_question_count||0));
  return limit>0?ordered.slice(0,Math.min(limit,ordered.length)):ordered;
 }
 
 async function recalculateCourseDuration(sb:any,courseId:string){
  const [{data:blocks,error:blocksError},{data:assessments,error:assessmentsError},{data:lessons,error:lessonsError}]=await Promise.all([
-  sb.from("lesson_blocks").select("id,lesson_id,block_type,content_json").eq("course_id",courseId),
+  sb.from("lesson_blocks").select("id,lesson_id,block_type,content_json,interaction_mode").eq("course_id",courseId),
   sb.from("course_assessments").select("id,scope,module_id,lesson_id,estimated_minutes,required,is_active,assessment_questions(source_lesson_block_id)").eq("course_id",courseId),
   sb.from("course_lessons").select("id,module_id,stage_type,is_intro,is_module_intro,is_conclusion,is_final_exam,content_text").eq("course_id",courseId)
  ]);
  if(blocksError)throw blocksError;if(assessmentsError)throw assessmentsError;if(lessonsError)throw lessonsError;
- const lessonMinutes=new Map<string,number>();
+ const activeAssessments=(assessments||[]).filter((a:any)=>a.is_active!==false&&a.required!==false);
+ const requiredAssessmentBlockIds=new Set<string>(activeAssessments.flatMap((assessment:any)=>(Array.isArray(assessment.assessment_questions)?assessment.assessment_questions:[]).map((q:any)=>String(q?.source_lesson_block_id||"")).filter(Boolean)));
+ const lessonMinutes=new Map<string,number>();let assessmentBlockMinutes=0;
  for(const lesson of lessons||[])lessonMinutes.set(String(lesson.id),0);
  for(const block of blocks||[]){
   const lessonId=String(block.lesson_id||"");if(!lessonId)continue;
+  if(String(block.interaction_mode||"content")==="assessment"){
+   if(requiredAssessmentBlockIds.has(String(block.id)))assessmentBlockMinutes+=blockActiveMinutes(block);
+   continue;
+  }
   lessonMinutes.set(lessonId,(lessonMinutes.get(lessonId)||0)+blockActiveMinutes(block));
  }
  for(const lesson of lessons||[]){
@@ -269,7 +314,6 @@ async function recalculateCourseDuration(sb:any,courseId:string){
   const words=wordCount(lesson.content_text||"");if(words>0)lessonMinutes.set(lessonId,words/COURSE_TEXT_WPM);
  }
  for(const [lessonId,minutes] of lessonMinutes.entries())if(minutes>0)lessonMinutes.set(lessonId,Math.max(0.5,minutes));
- const activeAssessments=(assessments||[]).filter((a:any)=>a.is_active!==false&&a.required!==false);
  let fallbackAssessmentMinutes=0;
  for(const assessment of activeAssessments){
   const sourceQuestions=Array.isArray(assessment.assessment_questions)?assessment.assessment_questions:[];
@@ -282,7 +326,7 @@ async function recalculateCourseDuration(sb:any,courseId:string){
   return sb.from("course_lessons").update({cpd_calculated_time_seconds:seconds,updated_at:new Date().toISOString()}).eq("id",lesson.id);
  }));
  const contentMinutes=[...lessonMinutes.values()].reduce((sum:number,value:number)=>sum+Math.max(0,value),0);
- const minutes=Math.max(1,Math.round(contentMinutes+fallbackAssessmentMinutes));
+ const minutes=Math.max(1,Math.round(contentMinutes+assessmentBlockMinutes+fallbackAssessmentMinutes));
  const {error:updateError}=await sb.from("courses").update({calculated_duration_minutes:minutes,total_duration_seconds:minutes*60,updated_at:new Date().toISOString()}).eq("id",courseId);
  if(updateError)throw updateError;
  return minutes;
@@ -1495,11 +1539,12 @@ Deno.serve(async(req)=>{
    const {data:last}=isAdmin||assessmentPreview?{data:null}:await sb.from("assessment_attempts").select("id,score,passed,status,attempt_number,retry_available_at,remediation_required,remediation_completed_at,feedback,submitted_at").eq("assessment_id",a.id).eq("user_id",userId).order("attempt_number",{ascending:false}).limit(1).maybeSingle();
    const [{data:allQuestions,error:questionsError},{data:assessmentSections,error:sectionsError}]=await Promise.all([sb.from("assessment_questions").select("id,section_id,question_type,position,prompt,options,explanation,points,grading_mode,response_mode,response_layout,max_submission_size_mb,localization_json,resource_files,accepted_submission_types,source_lesson_block_id").eq("assessment_id",a.id).order("position"),sb.from("assessment_sections").select("id,title,description,position,target_points").eq("assessment_id",a.id).order("position")]);if(questionsError)throw questionsError;if(sectionsError)throw sectionsError;
    const sourceBlockIds=[...new Set((allQuestions||[]).map((question:any)=>String(question.source_lesson_block_id||"")).filter(Boolean))];let sourceBlockMap=new Map<string,any>();if(sourceBlockIds.length){const {data:sourceBlocks,error:sourceBlocksError}=await sb.from("lesson_blocks").select("id,block_type,content_json").in("id",sourceBlockIds);if(sourceBlocksError)throw sourceBlocksError;sourceBlockMap=new Map((sourceBlocks||[]).map((block:any)=>[String(block.id),block]));}
-   const nextAttemptNumber=Number(last?.attempt_number||0)+1;const selectedQuestions=selectAssessmentQuestions(allQuestions||[],a,String(userId),nextAttemptNumber);
-   const signedQuestions=await Promise.all(selectedQuestions.map(async(question:any)=>{const resources=await Promise.all((Array.isArray(question.resource_files)?question.resource_files:[]).map(async(resource:any)=>{let bucket=String(resource?.bucket_name||""),path=String(resource?.storage_path||"");if((!bucket||!path)&&resource?.url){const locator=parseStorageLocator(resource.url);if(locator){bucket=locator.bucket;path=locator.path}}if(PRIVATE_COURSE_BUCKET_SET.has(bucket)&&path){const signed=await createSignedObjectUrl(sb,bucket,path,900);return {...resource,bucket_name:bucket,storage_path:path,url:signed}}return resource;}));let options=question.options||{};let presentation:any={};if(question.source_lesson_block_id){const source=sourceBlockMap.get(String(question.source_lesson_block_id));const content=source?.content_json||{};const type=String(question.question_type||source?.block_type||"");const promptHtml=type==="true_false"?content.statement:type==="case_study"?(content.task||question.prompt):type==="written_expression"||type==="oral_response"?content.prompt:(content.question||content.instructions||content.title||question.prompt);presentation={prompt_html:String(promptHtml||question.prompt||"")};if(type==="case_study"){const sourceQuestions=Array.isArray(content.questions)?content.questions:[];options={...options,context:String(content.context||options?.context||""),data:String(content.data||options?.data||""),task:String(content.task||options?.task||""),questions:sourceQuestions.length?sourceQuestions.map((item:any)=>({question:String(typeof item==="string"?item:item?.question||item?.text||"")})).filter((item:any)=>item.question):(Array.isArray(options?.questions)?options.questions:[])};presentation={...presentation,context_html:String(content.context||""),data_html:String(content.data||""),task_html:String(content.task||""),question_html:sourceQuestions.map((item:any)=>String(typeof item==="string"?item:item?.question||item?.text||""))};}}return {...question,options,presentation,resource_files:resources};}));
+   const canonicalQuestions=canonicalAssessmentQuestions(allQuestions||[]);const nextAttemptNumber=Number(last?.attempt_number||0)+1;const selectedQuestions=selectAssessmentQuestions(canonicalQuestions,a,String(userId),nextAttemptNumber);
+   const signedQuestions=await Promise.all(selectedQuestions.map(async(question:any)=>{question={...question,prompt:assessmentPlainText(question.prompt),explanation:assessmentPlainText(question.explanation),options:sanitizeAssessmentValue(question.options||{})};const resources=await Promise.all((Array.isArray(question.resource_files)?question.resource_files:[]).map(async(resource:any)=>{let bucket=String(resource?.bucket_name||""),path=String(resource?.storage_path||"");if((!bucket||!path)&&resource?.url){const locator=parseStorageLocator(resource.url);if(locator){bucket=locator.bucket;path=locator.path}}if(PRIVATE_COURSE_BUCKET_SET.has(bucket)&&path){const signed=await createSignedObjectUrl(sb,bucket,path,900);return {...resource,bucket_name:bucket,storage_path:path,url:signed}}return resource;}));let options=question.options||{};let presentation:any={};if(question.source_lesson_block_id){const source=sourceBlockMap.get(String(question.source_lesson_block_id));const content=source?.content_json||{};const type=String(question.question_type||source?.block_type||"");const promptValue=type==="true_false"?content.statement:type==="case_study"?(content.task||question.prompt):type==="written_expression"||type==="oral_response"?content.prompt:(content.question||content.instructions||content.title||question.prompt);presentation={prompt_html:assessmentPlainText(promptValue||question.prompt||"")};if(type==="case_study"){const sourceQuestions=Array.isArray(content.questions)?content.questions:[];options={...options,context:assessmentPlainText(content.context||options?.context||""),data:assessmentPlainText(content.data||options?.data||""),task:assessmentPlainText(content.task||options?.task||""),questions:sourceQuestions.length?sourceQuestions.map((item:any)=>({question:assessmentPlainText(typeof item==="string"?item:item?.question||item?.text||"")})).filter((item:any)=>item.question):(Array.isArray(options?.questions)?sanitizeAssessmentValue(options.questions):[])};presentation={...presentation,context_html:assessmentPlainText(content.context||options?.context||""),data_html:assessmentPlainText(content.data||options?.data||""),task_html:assessmentPlainText(content.task||options?.task||""),question_html:sourceQuestions.map((item:any)=>assessmentPlainText(typeof item==="string"?item:item?.question||item?.text||""))};}}return {...question,options:sanitizeAssessmentValue(options),presentation,resource_files:resources};}));
    let correction:any=null;if(last?.id){const {data:c}=await sb.from("assessment_corrections").select("score,max_score,comment,corrected_bucket_name,corrected_storage_path,corrected_file_name,published_at").eq("attempt_id",last.id).eq("status","published").order("published_at",{ascending:false}).limit(1).maybeSingle();if(c){let signed_url=null;if(c.corrected_bucket_name&&c.corrected_storage_path){const {data:signed}=await sb.storage.from(c.corrected_bucket_name).createSignedUrl(c.corrected_storage_path,3600);signed_url=signed?.signedUrl||null}correction={...c,signed_url}}}
    const now=Date.now();const retryAt=last?.retry_available_at?new Date(last.retry_available_at).getTime():0;const pending=last&&["pending_review","submitted","in_progress"].includes(last.status);const remediationBlocked=!!last?.remediation_required&&!last?.remediation_completed_at;
-   return json({success:true,preview:assessmentPreview||isAdmin,assessment:{...a,session,sections:assessmentSections||[],total_points:(allQuestions||[]).reduce((sum:number,q:any)=>sum+Math.max(0,Number(q.points||0)),0),questions:signedQuestions,latest_attempt:last||null,correction,can_retry:assessmentPreview||isAdmin?true:!pending&&!remediationBlocked&&(!retryAt||retryAt<=now),retry_blocked_until:assessmentPreview||isAdmin?null:(retryAt>now?last.retry_available_at:null),remediation_blocked:assessmentPreview||isAdmin?false:remediationBlocked}});
+   const sanitizedSections=(assessmentSections||[]).map((section:any)=>({...section,title:assessmentPlainText(section.title),description:assessmentPlainText(section.description)}));
+   return json({success:true,preview:assessmentPreview||isAdmin,assessment:{...a,title:assessmentPlainText(a.title),instructions:assessmentPlainText(a.instructions),session,sections:sanitizedSections,total_points:selectedQuestions.reduce((sum:number,q:any)=>sum+Math.max(0,Number(q.points||0)),0),questions:signedQuestions,latest_attempt:last||null,correction,can_retry:assessmentPreview||isAdmin?true:!pending&&!remediationBlocked&&(!retryAt||retryAt<=now),retry_blocked_until:assessmentPreview||isAdmin?null:(retryAt>now?last.retry_available_at:null),remediation_blocked:assessmentPreview||isAdmin?false:remediationBlocked}});
   }
   if(action==="learner_complete_remediation"){
    if(isAdmin)return json({success:false,error:"PREVIEW_READ_ONLY",message:"La prévisualisation administrative Omnia ne modifie aucune progression."},403);

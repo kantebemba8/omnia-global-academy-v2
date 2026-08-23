@@ -930,6 +930,7 @@ export default function App() {
         <Route path="/cours/:id" element={<CoursDetail />} />
         <Route path="/cours/:id/apprendre/:lessonId" element={<CoursLecteur />} />
         <Route path="/cours/:id/apprendre" element={<CoursLecteur />} />
+        <Route path="/cours/:id/evaluation-lecon/:lessonId" element={<ExamenModule />} />
         <Route path="/cours/:id/examen-module/:moduleId" element={<ExamenModule />} />
         <Route path="/cours/:id/validation-finale" element={<ValidationFinale />} />
         </Route>{/* end GuardedRoutes */}

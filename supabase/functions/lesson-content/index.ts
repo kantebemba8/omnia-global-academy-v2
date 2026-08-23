@@ -180,7 +180,7 @@ Deno.serve(async(req:Request)=>{
 
   // Source de vérité : lesson_blocks. Les colonnes historiques has_blocks/block_count peuvent être obsolètes
   // après une édition du Builder et ne doivent jamais empêcher le rendu apprenant.
-  let blocks:any[]=[];{const {data:raw,error:blockError}=await sb.from("lesson_blocks").select("id,block_type,position,title,content_json,settings_json,file_url,file_name,file_size,file_mime,storage_path,bucket_name,source_type,ai_generated,interaction_mode,is_required,training_passing_score,training_is_graded,rag_enabled,source_provenance").eq("lesson_id",lessonId).order("position");if(blockError)throw blockError;blocks=raw??[];blocks=await Promise.all(blocks.map(async(block:any)=>{const content={...(block.content_json||{})};
+  let blocks:any[]=[];{const {data:raw,error:blockError}=await sb.from("lesson_blocks").select("id,block_type,position,title,content_json,settings_json,file_url,file_name,file_size,file_mime,storage_path,bucket_name,source_type,ai_generated,interaction_mode,is_required,training_passing_score,training_is_graded,rag_enabled,source_provenance").eq("lesson_id",lessonId).order("position");if(blockError)throw blockError;blocks=(raw??[]).filter((block:any)=>String(block.interaction_mode||"content")!=="assessment");blocks=await Promise.all(blocks.map(async(block:any)=>{const content={...(block.content_json||{})};
    if(block.block_type==="scorm"&&content.scorm_ready===true&&content.scorm_package_prefix&&content.launch_path){
     const {data:existing}=await sb.from("scorm_runtime_sessions").select("*").eq("user_id",userId).eq("block_id",block.id).maybeSingle();
     const runtimeToken=existing?.runtime_token||crypto.randomUUID().replace(/-/g,"")+crypto.randomUUID().replace(/-/g,"");

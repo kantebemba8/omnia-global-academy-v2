@@ -5,7 +5,6 @@ import { useAuth } from '../hooks/useAuth';
 import { useCpdTimer } from '../hooks/useCpdTimer';
 import { ENDPOINTS } from '../lib/config';
 import { LessonBlocksRenderer } from '../components/BlockRenderer';
-import { AssessmentEngine } from '../components/AssessmentEngine';
 import { acknowledgeOfflineSeconds, getResilientDeviceId, listOfflineProgress, listResilientLessonIds, loadResilientCourseProgress, loadResilientLesson, queueOfflineSeconds, saveResilientCourseProgress, saveResilientLesson } from '../lib/resilientCourseStore';
 import { useOmniaNetworkStatus } from '../hooks/useOmniaNetwork';
 import { openExternalUrl } from '../lib/mobile';
@@ -1407,18 +1406,20 @@ export function CoursLecteur() {
               )}
 
               {isOnline && courseId && currentLessonId && lessonData?.assessment?.exists === true && !(lesson.is_external || lesson.content_type === 'external') && (
-                <AssessmentEngine
-                  courseId={courseId}
-                  lessonId={currentLessonId}
-                  scope="lesson"
-                  preview={isPreview}
-                  onPassed={async () => {
-                    if (isPreview) return;
-                    await loadProgress();
-                    setShowSummary(true);
-                    setLessonData(prev => prev ? { ...prev, progress: { ...prev.progress, quiz_passed: true, is_completed: true } } : prev);
-                  }}
-                />
+                <div className="mb-4 flex items-center justify-between gap-3 rounded-xl border px-4 py-3" style={{ borderColor: '#D8DEE8', backgroundColor: '#F8FAFC' }}>
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold" style={{ color: '#002050' }}>Évaluation de la leçon</p>
+                    <p className="mt-0.5 text-xs text-slate-500">{lessonData?.assessment?.passed ? 'Évaluation déjà réussie. Vous pouvez consulter votre résultat.' : 'L’évaluation officielle s’ouvre sur une page dédiée.'}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/cours/${courseId}/evaluation-lecon/${currentLessonId}${previewRouteQuery}`, { state: { returnLessonId: currentLessonId } })}
+                    className="shrink-0 rounded-lg px-3 py-2 text-xs font-bold text-white hover:opacity-85"
+                    style={{ backgroundColor: '#002050' }}
+                  >
+                    {isPreview ? 'Prévisualiser' : lessonData?.assessment?.passed ? 'Voir le résultat' : 'Passer l’évaluation'}
+                  </button>
+                </div>
               )}
               {!isOnline && lessonData?.assessment?.exists === true && !(lesson.is_external || lesson.content_type === 'external') && (
                 <div className="mb-5 rounded-xl border px-4 py-3 text-sm" style={{ borderColor: '#BF8813', backgroundColor: '#FFFBEB', color: '#002050' }}>
