@@ -917,7 +917,9 @@ export default function StudioConceptionFormation() {
     finally { setMediaAiBusy(null); }
   }
 
-  const locked = ['pending_validation', 'validated', 'published', 'suspended'].includes(course.studio_status || '');
+  const publishedSuperAdminEditable = course.studio_status === 'published' && course.creator_context === 'super_admin';
+  const locked = ['pending_validation', 'validated', 'suspended'].includes(course.studio_status || '') || (course.studio_status === 'published' && !publishedSuperAdminEditable);
+  const workflowLocked = ['pending_validation', 'validated', 'published', 'suspended'].includes(course.studio_status || '');
   const statusCfg = STATUS_CFG[course.studio_status || 'draft'] || STATUS_CFG.draft;
   const visibleBlocks = BLOCK_DEFS;
 
@@ -1018,6 +1020,7 @@ export default function StudioConceptionFormation() {
           <div className="w-2 h-2 rounded-full" style={{ background: statusCfg.dot }} />
           {statusCfg.label}
         </div>}
+        {publishedSuperAdminEditable && !headerCollapsed && <span className="hidden md:inline text-[11px] font-semibold text-emerald-700 mr-2">Modifications publiées en direct</span>}
 
         {/* Actions */}
         <div className="flex items-center gap-2 flex-shrink-0">
@@ -1035,10 +1038,10 @@ export default function StudioConceptionFormation() {
             style={{ borderColor: '#E4E7EC', color: '#374151' }}>
             {saving ? <RefreshCw size={13} className="animate-spin" /> : <Save size={13} />}<span className="hidden sm:inline">Enregistrer</span>
           </button>
-          <button onClick={submit} disabled={submitting || locked}
+          <button onClick={submit} disabled={submitting || workflowLocked}
             className="flex items-center gap-1 px-4 py-1.5 rounded-lg text-xs font-bold text-white disabled:opacity-50"
             style={{ background: locked ? '#9CA3AF' : '#BF8813' }}>
-            <Send size={13} /><span className="hidden sm:inline">{locked ? 'Soumise' : 'Soumettre'}</span>
+            <Send size={13} /><span className="hidden sm:inline">{course.studio_status === 'published' ? 'Publiée' : workflowLocked ? 'Soumise' : 'Soumettre'}</span>
           </button>
         </div>
       </div>
@@ -1440,7 +1443,7 @@ export default function StudioConceptionFormation() {
                 <StudioCommercialCertificationPanel course={course} locked={locked} onPatch={(patch)=>setCourse(c=>({...c,...patch}))} onSaved={(msg)=>showToast(msg, msg.toLowerCase().includes('erreur') ? 'error' : 'success')} />
                 <div className="flex items-center justify-between bg-white rounded-xl border p-4" style={{borderColor:'#E4E7EC'}}>
                   <button onClick={()=>{setShowFinalization(false);setCurrentModule(null);setCurrentLesson(null);}} className="flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium" style={{borderColor:'#E4E7EC',color:'#374151'}}><ChevronLeft size={15}/>Retour aux informations</button>
-                  <button onClick={submit} disabled={submitting||locked} className="flex items-center gap-2 rounded-lg px-5 py-2 text-sm font-semibold text-white disabled:opacity-50" style={{background:'#BF8813'}}><Send size={15}/>{course.creator_context === 'super_admin' ? 'Publier la formation' : 'Soumettre la formation'}</button>
+                  <button onClick={submit} disabled={submitting||workflowLocked} className="flex items-center gap-2 rounded-lg px-5 py-2 text-sm font-semibold text-white disabled:opacity-50" style={{background:'#BF8813'}}><Send size={15}/>{course.creator_context === 'super_admin' ? 'Publier la formation' : 'Soumettre la formation'}</button>
                 </div>
               </div>
             )}

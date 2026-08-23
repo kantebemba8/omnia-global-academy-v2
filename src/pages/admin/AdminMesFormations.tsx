@@ -55,6 +55,9 @@ export default function AdminMesFormations() {
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; title: string } | null>(null);
   const [previewTarget, setPreviewTarget] = useState<Formation | null>(null);
   const [createMenuOpen, setCreateMenuOpen] = useState(false);
+  const [statsTarget, setStatsTarget] = useState<Formation | null>(null);
+  const [courseStats, setCourseStats] = useState<any>(null);
+  const [statsLoading, setStatsLoading] = useState(false);
 
   const token = () => getSessionToken() || '';
 
@@ -102,6 +105,18 @@ export default function AdminMesFormations() {
     } finally {
       setDeletingId(null);
     }
+  }
+
+
+  async function openStats(course: Formation) {
+    setStatsTarget(course); setCourseStats(null); setStatsLoading(true);
+    try {
+      const res = await fetch(API, { method: 'POST', headers: edgeAuthHeaders(), body: JSON.stringify({ action: 'course_stats', course_id: course.id }) });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) throw new Error(data.message || data.error || 'Statistiques indisponibles');
+      setCourseStats(data);
+    } catch (error) { showToast(error instanceof Error ? error.message : 'Statistiques indisponibles'); }
+    finally { setStatsLoading(false); }
   }
 
   // Stats par statut
@@ -322,7 +337,7 @@ export default function AdminMesFormations() {
                         </span>
                         {f.word_count && f.word_count > 0 && (
                           <span className="text-xs" style={{ color: '#9CA3AF' }}>
-                            {f.word_count} mots · {f.estimated_read_min || Math.ceil(f.word_count / 200)} min
+                            {f.word_count} mots · {f.estimated_read_min || Math.max(1, Math.ceil(f.word_count / 250))} min
                           </span>
                         )}
                         <span className="text-xs" style={{ color: '#9CA3AF' }}>
@@ -360,7 +375,7 @@ export default function AdminMesFormations() {
 
                       {/* Statistiques si publiée */}
                       {f.studio_status === 'published' && (
-                        <button
+                        <button onClick={() => void openStats(f)}
                           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border"
                           style={{ borderColor: '#E4E7EC', color: '#6B7280' }}>
                           <BarChart2 size={12} /> Stats
@@ -414,6 +429,18 @@ export default function AdminMesFormations() {
             {filtered.length} formation{filtered.length > 1 ? 's' : ''} affichée{filtered.length > 1 ? 's' : ''} sur {formations.length} au total
           </p>
         )}
+
+{statsTarget && (
+  <div className="fixed inset-0 z-[110] bg-black/35 flex items-center justify-center p-4">
+    <div className="w-full max-w-4xl max-h-[85vh] overflow-auto bg-white rounded-2xl border border-gray-200 shadow-2xl p-5">
+      <div className="flex items-start justify-between gap-4"><div><h3 className="text-lg font-black" style={{color:'#002050'}}>Statistiques — {statsTarget.title}</h3><p className="mt-1 text-xs text-gray-500">Inscriptions et progression réelle des apprenants.</p></div><button type="button" onClick={()=>{setStatsTarget(null);setCourseStats(null)}} className="rounded-lg border px-3 py-1.5 text-sm">Fermer</button></div>
+      {statsLoading ? <div className="py-12 text-center text-sm text-gray-500">Chargement des statistiques…</div> : courseStats ? <>
+        <div className="mt-5 grid gap-3 sm:grid-cols-4">{[["Inscrits",courseStats.summary?.enrolled||0],["Actifs",courseStats.summary?.active||0],["Terminés",courseStats.summary?.completed||0],["Progression moyenne",`${courseStats.summary?.average_progress||0}%`]].map(([label,value])=><div key={String(label)} className="rounded-xl border p-3"><p className="text-xs text-gray-500">{label}</p><p className="mt-1 text-xl font-black text-[#002050]">{value}</p></div>)}</div>
+        <div className="mt-5 overflow-x-auto rounded-xl border"><table className="min-w-full text-sm"><thead className="bg-slate-50 text-left text-xs text-slate-500"><tr><th className="px-3 py-2">Apprenant</th><th className="px-3 py-2">Progression</th><th className="px-3 py-2">Leçons terminées</th><th className="px-3 py-2">Inscription</th><th className="px-3 py-2">Dernière activité</th></tr></thead><tbody>{(courseStats.learners||[]).map((row:any)=><tr key={row.user_id} className="border-t"><td className="px-3 py-2"><p className="font-semibold text-[#002050]">{row.full_name||'Apprenant'}</p><p className="text-xs text-gray-500">{row.email||''}</p></td><td className="px-3 py-2 font-semibold">{row.progress_percent}%</td><td className="px-3 py-2">{row.completed_lessons}/{row.total_lessons}</td><td className="px-3 py-2 text-xs">{row.enrolled_at?new Date(row.enrolled_at).toLocaleDateString('fr-FR'):'—'}</td><td className="px-3 py-2 text-xs">{row.last_activity_at?new Date(row.last_activity_at).toLocaleString('fr-FR'):'—'}</td></tr>)}{!(courseStats.learners||[]).length&&<tr><td colSpan={5} className="px-3 py-8 text-center text-gray-500">Aucun apprenant inscrit.</td></tr>}</tbody></table></div>
+      </> : null}
+    </div>
+  </div>
+)}
 
 {deleteTarget && (
           <div className="fixed inset-0 z-[100] bg-black/30 flex items-center justify-center p-4">

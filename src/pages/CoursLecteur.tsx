@@ -823,7 +823,7 @@ export function CoursLecteur() {
     initialSpent: lessonData?.progress?.time_spent_seconds ?? 0,
     sessionToken,
     onTimeReached: () => {
-      if (isPreview || !isOnline || !currentLessonId || !courseId || !sessionToken) return;
+      if (isPreview || !isOnline || !currentLessonId || !courseId || !sessionToken) return undefined;
       fetch(`${ENDPOINTS.lessonContent}?lesson_id=${currentLessonId}&course_id=${courseId}${previewQuery}`, { headers: { Authorization: `Bearer ${sessionToken}` } })
         .then(r => r.json()).then(async d => { if (!d.error) { setLessonData(d); await loadProgress(); } });
     },
@@ -1006,9 +1006,11 @@ export function CoursLecteur() {
       const refreshedData = await refreshed.json();
       if (refreshed.ok && !refreshedData.error) setLessonData(refreshedData);
       await loadProgress();
+      return { score: data.score, passed: data.passed, feedback: data.feedback, graded: data.graded, grading_mode: data.grading_mode };
     } catch (error) {
       console.error('training_submit', error);
       setResilientMessage(error instanceof Error ? error.message : 'Résultat d’entraînement non synchronisé.');
+      return undefined;
     }
   }, [isOnline, currentLessonId, courseId, sessionToken, loadProgress, isPreview, previewQuery]);
 
@@ -1236,7 +1238,7 @@ export function CoursLecteur() {
             <div className="w-full px-4 py-6">
               <div className="mx-auto max-w-5xl">
                 {progressError && isPreview && <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800">Le service de progression de preview a signalé : {progressError}. Le curriculum de contrôle a été chargé depuis Info formation.</div>}
-                <div className="mb-6 rounded-3xl border p-6 sm:p-8" style={{borderColor:'#E4E7EC',background:lesson.stage_type === 'module_summary' ? '#F0FDF4' : 'linear-gradient(135deg,#F8FAFC,#FFF7E1)'}}>
+                <div className="mb-4 rounded-3xl border p-5 sm:p-6" style={{borderColor:'#E4E7EC',background:lesson.stage_type === 'module_summary' ? '#F0FDF4' : 'linear-gradient(135deg,#F8FAFC,#FFF7E1)'}}>
                   <h1 className="text-2xl font-black sm:text-3xl" style={{color:'#002050'}}>{lesson.title}</h1>
                   {lesson.stage_type === 'module_presentation' && currentMod && (
                     <div className="mt-5 flex flex-wrap gap-2 text-xs font-semibold text-slate-600">
@@ -1330,7 +1332,7 @@ export function CoursLecteur() {
                 </div>
               )}
              {lesson.content_type === 'text' && !lesson.has_blocks && lesson.text_content && (
-                <div className="mx-auto max-w-5xl rounded-2xl p-6 mb-5" style={{ border: '1px solid #E4E7EC' }}>
+                <div className="mx-auto max-w-5xl rounded-2xl p-4 mb-4" style={{ border: '1px solid #E4E7EC' }}>
                   <SimpleMarkdown text={lesson.text_content} />
                 </div>
               )}
@@ -1356,7 +1358,7 @@ export function CoursLecteur() {
 
               {/* Auto exercises for language courses */}
               {(lesson.exercices_auto?.length ?? 0) > 0 && lesson.course_category?.toLowerCase().includes('langue') && (
-                <div className="mb-5 space-y-4">
+                <div className="mb-4 space-y-3">
                   <h3 className="font-semibold text-sm" style={{ color: '#002050' }}>Exercices interactifs</h3>
                   {lesson.exercices_auto!.map((ex, i) => (
                     <div key={i} className="rounded-xl border p-4" style={{ borderColor: '#E4E7EC', backgroundColor: '#FAFAFA' }}>
@@ -1388,7 +1390,7 @@ export function CoursLecteur() {
                 </div>
               )}
 
-              {isOnline && courseId && currentLessonId && !(lesson.is_external || lesson.content_type === 'external') && (
+              {isOnline && courseId && currentLessonId && lessonData?.assessment?.exists === true && !(lesson.is_external || lesson.content_type === 'external') && (
                 <AssessmentEngine
                   courseId={courseId}
                   lessonId={currentLessonId}
@@ -1402,7 +1404,7 @@ export function CoursLecteur() {
                   }}
                 />
               )}
-              {!isOnline && !(lesson.is_external || lesson.content_type === 'external') && (
+              {!isOnline && lessonData?.assessment?.exists === true && !(lesson.is_external || lesson.content_type === 'external') && (
                 <div className="mb-5 rounded-xl border px-4 py-3 text-sm" style={{ borderColor: '#BF8813', backgroundColor: '#FFFBEB', color: '#002050' }}>
                   Les évaluations et examens nécessitent une connexion afin de protéger les tentatives et les résultats.
                 </div>
@@ -1410,7 +1412,7 @@ export function CoursLecteur() {
 
               {/* CPD row — hidden for external lessons */}
               {!lesson.is_external && lesson.content_type !== 'external' && (
-              <div className="flex items-center justify-between mb-5 px-4 py-3 rounded-xl" style={{ backgroundColor: '#F8F9FA', border: '1px solid #E4E7EC' }}>
+              <div className="flex items-center justify-between mb-4 px-4 py-2.5 rounded-xl" style={{ backgroundColor: '#F8F9FA', border: '1px solid #E4E7EC' }}>
                 <CpdBar required={lessonData?.required_seconds ?? 0} spent={timeSpent}
                   reached={effectiveCpd} isActive={isActive} assessmentPassed={quizPassed}
                   isCompleted={isCompleted} />
@@ -1424,7 +1426,7 @@ export function CoursLecteur() {
 
               {/* Summary after quiz */}
               {showSummary && lesson.lesson_summary && (
-                <div className="mx-auto max-w-5xl rounded-2xl p-5 mb-5" style={{ backgroundColor: '#F8F9FA', borderLeft: '4px solid #BF8813' }}>
+                <div className="mx-auto max-w-5xl rounded-2xl p-4 mb-4" style={{ backgroundColor: '#F8F9FA', borderLeft: '4px solid #BF8813' }}>
                   <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: '#BF8813' }}>Résumé de la leçon</p>
                   <p className="text-sm leading-relaxed mb-4" style={{ color: '#374151' }}>{lesson.lesson_summary}</p>
                   {lessonData?.next_lesson_id && (isOnline || offlineLessonSet.has(lessonData.next_lesson_id)) && (
