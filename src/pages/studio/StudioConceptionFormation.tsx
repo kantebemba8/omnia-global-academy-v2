@@ -1641,7 +1641,7 @@ export default function StudioConceptionFormation() {
           <div className="hidden md:flex bg-white border-t px-4 py-2 items-center justify-between flex-shrink-0 text-xs" style={{ borderColor: '#E4E7EC', color: '#9CA3AF' }}>
             <div className="flex items-center gap-4">
               <span>Mots : {wordCount}</span>
-              {wordCount > 0 && <span>Lecture : ~{Math.ceil(wordCount / 200)} min</span>}
+              {wordCount > 0 && <span>Lecture : ~{Math.ceil(wordCount / 250)} min</span>}
             </div>
             <div className="flex items-center gap-3">
               <button onClick={() => setShowAI(v => !v)} className="flex items-center gap-1.5 px-3 py-1 rounded-lg border text-xs font-medium transition-all"

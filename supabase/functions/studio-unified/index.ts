@@ -195,41 +195,51 @@ function detectImportLanguage(text:string){const t=String(text||'').slice(0,1200
 
 function stripMarkup(value:unknown){return String(value||"").replace(/<script[\s\S]*?<\/script>/gi," ").replace(/<style[\s\S]*?<\/style>/gi," ").replace(/<[^>]+>/g," ").replace(/\s+/g," ").trim()}
 function wordCount(value:unknown){const text=stripMarkup(value);return text?text.split(/\s+/).filter(Boolean).length:0}
+const COURSE_TEXT_WPM=250;
+const COURSE_DURATION_ENGINE_VERSION="v2_active_time_250wpm";
+function clampDuration(value:number,min:number,max:number){return Math.min(max,Math.max(min,value))}
+function durationSecondsFromContent(c:any){return Math.max(0,Number(c?.duration_seconds||c?.media_duration_seconds||c?.audio_duration_seconds||c?.video_duration_seconds||0))}
 function blockActiveMinutes(block:any){
  const c=block?.content_json||{};const type=String(block?.block_type||"");
  const explicit=Math.max(0,Number(c.duration_min||c.duration_minutes||0));
- const explicitSeconds=Math.max(0,Number(c.duration_seconds||c.media_duration_seconds||0));
+ const explicitSeconds=durationSecondsFromContent(c);
  if(["video","audio","scorm"].includes(type)){
   if(explicit>0)return explicit;
   if(explicitSeconds>0)return explicitSeconds/60;
+  return type==="scorm"?0:0.5;
  }
- if(type==="image")return Math.max(0.5,wordCount(`${c.caption||""} ${c.description||""}`)/200);
- if(type==="gallery")return Math.max(0.75,(Array.isArray(c.images)?c.images.length:0)*0.35+wordCount(c.description||"")/200);
- if(type==="excel"||type==="table")return Math.max(1,(Array.isArray(c.rows)?c.rows.length:0)*0.2);
- if(type==="pdf"||type==="word")return Math.max(1,wordCount(`${c.extracted_text||""} ${c.text||""} ${c.description||""}`)/200);
- if(type==="download")return Math.max(0.25,wordCount(c.description||"")/200);
- if(type==="vocabulary")return Math.max(1,(Array.isArray(c.items)?c.items.length:0)*0.5);
- if(type==="dialogue")return Math.max(1,(Array.isArray(c.lines)?c.lines.length:0)*0.35);
- if(type==="cloze")return Math.max(2,wordCount(c.text||"")/120);
- if(type==="dictation")return Math.max(2,wordCount(c.transcript||c.text||"")/110);
- if(type==="pronunciation")return Math.max(2,(Array.isArray(c.items)?c.items.length:1)*0.75);
- if(type==="matching")return Math.max(2,(Array.isArray(c.pairs)?c.pairs.length:0)*0.45);
- if(type==="sentence_order")return Math.max(1.5,(Array.isArray(c.tokens)?c.tokens.length:0)*0.2);
- if(type==="oral_response")return Math.max(3,wordCount(c.prompt||"")/100+2);
- if(type==="listening_comprehension")return Math.max(3,(Array.isArray(c.questions)?c.questions.length:0)*1.5);
- if(type==="written_expression")return Math.max(5,Number(c.target_words||120)/25);
- if(type==="qcm"||type==="true_false")return 1.5;
- if(type==="open_question")return Math.max(3,Number(c.estimated_minutes||5));
- if(type==="exercise")return Math.max(5,Number(c.estimated_minutes||10));
- if(type==="assignment_upload")return Math.max(10,Number(c.estimated_minutes||15));
- if(type==="case_study")return Math.max(8,Number(c.estimated_minutes||10));
- if(type==="flashcards")return Math.max(1,(Array.isArray(c.cards)?c.cards.length:0)*0.5);
- if(type==="accordion")return Math.max(0.5,wordCount((c.items||[]).map((x:any)=>`${x?.title||""} ${x?.content||""}`).join(" "))/200);
- if(type==="interactive_table")return Math.max(0.5,(Array.isArray(c.rows)?c.rows.length:0)*0.35);
- if(type==="timeline")return Math.max(0.5,(Array.isArray(c.steps)?c.steps.length:0)*0.5);
+ if(["separator","rubric","correction"].includes(type))return 0;
+ if(type==="image")return clampDuration(0.2+wordCount(`${c.caption||""} ${c.description||""}`)/COURSE_TEXT_WPM,0.2,1.5);
+ if(type==="gallery")return clampDuration(0.25+(Array.isArray(c.images)?c.images.length:0)*0.12+wordCount(c.description||"")/COURSE_TEXT_WPM,0.25,3);
+ if(type==="excel"||type==="table")return clampDuration(0.35+(Array.isArray(c.rows)?c.rows.length:0)*0.1,0.35,4);
+ if(type==="pdf"||type==="word")return clampDuration(0.4+wordCount(`${c.extracted_text||""} ${c.text||""} ${c.description||""}`)/COURSE_TEXT_WPM,0.4,10);
+ if(type==="download")return clampDuration(0.1+wordCount(c.description||"")/COURSE_TEXT_WPM,0.1,0.75);
+ if(type==="vocabulary")return clampDuration((Array.isArray(c.items)?c.items.length:0)*0.25,0.5,5);
+ if(type==="dialogue")return clampDuration((Array.isArray(c.lines)?c.lines.length:0)*0.2,0.5,5);
+ if(type==="cloze")return clampDuration(wordCount(c.text||"")/COURSE_TEXT_WPM+(Array.isArray(c.answers)?c.answers.length:1)*0.25,1,6);
+ if(type==="dictation")return clampDuration((explicitSeconds>0?explicitSeconds/60:wordCount(c.transcript||c.text||"")/90)+0.5,1.5,8);
+ if(type==="pronunciation")return clampDuration((Array.isArray(c.items)?c.items.length:1)*0.5,1,6);
+ if(type==="matching")return clampDuration((Array.isArray(c.pairs)?c.pairs.length:0)*0.25,1,5);
+ if(type==="sentence_order")return clampDuration((Array.isArray(c.tokens)?c.tokens.length:0)*0.12,0.75,4);
+ if(type==="oral_response")return clampDuration(wordCount(c.prompt||"")/COURSE_TEXT_WPM+Math.max(1,Number(c.response_minutes||c.target_minutes||2)),2,8);
+ if(type==="listening_comprehension")return clampDuration((explicitSeconds>0?explicitSeconds/60:0.75)+(Array.isArray(c.questions)?c.questions.length:0)*0.75,2,10);
+ if(type==="written_expression")return clampDuration(wordCount(c.prompt||c.instructions||"")/COURSE_TEXT_WPM+Math.max(1,Number(c.target_words||120)/35),3,15);
+ if(type==="qcm"||type==="true_false")return 0.75;
+ if(type==="open_question")return clampDuration(wordCount(c.question||c.prompt||c.instructions||"")/COURSE_TEXT_WPM+Math.max(1.5,Number(c.target_words||60)/35),2,6);
+ if(type==="exercise")return clampDuration(3+wordCount(`${c.instructions||""} ${c.task||""} ${c.description||""}`)/COURSE_TEXT_WPM,3,8);
+ if(type==="assignment_upload")return clampDuration(6+wordCount(`${c.instructions||""} ${c.task||""}`)/COURSE_TEXT_WPM,6,15);
+ if(type==="case_study"){
+  const readingWords=wordCount(`${c.context||""} ${c.data||""} ${c.description||""} ${c.task||""}`);
+  const prompts=Array.isArray(c.questions)?c.questions.length:(Array.isArray(c.prompts)?c.prompts.length:1);
+  return clampDuration(readingWords/COURSE_TEXT_WPM+Math.max(1,prompts)*1.5,4,12);
+ }
+ if(type==="flashcards")return clampDuration((Array.isArray(c.cards)?c.cards.length:0)*0.2,0.5,5);
+ if(type==="accordion")return wordCount((c.items||[]).map((x:any)=>`${x?.title||""} ${x?.content||""}`).join(" "))/COURSE_TEXT_WPM;
+ if(type==="interactive_table")return clampDuration((Array.isArray(c.rows)?c.rows.length:0)*0.15,0.4,4);
+ if(type==="timeline")return clampDuration((Array.isArray(c.steps)?c.steps.length:0)*0.2,0.4,4);
  const textual=[c.html,c.text,c.content,c.definition,c.example,c.summary,c.instructions,c.task,c.description,c.transcription,c.code,c.latex,(c.points||[]).join?.(" "),(c.items||[]).map?.((x:any)=>typeof x==="string"?x:x?.text||"").join(" ")].filter(Boolean).join(" ");
  const words=wordCount(textual);
- return words>0?Math.max(0.5,words/200):0;
+ return words>0?words/COURSE_TEXT_WPM:0;
 }
 function stableQuestionOrder(rows:any[],assessmentId:string,userId:string,attemptNumber:number){
  function hash(value:string){let h=2166136261>>>0;for(let i=0;i<value.length;i++){h^=value.charCodeAt(i);h=Math.imul(h,16777619)>>>0;}return h>>>0}
@@ -242,50 +252,54 @@ function selectAssessmentQuestions(rows:any[],assessment:any,userId:string,attem
 }
 
 async function recalculateCourseDuration(sb:any,courseId:string){
- const [{data:blocks},{data:assessments},{data:lessons}]=await Promise.all([
-  sb.from("lesson_blocks").select("lesson_id,block_type,content_json").eq("course_id",courseId),
-  sb.from("course_assessments").select("scope,module_id,lesson_id,estimated_minutes,required,is_active").eq("course_id",courseId),
+ const [{data:blocks,error:blocksError},{data:assessments,error:assessmentsError},{data:lessons,error:lessonsError}]=await Promise.all([
+  sb.from("lesson_blocks").select("id,lesson_id,block_type,content_json").eq("course_id",courseId),
+  sb.from("course_assessments").select("id,scope,module_id,lesson_id,estimated_minutes,required,is_active,assessment_questions(source_lesson_block_id)").eq("course_id",courseId),
   sb.from("course_lessons").select("id,module_id,stage_type,is_intro,is_module_intro,is_conclusion,is_final_exam,content_text").eq("course_id",courseId)
  ]);
+ if(blocksError)throw blocksError;if(assessmentsError)throw assessmentsError;if(lessonsError)throw lessonsError;
  const lessonMinutes=new Map<string,number>();
  for(const lesson of lessons||[])lessonMinutes.set(String(lesson.id),0);
  for(const block of blocks||[]){
-  const lessonId=String(block.lesson_id||"");
-  if(!lessonId)continue;
+  const lessonId=String(block.lesson_id||"");if(!lessonId)continue;
   lessonMinutes.set(lessonId,(lessonMinutes.get(lessonId)||0)+blockActiveMinutes(block));
  }
- // Compatibilité avec les anciennes leçons textuelles sans blocs : le texte reste
- // une source réelle de durée à 200 mots/minute. On ne le double-compte pas lorsqu'il existe des blocs.
  for(const lesson of lessons||[]){
-  const lessonId=String(lesson.id||"");
-  if(!lessonId||Number(lessonMinutes.get(lessonId)||0)>0)continue;
-  const words=wordCount(lesson.content_text||"");
-  if(words>0)lessonMinutes.set(lessonId,Math.max(0.5,words/200));
+  const lessonId=String(lesson.id||"");if(!lessonId||Number(lessonMinutes.get(lessonId)||0)>0)continue;
+  const words=wordCount(lesson.content_text||"");if(words>0)lessonMinutes.set(lessonId,words/COURSE_TEXT_WPM);
  }
+ for(const [lessonId,minutes] of lessonMinutes.entries())if(minutes>0)lessonMinutes.set(lessonId,Math.max(0.5,minutes));
  const activeAssessments=(assessments||[]).filter((a:any)=>a.is_active!==false&&a.required!==false);
+ let fallbackAssessmentMinutes=0;
  for(const assessment of activeAssessments){
-  const assessmentMinutes=Math.max(0,Number(assessment.estimated_minutes||0));
-  let targetLessonId=String(assessment.lesson_id||"");
-  if(!targetLessonId&&assessment.scope==="module"&&assessment.module_id){
-   const target=(lessons||[]).find((lesson:any)=>String(lesson.module_id)===String(assessment.module_id)&&String(lesson.stage_type||"")==="module_summary");
-   targetLessonId=String(target?.id||"");
-  }
-  if(!targetLessonId&&assessment.scope==="final"){
-   const target=(lessons||[]).find((lesson:any)=>String(lesson.stage_type||"")==="final_exam"||lesson.is_final_exam===true);
-   targetLessonId=String(target?.id||"");
-  }
-  if(targetLessonId)lessonMinutes.set(targetLessonId,(lessonMinutes.get(targetLessonId)||0)+assessmentMinutes);
+  const sourceQuestions=Array.isArray(assessment.assessment_questions)?assessment.assessment_questions:[];
+  const hasBuilderSource=sourceQuestions.some((q:any)=>String(q?.source_lesson_block_id||"").trim().length>0);
+  if(!hasBuilderSource)fallbackAssessmentMinutes+=Math.max(0,Number(assessment.estimated_minutes||0));
  }
  await Promise.all((lessons||[]).map((lesson:any)=>{
   const minutes=Math.max(0,lessonMinutes.get(String(lesson.id))||0);
   const seconds=minutes>0?Math.max(30,Math.round(minutes*60)):0;
   return sb.from("course_lessons").update({cpd_calculated_time_seconds:seconds,updated_at:new Date().toISOString()}).eq("id",lesson.id);
  }));
- const blockMinutes=(blocks||[]).reduce((sum:number,block:any)=>sum+blockActiveMinutes(block),0);
- const assessmentMinutes=activeAssessments.reduce((sum:number,a:any)=>sum+Math.max(0,Number(a.estimated_minutes||0)),0);
- const minutes=Math.max(1,Math.ceil(blockMinutes+assessmentMinutes));
- await sb.from("courses").update({calculated_duration_minutes:minutes,total_duration_seconds:minutes*60,updated_at:new Date().toISOString()}).eq("id",courseId);
+ const contentMinutes=[...lessonMinutes.values()].reduce((sum:number,value:number)=>sum+Math.max(0,value),0);
+ const minutes=Math.max(1,Math.round(contentMinutes+fallbackAssessmentMinutes));
+ const {error:updateError}=await sb.from("courses").update({calculated_duration_minutes:minutes,total_duration_seconds:minutes*60,updated_at:new Date().toISOString()}).eq("id",courseId);
+ if(updateError)throw updateError;
  return minutes;
+}
+async function ensurePublishedDurationEngineMigration(sb:any,userId:string){
+ const setting=await sb.from("site_settings").select("value").eq("key","course_duration_engine_version").maybeSingle();
+ if(setting.error)throw setting.error;
+ const current=String(setting.data?.value?.version||setting.data?.value||"").replace(/^"|"$/g,"");
+ if(current===COURSE_DURATION_ENGINE_VERSION)return {recalculated:0};
+ const result=await sb.from("courses").select("id").or("is_published.eq.true,studio_status.eq.published");
+ if(result.error)throw result.error;
+ let recalculated=0;
+ for(const row of result.data||[]){await recalculateCourseDuration(sb,String(row.id));recalculated++;}
+ const marker={version:COURSE_DURATION_ENGINE_VERSION,recalculated_at:new Date().toISOString(),recalculated_courses:recalculated};
+ const upsert=await sb.from("site_settings").upsert({key:"course_duration_engine_version",value:marker,updated_at:new Date().toISOString(),updated_by_admin_id:userId},{onConflict:"key"});
+ if(upsert.error)throw upsert.error;
+ return {recalculated};
 }
 function normalizeScormPath(value:unknown){
  const path=String(value||"").replace(/\\/g,"/").replace(/^\/+/,"");
@@ -382,7 +396,7 @@ async function settingJson(sb:any,key:string,fallback:any){const {data}=await sb
 function roundPrice(value:number,step:number){const safe=Math.max(1,Math.round(step||1));return Math.round(Math.max(0,value)/safe)*safe}
 async function calculateCoursePricing(sb:any,courseId:string){
  const {data:course,error:courseError}=await sb.from("courses").select("id,creator_context,total_duration_seconds,calculated_duration_minutes,cpd_hours,desired_price_amount,sale_mode,certification_requested,requested_cpd,cpd_accredited,course_type,category").eq("id",courseId).single();if(courseError)throw courseError;
- const durationMinutes=Math.max(0,Math.round(Math.max(Number(course?.total_duration_seconds||0)/60,Number(course?.calculated_duration_minutes||0),Number(course?.cpd_hours||0)*60)));
+ const durationMinutes=Math.max(0,Math.round(Number(course?.total_duration_seconds||0)/60)||Math.round(Number(course?.calculated_duration_minutes||0)));
  const [{data:bands},{data:factors},{data:settings}]=await Promise.all([sb.from("professor_pricing_duration_bands").select("*").eq("is_active",true).order("min_minutes"),sb.from("professor_pricing_factors").select("*").eq("is_active",true).order("display_order"),sb.from("professor_pricing_settings").select("*").eq("singleton_key","default").maybeSingle()]);
  const band=(bands||[]).find((x:any)=>durationMinutes>=Number(x.min_minutes||0)&&(x.max_minutes==null||durationMinutes<Number(x.max_minutes)))||(bands||[]).slice(-1)[0]||null;
  if(!band)return {engine:"v3",configured:false,duration_minutes:durationMinutes,duration_band:null,applied_factors:[],price_xof:null,range_min_xof:null,range_max_xof:null,desired_price_xof:Number(course?.desired_price_amount||0)||null,rounding_step_xof:Number(settings?.rounding_step_xof||1),calculated_at:new Date().toISOString()};
@@ -1134,6 +1148,7 @@ Deno.serve(async(req)=>{
    await log(sb,courseId,userId,"special_sections_ensured"); return json({success:true,created:result});
   }
   if(action==="get_course"){
+   if(isAdmin)await ensurePublishedDurationEngineMigration(sb,userId);
    await recalculateCourseDuration(sb,courseId);
    const {data:course}=await sb.from("courses").select("*").eq("id",courseId).maybeSingle(); if(!course)return json({success:false,error:"NOT_FOUND"},404);
    const {data:mods}=await sb.from("course_modules").select("*").eq("course_id",courseId).order("position");

@@ -19,7 +19,7 @@ Deno.serve(async(req)=>{
       const {data:course,error}=await sb.from("courses").select("id,total_duration_seconds,calculated_duration_minutes,cpd_hours,desired_price_amount,creator_context").eq("id",courseId).maybeSingle();
       if(error)throw error;if(!course)return json({error:"COURSE_NOT_FOUND"},404);
       if(String(course.creator_context||"")!=="professeur"&&String(course.creator_context||"")!=="professor")return json({error:"AUTOMATIC_PRICING_PROFESSOR_ONLY"},409);
-      durationMinutes=Math.max(durationMinutes,Math.round(Number(course.total_duration_seconds||0)/60),Math.round(Number(course.calculated_duration_minutes||0)),Math.round(Number(course.cpd_hours||0)*60));
+      durationMinutes=Math.max(0,Math.round(Number(course.total_duration_seconds||0)/60)||Math.round(Number(course.calculated_duration_minutes||0))||durationMinutes);
       if(desiredPrice==null&&course.desired_price_amount!=null)desiredPrice=Number(course.desired_price_amount);
     }
     const [{data:bands,error:bandsError},{data:factors,error:factorsError},{data:settings,error:settingsError}]=await Promise.all([
