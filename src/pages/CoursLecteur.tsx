@@ -839,7 +839,23 @@ export function CoursLecteur() {
     return () => window.clearInterval(timer);
   }, [isOnline, isActive, appActive, user?.id, courseId, currentLessonId]);
 
-  const goToLesson = (id: string) => { setReaderStarted(true); setCurrentLessonId(id); navigate(`/cours/${courseId}/apprendre/${id}${previewRouteQuery}`, { replace: true }); };
+  const goToLesson = (id: string) => {
+    if (!isPreview) {
+      const targetModule = modules.find(module => module.lessons.some(lesson => lesson.lesson_id === id));
+      const targetLesson = targetModule?.lessons.find(lesson => lesson.lesson_id === id);
+      if (targetModule && targetModule.is_unlocked === false) {
+        setResilientMessage('Ce module est encore verrouillé par votre progression.');
+        return;
+      }
+      if (targetLesson && targetLesson.is_unlocked === false) {
+        setResilientMessage('Cette étape est encore verrouillée. Terminez d’abord l’étape obligatoire précédente.');
+        return;
+      }
+    }
+    setReaderStarted(true);
+    setCurrentLessonId(id);
+    navigate(`/cours/${courseId}/apprendre/${id}${previewRouteQuery}`, { replace: true });
+  };
 
   const handleNext = () => {
     const moduleNow = modules.find(m => m.lessons.some(l => l.lesson_id === currentLessonId));

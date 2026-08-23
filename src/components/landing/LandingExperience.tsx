@@ -62,6 +62,15 @@ export type LandingExperienceData = {
   socialNetworks: SocialNetworkItem[];
 };
 
+function formatLearningDuration(seconds?: number | null) {
+  const totalSeconds = Math.max(0, Number(seconds || 0));
+  if (!totalSeconds) return '';
+  const totalMinutes = Math.max(1, Math.round(totalSeconds / 60));
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return hours > 0 ? `${hours} h${minutes ? ` ${minutes} min` : ''}` : `${minutes} min`;
+}
+
 type LandingExperienceProps = {
   data: LandingExperienceData;
   searchQuery: string;
@@ -372,7 +381,7 @@ function CourseList({ section, courses }: { section: LandingSectionConfig; cours
                   {(() => { const platform = !external && (course.public_creator_type === 'plateforme' || course.creator_context === 'super_admin' || course.creator_type === 'plateforme'); const publicName = external ? course.provider_name : platform ? 'Omnia Global Academy' : course.creator_name; const publicImage = !external ? (platform ? '/omnia-sidebar-logo.png' : course.creator_logo_url) : null; return publicName ? <div className="mt-2 flex items-center gap-2 text-xs font-semibold text-slate-500">{publicImage && <img src={publicImage} alt={publicName} className="h-5 w-5 rounded object-contain" />}<span>{external ? 'Source' : 'Par'} {publicName}</span></div> : null; })()}
                   <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs font-semibold text-slate-500">
                     <span>{price}</span>
-                    {course.duration_label && <span>{course.duration_label}</span>}
+                    {(course.duration_label || formatLearningDuration(course.total_duration_seconds)) && <span>{course.duration_label || `Durée estimée · ${formatLearningDuration(course.total_duration_seconds)}`}</span>}
                     {course.certificate_available && <span>Certificat</span>}
                     {course.total_reviews > 0 && <span>{course.average_rating.toFixed(1)} / 5 · {course.total_reviews} avis</span>}
                   </div>

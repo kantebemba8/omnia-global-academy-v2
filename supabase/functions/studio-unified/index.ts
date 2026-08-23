@@ -196,7 +196,7 @@ function detectImportLanguage(text:string){const t=String(text||'').slice(0,1200
 function stripMarkup(value:unknown){return String(value||"").replace(/<script[\s\S]*?<\/script>/gi," ").replace(/<style[\s\S]*?<\/style>/gi," ").replace(/<[^>]+>/g," ").replace(/\s+/g," ").trim()}
 function wordCount(value:unknown){const text=stripMarkup(value);return text?text.split(/\s+/).filter(Boolean).length:0}
 const COURSE_TEXT_WPM=250;
-const COURSE_DURATION_ENGINE_VERSION="v2_1_active_time_250wpm_published_sync";
+const COURSE_DURATION_ENGINE_VERSION="v2_2_active_time_250wpm_published_autosync";
 function clampDuration(value:number,min:number,max:number){return Math.min(max,Math.max(min,value))}
 function durationSecondsFromContent(c:any){return Math.max(0,Number(c?.duration_seconds||c?.media_duration_seconds||c?.audio_duration_seconds||c?.video_duration_seconds||0))}
 function blockActiveMinutes(block:any){
@@ -878,8 +878,9 @@ Deno.serve(async(req)=>{
    return json({success:true,grant:data});
   }
   if(action==="get_my_courses"){
+   if(isAdmin)await ensurePublishedDurationEngineMigration(sb,userId);
    const context=String(b.creator_context||"").trim();
-   let q=sb.from("courses").select("id,title,studio_status,category,level,cover_image_url,creator_id,creator_context,structure_id,created_at,updated_at,word_count,estimated_read_min,last_autosave_at,admin_comment,template_used,submitted_at,is_published,is_catalog_active,is_current_catalog_version,version_family_id,version_number,course_code,price_xof,pricing_status,pricing_recommended_xof,pricing_range_min_xof,pricing_range_max_xof").order("updated_at",{ascending:false});
+   let q=sb.from("courses").select("id,title,studio_status,category,level,cover_image_url,creator_id,creator_context,structure_id,created_at,updated_at,word_count,estimated_read_min,calculated_duration_minutes,total_duration_seconds,last_autosave_at,admin_comment,template_used,submitted_at,is_published,is_catalog_active,is_current_catalog_version,version_family_id,version_number,course_code,price_xof,pricing_status,pricing_recommended_xof,pricing_range_min_xof,pricing_range_max_xof").order("updated_at",{ascending:false});
    if(!isAdmin) q=q.eq("creator_id",userId);
    if(context) q=q.eq("creator_context",context);
    const {data,error}=await q;if(error)throw error;const courses=data||[];const courseIds=courses.map((row:any)=>String(row.id));
