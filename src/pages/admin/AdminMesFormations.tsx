@@ -23,6 +23,8 @@ interface Formation {
   updated_at: string;
   word_count?: number;
   estimated_read_min?: number;
+  calculated_duration_minutes?: number;
+  total_duration_seconds?: number;
   last_autosave_at?: string;
   admin_comment?: string;
   template_used?: string;
@@ -43,6 +45,16 @@ const STUDIO_STATUS: Record<string, { label: string; color: string; bg: string; 
 const LEVEL_LABELS: Record<string, string> = {
   debutant: 'Débutant', intermediaire: 'Intermédiaire', avance: 'Avancé', expert: 'Expert',
 };
+
+function formatLearningDuration(formation: Formation) {
+  const seconds = Number(formation.total_duration_seconds || 0);
+  const minutes = seconds > 0 ? Math.max(1, Math.round(seconds / 60)) : Math.max(0, Number(formation.calculated_duration_minutes || 0));
+  if (!minutes) return null;
+  const hours = Math.floor(minutes / 60);
+  const remaining = minutes % 60;
+  if (!hours) return `${minutes} min`;
+  return remaining ? `${hours} h ${remaining} min` : `${hours} h`;
+}
 
 export default function AdminMesFormations() {
   const navigate = useNavigate();
@@ -335,9 +347,9 @@ export default function AdminMesFormations() {
                         <span className="text-xs font-medium" style={{ color: '#64748B' }}>
                           {f.module_count || 0} module{(f.module_count || 0) !== 1 ? 's' : ''} · {f.lesson_count || 0} leçon{(f.lesson_count || 0) !== 1 ? 's' : ''}
                         </span>
-                        {f.word_count && f.word_count > 0 && (
-                          <span className="text-xs" style={{ color: '#9CA3AF' }}>
-                            {f.word_count} mots · {f.estimated_read_min || Math.max(1, Math.ceil(f.word_count / 250))} min
+                        {formatLearningDuration(f) && (
+                          <span className="text-xs" style={{ color: '#64748B' }}>
+                            Durée · {formatLearningDuration(f)}
                           </span>
                         )}
                         <span className="text-xs" style={{ color: '#9CA3AF' }}>

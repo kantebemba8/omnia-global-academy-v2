@@ -1,6 +1,6 @@
 import { openInternalPreviewUrl } from '../../lib/mobile';
 import MobileBuilderAdvice from '../../components/MobileBuilderAdvice';
-import { Component, useState, useEffect, useCallback, useRef, type ReactNode } from 'react';
+import { Component, useState, useEffect, useCallback, useRef, type ReactNode, type ClipboardEvent } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { AssessmentPolicyPanel } from '../../components/AssessmentPolicyPanel';
 import { edgeAuthHeaders } from '../../lib/edgeAuth';
@@ -61,6 +61,7 @@ interface Course {
   studio_mode?: string; word_count?: number; estimated_read_min?: number; calculated_duration_minutes?: number;
   last_autosave_at?: string; admin_comment?: string; template_used?: string;
   sale_mode?: 'free'|'paid'; desired_price_amount?: number|string; sale_currency?: string; promotion_price_amount?: number|string;
+  certificate_mode?: 'omnia'|'external'|'none';
   structure_payment_mode?: string; structure_fixed_amount?: number|string; is_assisted?: boolean; assisted_status?: string; assisted_request_id?: string; certification_requested?: boolean;
   free_preview_mode?: 'none'|'introduction'|'introduction_first_lesson'; quality_status?: string; ready_to_submit?: boolean; current_version?: string;
   pricing_status?: string; lesson_passing_score?: number; module_passing_score?: number; final_passing_score?: number; learning_design_settings?: Record<string, any>; assessment_policy?: Record<string, any>;
@@ -246,7 +247,7 @@ export default function StudioConceptionFormation() {
   const [showFinalization, setShowFinalization] = useState(false);
   const [showAI, setShowAI] = useState(false);
   const [showAssessmentPolicy, setShowAssessmentPolicy] = useState(false);
-  const [showSubmitReview, setShowSubmitReview] = useState(false);
+  const [finalizationCheck, setFinalizationCheck] = useState<{ valid: boolean; errors: string[]; warnings: string[] } | null>(null);
   const [activeLibTab, setActiveLibTab] = useState<'blocs' | 'sections' | 'templates'>('blocs');
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
   const [toast, setToast] = useState('');
@@ -372,8 +373,9 @@ export default function StudioConceptionFormation() {
     if (!course?.id) return;
     await flushBlockUpdates();
     setShowChecklist(true);
-    const data = await api('validate_checklist', { course_id: course.id });
+    const data = await api('validate_checklist', { course_id: course.id, phase: 'quality' });
     setChecklist(data);
+    if (data.success) setCourse(current => ({ ...current, quality_status: data.valid ? 'ready' : 'incomplete', calculated_duration_minutes: data.calculated_duration_minutes ?? current.calculated_duration_minutes, ready_to_submit: false }));
   }
 
   async function reloadCourse(courseIdToLoad: string) {
@@ -394,7 +396,7 @@ export default function StudioConceptionFormation() {
     autosaveTimer.current = setTimeout(async () => {
       const c = courseRef.current;
       if (!c?.id) return;
-      const data = await api('autosave', { course_id: c.id, title: c.title, short_description: c.short_description, word_count: wordCount });
+      const data = await api('autosave', { course_id: c.id, title: c.title, short_description: c.short_description, word_count: wordCount, studio_mode: c.studio_mode || 'simple' });
       if (data.success) setLastSave(new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }));
     }, 30000);
   }, [wordCount]);
@@ -402,12 +404,12 @@ export default function StudioConceptionFormation() {
   useEffect(() => {
     const interval = window.setInterval(() => {
       const c = courseRef.current;
-      if (c?.id) api('autosave', { course_id: c.id, title: c.title, short_description: c.short_description, word_count: wordCount }).then(d => { if (d.success) setLastSave(new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })); });
+      if (c?.id) api('autosave', { course_id: c.id, title: c.title, short_description: c.short_description, word_count: wordCount, studio_mode: c.studio_mode || 'simple' }).then(d => { if (d.success) setLastSave(new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })); });
     }, 30000);
     const onBeforeUnload = () => {
       const c = courseRef.current;
       if (!c?.id) return;
-      fetch(API, { method: 'POST', keepalive: true, headers: edgeAuthHeaders(), body: JSON.stringify({ action: 'autosave', course_id: c.id, title: c.title, short_description: c.short_description, word_count: wordCount }) }).catch(() => undefined);
+      fetch(API, { method: 'POST', keepalive: true, headers: edgeAuthHeaders(), body: JSON.stringify({ action: 'autosave', course_id: c.id, title: c.title, short_description: c.short_description, word_count: wordCount, studio_mode: c.studio_mode || 'simple' }) }).catch(() => undefined);
     };
     window.addEventListener('beforeunload', onBeforeUnload);
     return () => { window.clearInterval(interval); window.removeEventListener('beforeunload', onBeforeUnload); };
@@ -416,6 +418,20 @@ export default function StudioConceptionFormation() {
   function updateCourse(field: keyof Course, value: any) {
     setCourse(c => ({ ...c, [field]: value }));
     scheduleAutosave();
+  }
+
+  async function changeStudioMode(nextAdvanced: boolean) {
+    const previous = advancedMode;
+    const mode = nextAdvanced ? 'advanced' : 'simple';
+    setAdvancedMode(nextAdvanced);
+    setCourse(current => ({ ...current, studio_mode: mode }));
+    if (!courseRef.current?.id) return;
+    const result = await api('update_course', { course_id: courseRef.current.id, studio_mode: mode });
+    if (!result.success) {
+      setAdvancedMode(previous);
+      setCourse(current => ({ ...current, studio_mode: previous ? 'advanced' : 'simple' }));
+      showToast(result.message || result.error || 'Impossible d’enregistrer le mode du Builder.', 'error');
+    }
   }
 
   // ─── Sélection leçon ──────────────────────────────────────
@@ -629,7 +645,7 @@ export default function StudioConceptionFormation() {
 
   async function saveCurrentPage(goNext = false) {
     if (!course.id) { const created = await ensureCourseCreated(); if (!created) return; }
-    await api('autosave', { course_id: courseRef.current.id, title: courseRef.current.title, short_description: courseRef.current.short_description, word_count: wordCount });
+    await api('autosave', { course_id: courseRef.current.id, title: courseRef.current.title, short_description: courseRef.current.short_description, word_count: wordCount, studio_mode: courseRef.current.studio_mode || 'simple' });
     setLastSave(new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }));
     if (!goNext || !currentModule || !currentLesson) return;
     const modIndex = modules.findIndex(m => m.id === currentModule.id);
@@ -751,6 +767,7 @@ export default function StudioConceptionFormation() {
         cover_image_prompt: course.cover_image_prompt,
         course_intro_title: course.course_intro_title,
         course_intro_summary: course.course_intro_summary,
+        studio_mode: advancedMode ? 'advanced' : 'simple',
         word_count: wordCount, free_preview_mode: 'introduction', builder_version: 'v3', preview_first_lesson_enabled: true,
       });
       if (data.success) {
@@ -830,36 +847,42 @@ export default function StudioConceptionFormation() {
     } finally { setQualityWritingLoading(false); }
   }
 
-  // ─── Soumettre ────────────────────────────────────────────
+  // ─── Publier / soumettre ──────────────────────────────────
   async function submit() {
-    if (!course?.id) return;
-    await flushBlockUpdates();
-    const check = await api('validate_checklist', { course_id: course.id });
-    setChecklist(check);
-    if (!check.valid) { setShowChecklist(true); showToast('Corrigez les erreurs avant de soumettre', 'error'); return; }
-    const policyState = await api('assessment_policy_get', { course_id: course.id });
-    const freshPolicy = policyState.success && policyState.policy && typeof policyState.policy === 'object'
-      ? policyState.policy
-      : course.assessment_policy;
-    if (freshPolicy) setCourse(current => current ? { ...current, assessment_policy: freshPolicy } : current);
-    if (!freshPolicy?.builder_configured_at) {
-      showToast('Enregistrez les règles d’évaluation dans Finalisation avant de soumettre.', 'error');
-      setShowAssessmentPolicy(true);
-      return;
-    }
-    setShowSubmitReview(true);
-  }
-
-  async function confirmSubmit() {
-    if (!course?.id) return;
+    if (!course?.id || submitting) return;
     setSubmitting(true);
+    setFinalizationCheck(null);
     try {
-      const reviewed = await api('assessment_policy_confirm_review', { course_id: course.id });
-      if (!reviewed.success) throw new Error(reviewed.message || reviewed.error || 'Vérification finale impossible');
-      setCourse(c => c ? { ...c, assessment_policy: reviewed.policy || c.assessment_policy } : c);
+      await flushBlockUpdates();
+
+      const quality = await api('validate_checklist', { course_id: course.id, phase: 'quality' });
+      setChecklist(quality);
+      if (quality.success) setCourse(current => ({ ...current, quality_status: quality.valid ? 'ready' : 'incomplete', calculated_duration_minutes: quality.calculated_duration_minutes ?? current.calculated_duration_minutes, ready_to_submit: false }));
+      if (!quality.valid) {
+        setShowChecklist(true);
+        showToast('Corrigez les erreurs de qualité avant la publication.', 'error');
+        return;
+      }
+
+      const publication = await api('validate_checklist', { course_id: course.id, phase: 'publication' });
+      setFinalizationCheck({
+        valid: Boolean(publication.valid),
+        errors: Array.isArray(publication.errors) ? publication.errors : [],
+        warnings: Array.isArray(publication.warnings) ? publication.warnings : [],
+      });
+      if (publication.success) setCourse(current => ({ ...current, ready_to_submit: Boolean(publication.valid), calculated_duration_minutes: publication.calculated_duration_minutes ?? current.calculated_duration_minutes }));
+      if (!publication.valid) {
+        setShowFinalization(true);
+        setCurrentModule(null);
+        setCurrentLesson(null);
+        setBlocks([]);
+        setSelectedBlock(null);
+        showToast('Complétez les éléments de Finalisation avant de publier.', 'error');
+        return;
+      }
+
       const data = await api('submit_course', { course_id: course.id });
       if (data.success) {
-        setShowSubmitReview(false);
         if (data.pricing_required) {
           setCourse(c => c ? { ...c, pricing_status: data.pricing_status } : c);
           showToast(data.message || 'La tarification a été transmise pour validation.', 'info');
@@ -871,13 +894,15 @@ export default function StudioConceptionFormation() {
           showToast('Formation soumise pour validation');
         }
       } else {
-        setShowSubmitReview(false);
-        setChecklist({ valid: false, errors: data.errors || [data.message || data.error || 'Soumission impossible'], warnings: data.warnings || [] });
-        setShowChecklist(true);
+        setFinalizationCheck({ valid: false, errors: data.errors || [data.message || data.error || 'Soumission impossible'], warnings: data.warnings || [] });
+        setShowFinalization(true);
+        showToast(data.message || data.error || 'Soumission impossible', 'error');
       }
     } catch (error) {
-      showToast(error instanceof Error ? error.message : 'Erreur lors de la soumission', 'error');
-    } finally { setSubmitting(false); }
+      showToast(error instanceof Error ? error.message : 'Erreur lors de la publication', 'error');
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   // ─── Charger historique ───────────────────────────────────
@@ -936,9 +961,10 @@ export default function StudioConceptionFormation() {
   const locked = ['pending_validation', 'validated', 'suspended'].includes(course.studio_status || '') || (course.studio_status === 'published' && !publishedSuperAdminEditable);
   const workflowLocked = ['pending_validation', 'validated', 'published', 'suspended'].includes(course.studio_status || '');
   const statusCfg = STATUS_CFG[course.studio_status || 'draft'] || STATUS_CFG.draft;
+  const modeBlocks = advancedMode ? BLOCK_DEFS : BLOCK_DEFS.filter(def => def.mode === 'simple');
   const visibleBlocks = assessmentWorkspace
-    ? BLOCK_DEFS.filter(def => ASSESSMENT_CAPABLE_BLOCKS.has(def.type))
-    : BLOCK_DEFS;
+    ? modeBlocks.filter(def => ASSESSMENT_CAPABLE_BLOCKS.has(def.type))
+    : modeBlocks;
   const displayedBlocks = assessmentWorkspace
     ? blocks.filter(block => block.interaction_mode === 'assessment')
     : blocks.filter(block => block.interaction_mode !== 'assessment');
@@ -1023,12 +1049,12 @@ export default function StudioConceptionFormation() {
 
         {/* Mode simple/avancé */}
         {!headerCollapsed && <div className="hidden md:flex items-center gap-1 mx-3 bg-gray-100 rounded-lg p-1 flex-shrink-0">
-          <button onClick={() => setAdvancedMode(false)}
+          <button onClick={() => void changeStudioMode(false)}
             className="px-2.5 py-1 rounded-md text-xs font-semibold transition-all"
             style={!advancedMode ? { background: '#002050', color: 'white' } : { color: '#6B7280' }}>
             Mode simple
           </button>
-          <button onClick={() => setAdvancedMode(true)}
+          <button onClick={() => void changeStudioMode(true)}
             className="px-2.5 py-1 rounded-md text-xs font-semibold transition-all"
             style={advancedMode ? { background: '#002050', color: 'white' } : { color: '#6B7280' }}>
             Mode avancé
@@ -1138,7 +1164,7 @@ export default function StudioConceptionFormation() {
                   { label: 'Séquence vocabulaire', blocks: ['vocabulary', 'flashcards', 'matching'] },
                   { label: 'Séquence compréhension orale', blocks: ['listening_comprehension', 'dictation', 'summary'] },
                   { label: 'Séquence expression orale', blocks: ['dialogue', 'pronunciation', 'oral_response'] },
-                ].map(section => (
+                ].filter(section => advancedMode || section.blocks.every(bt => BLOCK_DEFS.find(def => def.type === bt)?.mode === 'simple')).map(section => (
                   <button key={section.label} disabled={locked}
                     onClick={async () => { for (const bt of section.blocks) { await addBlock(bt); } }}
                     className="w-full text-left p-3 rounded-lg border text-xs font-medium transition-all hover:shadow-sm disabled:opacity-40"
@@ -1162,7 +1188,7 @@ export default function StudioConceptionFormation() {
                   { key: 'advanced_interactive', label: 'Interactive avancée', desc: 'Blocs interactifs' },
                   { key: 'scorm_template', label: 'Formation SCORM', desc: 'Package SCORM' },
                   { key: 'language_learning', label: 'Formation linguistique', desc: 'Vocabulaire, écoute, oral et CECRL' },
-                ].map(tmpl => (
+                ].filter(tmpl => advancedMode || !['advanced_interactive', 'language_learning'].includes(tmpl.key)).map(tmpl => (
                   <button key={tmpl.key} disabled={locked}
                     onClick={async () => {
                       if (!course?.id) return;
@@ -1198,7 +1224,7 @@ export default function StudioConceptionFormation() {
             <button type="button" onClick={() => setMobileLibraryOpen(true)} className="flex shrink-0 items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold" style={{ borderColor: '#002050', color: '#002050' }}><Layers size={14} /> Bibliothèque</button>
             <button type="button" onClick={() => setShowAI(true)} className="flex shrink-0 items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold" style={{ borderColor: '#BF8813', color: '#92400E' }}><Sparkles size={14} /> IA</button>
             <button type="button" onClick={() => setShowPreview(true)} className="flex shrink-0 items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold" style={{ borderColor: '#E4E7EC', color: '#002050' }}><Eye size={14} /> Aperçu</button>
-            <button type="button" onClick={() => setAdvancedMode(v => !v)} className="shrink-0 rounded-lg border px-3 py-2 text-xs font-semibold" style={{ borderColor: '#E4E7EC', color: '#374151' }}>{advancedMode ? 'Mode avancé' : 'Mode simple'}</button>
+            <button type="button" onClick={() => void changeStudioMode(!advancedMode)} className="shrink-0 rounded-lg border px-3 py-2 text-xs font-semibold" style={{ borderColor: '#E4E7EC', color: '#374151' }}>{advancedMode ? 'Mode avancé' : 'Mode simple'}</button>
             <button type="button" onClick={loadHistory} className="flex shrink-0 items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold" style={{ borderColor: '#E4E7EC', color: '#374151' }}><History size={14} /> Historique</button>
             <button type="button" onClick={runQualityCheck} className="flex shrink-0 items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold" style={{ borderColor: '#E4E7EC', color: '#374151' }}><CheckCircle size={14} /> Qualité</button>
           </div>
@@ -1463,16 +1489,47 @@ export default function StudioConceptionFormation() {
             {showFinalization && (
               <div className="max-w-4xl mx-auto space-y-4">
                 <div className="bg-white rounded-xl border p-5" style={{borderColor:'#E4E7EC'}}>
-                  <h2 className="text-lg font-bold" style={{color:'#002050'}}>Finalisation</h2>
-                  <p className="mt-1 text-sm text-gray-500">Vérifiez la cohérence technique des évaluations, la certification, la commercialisation et les contenus Live/Replays avant finalisation.</p>
-                  <button type="button" onClick={openAssessmentPolicy} disabled={openingAssessmentPolicy || locked} className="mt-4 inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold disabled:opacity-50" style={{borderColor:'#002050',color:'#002050'}}><ClipboardCheck size={15}/>Contrôler les évaluations, la réussite et la progression</button>
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <h2 className="text-lg font-bold" style={{color:'#002050'}}>Finalisation</h2>
+                      <p className="mt-1 text-sm text-gray-500">Configurez uniquement les décisions nécessaires avant publication. Le contrôle Qualité reste séparé.</p>
+                    </div>
+                    <span className="rounded-full px-3 py-1 text-[11px] font-bold" style={{background:advancedMode?'#EEF2FF':'#F3F4F6',color:'#002050'}}>{advancedMode?'Mode avancé':'Mode simple'}</span>
+                  </div>
                 </div>
-                {course.id && course.studio_status && !['draft','changes_requested'].includes(String(course.studio_status)) && <StudioQualityStatusPanel courseId={course.id} />}
-                <CourseAdvancedSettingsPanel course={course} locked={locked} onPatch={(patch)=>setCourse(c=>({...c,...patch}))} onSaved={(msg)=>showToast(msg, msg.toLowerCase().includes('erreur') ? 'error' : 'success')} />
-                <StudioCommercialCertificationPanel course={course} locked={locked} onPatch={(patch)=>setCourse(c=>({...c,...patch}))} onSaved={(msg)=>showToast(msg, msg.toLowerCase().includes('erreur') ? 'error' : 'success')} />
-                <div className="flex items-center justify-between bg-white rounded-xl border p-4" style={{borderColor:'#E4E7EC'}}>
-                  <button onClick={()=>{setShowFinalization(false);setCurrentModule(null);setCurrentLesson(null);}} className="flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium" style={{borderColor:'#E4E7EC',color:'#374151'}}><ChevronLeft size={15}/>Retour aux informations</button>
-                  <button onClick={submit} disabled={submitting||workflowLocked} className="flex items-center gap-2 rounded-lg px-5 py-2 text-sm font-semibold text-white disabled:opacity-50" style={{background:'#BF8813'}}><Send size={15}/>{course.creator_context === 'super_admin' ? 'Publier la formation' : 'Soumettre la formation'}</button>
+
+                <div className="bg-white rounded-xl border p-5" style={{borderColor:'#E4E7EC'}}>
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <h3 className="text-sm font-semibold" style={{color:'#002050'}}>1 · Progression & évaluations</h3>
+                      <p className="mt-1 text-xs text-slate-500">Définissez les évaluations obligatoires, les seuils et les reprises.{advancedMode ? ' Les paramètres professionnels avancés sont également disponibles.' : ''}</p>
+                    </div>
+                    <button type="button" onClick={openAssessmentPolicy} disabled={openingAssessmentPolicy || locked} className="inline-flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold disabled:opacity-50" style={{borderColor:'#002050',color:'#002050'}}><ClipboardCheck size={15}/>Configurer</button>
+                  </div>
+                  {advancedMode && <div className="mt-4"><CourseAdvancedSettingsPanel course={course} locked={locked} onPatch={(patch)=>setCourse(c=>({...c,...patch}))} onSaved={(msg)=>showToast(msg, msg.toLowerCase().includes('erreur') ? 'error' : 'success')} /></div>}
+                </div>
+
+                <StudioCommercialCertificationPanel course={course} locked={locked} advancedMode={advancedMode} onPatch={(patch)=>setCourse(c=>({...c,...patch}))} onSaved={(msg)=>{setFinalizationCheck(null);showToast(msg, msg.toLowerCase().includes('erreur') ? 'error' : 'success')}} />
+
+                <div className="bg-white rounded-xl border p-5" style={{borderColor:'#E4E7EC'}}>
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <h3 className="text-sm font-semibold" style={{color:'#002050'}}>4 · Vérification & publication</h3>
+                      <p className="mt-1 text-xs text-slate-500">Un seul contrôle final vérifie la Qualité puis la cohérence des choix de Finalisation.</p>
+                    </div>
+                  </div>
+                  <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                    <div className="rounded-lg border px-3 py-2 text-xs" style={{borderColor:course.quality_status==='ready'?'#A7F3D0':'#E4E7EC',background:course.quality_status==='ready'?'#ECFDF5':'#F8FAFC',color:'#374151'}}><strong>Qualité</strong><span className="ml-2">{course.quality_status==='ready'?'✓ contrôlée':'à contrôler'}</span></div>
+                    <div className="rounded-lg border px-3 py-2 text-xs" style={{borderColor:course.assessment_policy?.builder_configured_at?'#A7F3D0':'#E4E7EC',background:course.assessment_policy?.builder_configured_at?'#ECFDF5':'#F8FAFC',color:'#374151'}}><strong>Évaluations</strong><span className="ml-2">{course.assessment_policy?.builder_configured_at?'✓ configurées':'à configurer'}</span></div>
+                    <div className="rounded-lg border px-3 py-2 text-xs" style={{borderColor:course.sale_mode && (course.sale_mode==='free'||Number(course.desired_price_amount||0)>0)?'#A7F3D0':'#E4E7EC',background:course.sale_mode && (course.sale_mode==='free'||Number(course.desired_price_amount||0)>0)?'#ECFDF5':'#F8FAFC',color:'#374151'}}><strong>Commercialisation</strong><span className="ml-2">{course.sale_mode==='free'?'✓ gratuite':course.sale_mode==='paid'&&Number(course.desired_price_amount||0)>0?'✓ prix renseigné':'à compléter'}</span></div>
+                    <div className="rounded-lg border px-3 py-2 text-xs" style={{borderColor:course.certificate_mode!=='external'||course.certification_requested?'#A7F3D0':'#E4E7EC',background:course.certificate_mode!=='external'||course.certification_requested?'#ECFDF5':'#F8FAFC',color:'#374151'}}><strong>Certification</strong><span className="ml-2">{course.certificate_mode==='external'?(course.certification_requested?'✓ demandée':'à compléter'):'✓ non bloquante'}</span></div>
+                  </div>
+                  {finalizationCheck && !finalizationCheck.valid && <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3"><p className="text-xs font-bold text-amber-900">Éléments à compléter avant publication</p><ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-amber-800">{finalizationCheck.errors.map((message,index)=><li key={index}>{message}</li>)}</ul></div>}
+                  {advancedMode && course.id && course.studio_status && !['draft','changes_requested'].includes(String(course.studio_status)) && <div className="mt-4"><StudioQualityStatusPanel courseId={course.id} /></div>}
+                  <div className="mt-4 flex flex-col-reverse gap-2 border-t pt-4 sm:flex-row sm:items-center sm:justify-between" style={{borderColor:'#EEF1F5'}}>
+                    <button onClick={()=>{setShowFinalization(false);setCurrentModule(null);setCurrentLesson(null);}} className="flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium" style={{borderColor:'#E4E7EC',color:'#374151'}}><ChevronLeft size={15}/>Retour aux informations</button>
+                    <button onClick={submit} disabled={submitting||workflowLocked} className="flex items-center justify-center gap-2 rounded-lg px-5 py-2 text-sm font-semibold text-white disabled:opacity-50" style={{background:'#BF8813'}}><Send size={15}/>{submitting?'Vérification…':course.creator_context === 'super_admin' ? 'Publier la formation' : 'Soumettre la formation'}</button>
+                  </div>
                 </div>
               </div>
             )}
@@ -1814,6 +1871,7 @@ export default function StudioConceptionFormation() {
         <AssessmentPolicyPanel
           courseId={course.id}
           locked={locked}
+          advancedMode={advancedMode}
           onClose={closeAssessmentPolicy}
           onSaved={(policy) => {
             setCourse(current => current ? { ...current, assessment_policy: policy as Record<string, any> } : current);
@@ -1822,44 +1880,21 @@ export default function StudioConceptionFormation() {
         />
       )}
 
-      {showSubmitReview && (
-        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/55 px-4 py-6">
-          <div className="w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-2xl">
-            <div className="border-b px-5 py-4" style={{ borderColor: '#E4E7EC' }}>
-              <h3 className="font-bold" style={{ color: '#002050' }}>{course.creator_context === 'super_admin' ? 'Dernière vérification avant publication' : 'Dernière vérification avant soumission'}</h3>
-              <p className="mt-1 text-sm text-slate-600">{course.creator_context === 'super_admin' ? 'Vérifiez les informations essentielles avant publication directe par Omnia Global Academy.' : 'Vérifiez les informations essentielles du brouillon avant de l’envoyer à l’Administration Omnia.'}</p>
-            </div>
-            <div className="space-y-3 p-5 text-sm">
-              <div className="grid grid-cols-[140px_1fr] gap-2"><span className="text-slate-500">Code</span><strong className="text-[#002050]">{course.course_code || 'Non renseigné'}</strong></div>
-              <div className="grid grid-cols-[140px_1fr] gap-2"><span className="text-slate-500">Formation</span><strong className="text-[#002050]">{course.title}</strong></div>
-              <div className="grid grid-cols-[140px_1fr] gap-2"><span className="text-slate-500">Durée calculée</span><strong>{Math.max(0, course.calculated_duration_minutes || 0)} min</strong></div>
-              <div className="rounded-xl border p-3" style={{ borderColor: '#D1FAE5', background: '#ECFDF5' }}>
-                <p className="font-semibold text-emerald-800">✓ Règles d’évaluation configurées</p>
-                <p className="mt-1 text-xs text-emerald-700">Leçon : {course.assessment_policy?.lesson_assessment_required ? 'obligatoire' : 'facultative'} · Module : {course.assessment_policy?.module_assessment_required ? 'obligatoire' : 'facultative'} · Examen final : {course.assessment_policy?.final_assessment_required ? 'obligatoire' : 'selon certification'}</p>
-              </div>
-            </div>
-            <div className="flex flex-col-reverse gap-2 border-t p-4 sm:flex-row sm:justify-end" style={{ borderColor: '#E4E7EC' }}>
-              <button type="button" onClick={() => setShowSubmitReview(false)} className="rounded-xl border px-4 py-2.5 text-sm font-semibold" style={{ borderColor: '#E4E7EC' }}>Continuer à modifier</button>
-              <button type="button" onClick={() => { setShowSubmitReview(false); setShowAssessmentPolicy(true); }} className="rounded-xl border px-4 py-2.5 text-sm font-semibold" style={{ borderColor: '#BF8813', color: '#92400E' }}>Revoir les évaluations</button>
-              <button type="button" onClick={confirmSubmit} disabled={submitting} className="rounded-xl px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50" style={{ background: '#002050' }}>{submitting ? (course.creator_context === 'super_admin' ? 'Publication…' : 'Soumission…') : (course.creator_context === 'super_admin' ? 'J’ai vérifié — publier' : 'J’ai vérifié — soumettre')}</button>
-            </div>
-          </div>
-        </div>
-      )}
+
 
       {/* ── MODAL QUALITÉ ────────────────────────────── */}
       {showChecklist && checklist && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
           <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl max-h-[80vh] overflow-y-auto">
             <div className="px-6 py-4 border-b flex items-center justify-between" style={{ borderColor: '#E4E7EC' }}>
-              <h3 className="font-bold" style={{ color: '#002050' }}>Qualité de la formation</h3>
+              <h3 className="font-bold" style={{ color: '#002050' }}>Contrôle Qualité</h3>
               <button onClick={() => setShowChecklist(false)}><X size={18} style={{ color: '#6B7280' }} /></button>
             </div>
             <div className="p-6 space-y-3">
               {checklist.errors.length === 0 && (
                 <div className="flex items-center gap-2 p-3 rounded-xl" style={{ background: '#D1FAE5' }}>
                   <CheckCircle size={16} style={{ color: '#065F46' }} />
-                  <p className="text-sm font-semibold" style={{ color: '#065F46' }}>Prête pour finalisation</p>
+                  <p className="text-sm font-semibold" style={{ color: '#065F46' }}>Qualité validée — prête pour finalisation</p>
                 </div>
               )}
               {(checklist.issues || [
@@ -1945,6 +1980,45 @@ function stripHtml(html: string) {
   return div.textContent || div.innerText || '';
 }
 
+function escapePastedText(value: string) {
+  return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function sanitizePastedHtml(rawHtml: string, rawText: string) {
+  if (!rawHtml.trim()) {
+    const lines = rawText.replace(/\r\n?/g, '\n').split(/\n{2,}/).map(part => part.trim()).filter(Boolean);
+    return lines.length ? lines.map(part => `<p>${escapePastedText(part).replace(/\n/g, '<br>')}</p>`).join('') : escapePastedText(rawText);
+  }
+  const source = new DOMParser().parseFromString(rawHtml, 'text/html');
+  const target = document.createElement('div');
+  const copyNode = (node: Node, parent: HTMLElement) => {
+    if (node.nodeType === Node.TEXT_NODE) { parent.appendChild(document.createTextNode(node.textContent || '')); return; }
+    if (node.nodeType !== Node.ELEMENT_NODE) return;
+    const element = node as HTMLElement;
+    const tag = element.tagName.toLowerCase();
+    if (['script','style','meta','link','iframe','object'].includes(tag)) return;
+    const allowed = new Set(['p','br','strong','b','em','i','ul','ol','li','a','blockquote']);
+    let nextParent = parent;
+    if (allowed.has(tag)) {
+      const cleanTag = tag === 'b' ? 'strong' : tag === 'i' ? 'em' : tag;
+      const clean = document.createElement(cleanTag);
+      if (cleanTag === 'a') {
+        const href = String(element.getAttribute('href') || '').trim();
+        if (/^https?:\/\//i.test(href)) clean.setAttribute('href', href);
+      }
+      parent.appendChild(clean);
+      nextParent = clean;
+    } else if (tag === 'div' || /^h[1-6]$/.test(tag)) {
+      const paragraph = document.createElement('p');
+      parent.appendChild(paragraph);
+      nextParent = paragraph;
+    }
+    Array.from(element.childNodes).forEach(child => copyNode(child, nextParent));
+  };
+  Array.from(source.body.childNodes).forEach(node => copyNode(node, target));
+  return target.innerHTML;
+}
+
 function RichTextEditor({ value, onChange, locked, placeholder, headingLevel, language = 'fr' }: {
   value: string; onChange: (html: string) => void; locked: boolean; placeholder: string; headingLevel?: 1 | 2; language?: string;
 }) {
@@ -1967,6 +2041,19 @@ function RichTextEditor({ value, onChange, locked, placeholder, headingLevel, la
     const rect = range.getBoundingClientRect();
     const host = ref.current.getBoundingClientRect();
     setSelectionToolbar({ left: Math.max(8, Math.min(host.width - 210, rect.left - host.left)), top: Math.max(4, rect.top - host.top - 38) });
+  }
+  function handlePaste(event: ClipboardEvent<HTMLDivElement>) {
+    if (locked) return;
+    event.preventDefault();
+    const rawText = event.clipboardData.getData('text/plain') || '';
+    if (headingLevel) {
+      document.execCommand('insertText', false, rawText.replace(/\s+/g, ' ').trim());
+      emit();
+      return;
+    }
+    const cleanHtml = sanitizePastedHtml(event.clipboardData.getData('text/html') || '', rawText);
+    document.execCommand('insertHTML', false, cleanHtml);
+    emit();
   }
   function addLink() {
     const url = window.prompt('Adresse du lien HTTPS');
@@ -1998,6 +2085,7 @@ function RichTextEditor({ value, onChange, locked, placeholder, headingLevel, la
       )}
       <div ref={ref} contentEditable={!locked} suppressContentEditableWarning spellCheck lang={language} data-placeholder={placeholder}
         onInput={emit}
+        onPaste={handlePaste}
         onMouseUp={updateSelectionToolbar} onKeyUp={updateSelectionToolbar} onBlur={() => window.setTimeout(() => setSelectionToolbar(null), 120)}
         className={`${headingLevel === 1 ? 'text-xl font-bold' : headingLevel === 2 ? 'text-lg font-semibold' : 'text-sm'} min-h-[88px] px-3 py-3 outline-none rich-editor [&_p]:my-2 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:my-1 [&_a]:text-blue-700 [&_a]:underline`}
         style={{ color: headingLevel ? '#002050' : '#374151' }} />

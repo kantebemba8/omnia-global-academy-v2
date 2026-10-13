@@ -1848,6 +1848,7 @@ Retourne uniquement un JSON valide : {"suggested_points": nombre entre 0 et ${ma
    }catch(error){const payload=aiErrorPayload(error);return json({success:false,...payload,message:"L’analyse orthographique globale est momentanément indisponible. Le correcteur local du navigateur reste actif."},payload.status||502)}
   }
   if(action==="validate_checklist"){
+   const phase=String(b.phase||"quality")==="publication"?"publication":"quality";const publicationPhase=phase==="publication";
    const errors:string[]=[],warnings:string[]=[],explicitIssues:any[]=[];
    const {data:c,error:courseError}=await sb.from("courses").select("*").eq("id",courseId).single();if(courseError)throw courseError;
    const {data:m}=await sb.from("course_modules").select("id,title,objective,is_intro,is_conclusion,is_final_exam,is_required").eq("course_id",courseId).order("position");
@@ -1870,24 +1871,25 @@ Retourne uniquement un JSON valide : {"suggested_points": nombre entre 0 et ${ma
    if(!c.target_audience?.trim())errors.push("Précisez le public cible.");
    if(!(c.objectives||[]).filter((x:any)=>String(x||"").trim()).length)errors.push("Ajoutez au moins un objectif pédagogique.");
    const design=c.learning_design_settings||{};
-   if(design.drip_enabled&&Number(design.drip_interval_days||0)<1)errors.push("Le déblocage progressif doit avoir un intervalle d’au moins un jour.");
-   if(design.delivery_mode==="cohort"&&!design.cohort_start_at)errors.push("Indiquez la date de démarrage de la cohorte.");
-   for(const [label,value] of [["leçon",c.lesson_passing_score],["module",c.module_passing_score],["examen final",c.final_passing_score]] as any[]){if(Number(value)<1||Number(value)>100)errors.push(`Le seuil global ${label} doit être compris entre 1 et 100 %.`)}
+   if(publicationPhase&&design.drip_enabled&&Number(design.drip_interval_days||0)<1)errors.push("Le déblocage progressif doit avoir un intervalle d’au moins un jour.");
+   if(publicationPhase&&design.delivery_mode==="cohort"&&!design.cohort_start_at)errors.push("Indiquez la date de démarrage de la cohorte.");
+   if(publicationPhase)for(const [label,value] of [["leçon",c.lesson_passing_score],["module",c.module_passing_score],["examen final",c.final_passing_score]] as any[]){if(Number(value)<1||Number(value)>100)errors.push(`Le seuil global ${label} doit être compris entre 1 et 100 %.`)}
    
    const intro=(m||[]).find((x:any)=>x.is_intro);const conclusion=(m||[]).find((x:any)=>x.is_conclusion);const finalExam=(m||[]).find((x:any)=>x.is_final_exam);
    const assessmentPolicy=c.assessment_policy&&typeof c.assessment_policy==="object"?c.assessment_policy:{};
-   if(!assessmentPolicy.builder_configured_at){const message="Les règles d’évaluation ne sont pas encore enregistrées dans Finalisation.";warnings.push(message);explicitIssues.push({severity:"warning",message,target:"finalization"});}
-   const requireLessonAssessments=assessmentPolicy.lesson_assessment_required===true;
-   const requireModuleAssessments=assessmentPolicy.module_assessment_required===true;
-   const requireFinalAssessment=assessmentPolicy.final_assessment_required===true||c.certification_requested===true||c.requested_cpd===true||c.cpd_accredited===true;
-   if(String(c.certificate_mode||'omnia')==='external'){const {count:externalCertCount}=await sb.from("course_certifications").select("id",{count:"exact",head:true}).eq("course_id",courseId).in("status",["pending","validated"]);if(Number(externalCertCount||0)<1)errors.push("Ajoutez la certification externe ou choisissez un autre mode de certification.");}
+   if(publicationPhase&&!assessmentPolicy.builder_configured_at){const message="Enregistrez les règles de progression et d’évaluation dans Finalisation.";errors.push(message);explicitIssues.push({severity:"error",message,target:"finalization"});}
+   const requireLessonAssessments=publicationPhase&&assessmentPolicy.lesson_assessment_required===true;
+   const requireModuleAssessments=publicationPhase&&assessmentPolicy.module_assessment_required===true;
+   const requireFinalAssessment=publicationPhase&&(assessmentPolicy.final_assessment_required===true||c.certification_requested===true||c.requested_cpd===true||c.cpd_accredited===true);
+   if(publicationPhase&&String(c.certificate_mode||'omnia')==='external'){const {count:externalCertCount}=await sb.from("course_certifications").select("id",{count:"exact",head:true}).eq("course_id",courseId).in("status",["pending","validated"]);if(Number(externalCertCount||0)<1)errors.push("Ajoutez la certification externe ou choisissez un autre mode de certification.");}
    if(intro){ const introLessons=(l||[]).filter((x:any)=>x.module_id===intro.id); const introHasBlocks=introLessons.some((lesson:any)=>(bl||[]).some((block:any)=>block.lesson_id===lesson.id)); if(!introHasBlocks)errors.push("Construisez l’introduction avec au moins un bloc."); }
    if(conclusion){const conclusionLessons=(l||[]).filter((x:any)=>x.module_id===conclusion.id);const conclusionHasBlocks=conclusionLessons.some((lesson:any)=>(bl||[]).some((block:any)=>block.lesson_id===lesson.id));if(!conclusionHasBlocks)errors.push("Construisez la conclusion avec au moins un bloc. La conclusion n’est jamais générée automatiquement.");}
    const normalModules=(m||[]).filter((x:any)=>!x.is_intro&&!x.is_conclusion&&!x.is_final_exam);
    if(!intro)errors.push("Ajoutez l’introduction de la formation.");
    if(!normalModules.length)errors.push("Ajoutez au moins un module après l’introduction.");
    if(!conclusion)errors.push("Ajoutez la conclusion de la formation.");
-   if(requireFinalAssessment&&!finalExam)errors.push("Ajoutez l’examen final requis par la politique de cette formation.");
+   const finalAssessmentRequiredByRow=(assessments||[]).some((a:any)=>a.scope==="final"&&a.required===true);
+   if((requireFinalAssessment||finalAssessmentRequiredByRow)&&!finalExam)errors.push(publicationPhase?"Ajoutez l’examen final requis par la politique de cette formation.":"Une évaluation finale obligatoire existe mais la section Examen final est absente.");
    for(const mod of normalModules){
     const moduleLessons=(l||[]).filter((x:any)=>String(x.module_id)===String(mod.id)&&String(x.stage_type||"lesson")==="lesson");
     if(!moduleLessons.length)errors.push(`Le module « ${mod.title} » doit contenir au moins une leçon.`);
@@ -1898,7 +1900,7 @@ Retourne uniquement un JSON valide : {"suggested_points": nombre entre 0 et ${ma
     else if(moduleAssessment&&(moduleRequiredEffective||moduleItemCount>0)) {
       if(Number(moduleAssessment.passing_score)<1||Number(moduleAssessment.passing_score)>100)errors.push(`Le seuil du module « ${mod.title} » doit être compris entre 1 et 100 %.`);
       if(moduleRequiredEffective&&moduleItemCount===0)errors.push(`L’évaluation obligatoire du module « ${mod.title} » ne contient aucune activité évaluée.`);
-      if(moduleRequiredEffective&&Number(moduleAssessment.remediation_after_attempts||0)<1)errors.push(`Configurez la règle de reprise de l’évaluation du module « ${mod.title} ».`);
+      if(publicationPhase&&moduleRequiredEffective&&Number(moduleAssessment.remediation_after_attempts||0)<1)errors.push(`Configurez la règle de reprise de l’évaluation du module « ${mod.title} ».`);
     }
     for(const lesson of moduleLessons){
       const lessonBlocks=(bl||[]).filter((x:any)=>String(x.lesson_id)===String(lesson.id));
@@ -1910,7 +1912,7 @@ Retourne uniquement un JSON valide : {"suggested_points": nombre entre 0 et ${ma
       else if(lessonAssessment&&(lessonRequiredEffective||lessonItemCount>0)) {
         if(Number(lessonAssessment.passing_score)<1||Number(lessonAssessment.passing_score)>100)errors.push(`Le seuil de la leçon « ${lesson.title} » doit être compris entre 1 et 100 %.`);
         if(lessonRequiredEffective&&lessonItemCount===0)errors.push(`L’évaluation obligatoire de la leçon « ${lesson.title} » ne contient aucune activité évaluée.`);
-        if(lessonRequiredEffective&&Number(lessonAssessment.remediation_after_attempts||0)<1)errors.push(`Configurez la règle de reprise de l’évaluation de la leçon « ${lesson.title} ».`);
+        if(publicationPhase&&lessonRequiredEffective&&Number(lessonAssessment.remediation_after_attempts||0)<1)errors.push(`Configurez la règle de reprise de l’évaluation de la leçon « ${lesson.title} ».`);
       }
     }
    }
@@ -1937,36 +1939,40 @@ Retourne uniquement un JSON valide : {"suggested_points": nombre entre 0 et ${ma
       explicitIssues.push({severity:"warning",message,target:targetBlock?"block":"finalization",block_id:targetBlock?.id||null,lesson_id:targetBlock?.lesson_id||activityBlock?.lesson_id||null,module_id:targetBlock?.module_id||activityBlock?.module_id||null});
      }
     }
-    if(finalRequiredEffective&&Number(finalAssessment.remediation_after_attempts||0)<1)errors.push("Configurez la règle de reprise de l’examen final.");
+    if(publicationPhase&&finalRequiredEffective&&Number(finalAssessment.remediation_after_attempts||0)<1)errors.push("Configurez la règle de reprise de l’examen final.");
    }
    const meaningful=(value:any):boolean=>{if(value==null)return false;if(typeof value==="string")return value.replace(/<[^>]+>/g," ").trim().length>0;if(typeof value==="number"||typeof value==="boolean")return true;if(Array.isArray(value))return value.some(meaningful);if(typeof value==="object")return Object.entries(value).some(([key,v])=>!["style","alignment","type","open_new_tab","eco_data","package_type","duration_source","chart_type","mode"].includes(key)&&meaningful(v));return false};
    for(const block of bl||[]){const cjson=block.content_json||{};if(!meaningful(cjson)&&block.block_type!=="separator")warnings.push(`Un bloc ${block.block_type} est vide et sera à compléter ou supprimer.`);if(block.interaction_mode==="training"&&block.training_is_graded!==false&&block.is_required===true&&(Number(block.training_passing_score)<1||Number(block.training_passing_score)>100))errors.push("Un entraînement obligatoire noté possède un seuil invalide.");if(block.interaction_mode==="assessment"){const cfg=assessmentBlockSettings(block);if(!["lesson","module","final"].includes(String(block.assessment_scope||"")))errors.push("Un bloc d’évaluation officielle n’est rattaché à aucun niveau.");if(Number(block.content_json?.points||0)<=0)errors.push("Un bloc d’évaluation officielle doit avoir un nombre de points supérieur à 0.");if(cfg.passing_score<1||cfg.passing_score>100)errors.push("Un bloc d’évaluation officielle possède un seuil invalide.");const responseMode=String(block.content_json?.response_mode||"text");const gradingMode=String(block.content_json?.grading_mode||"human");if(responseMode!=="text"&&["ai","ai_human"].includes(gradingMode))errors.push("Une évaluation avec pièce jointe ne peut pas être corrigée par IA tant que l’extraction de fichier n’est pas activée.");}if(["video","audio","pdf","word","excel","download"].includes(String(block.block_type))&&!String(block.file_url||cjson.url||"").trim())errors.push(`Une ressource ${block.block_type} n’est pas correctement attachée.`);if(block.block_type==="scorm"&&cjson.scorm_ready!==true)errors.push("Un package SCORM n’est pas prêt ou son manifeste n’a pas été validé.");if(block.block_type==="formula"&&!String(cjson.latex||"").trim())warnings.push("Une formule est vide.");if(block.block_type==="chart"&&(!Array.isArray(cjson.labels)||!cjson.labels.length))warnings.push("Un graphique ne contient pas de données.");if(block.block_type==="rubric"&&!linkedSourceIds.has(String(block.id)))errors.push("Une grille d’évaluation n’est associée à aucune activité.");if(block.block_type==="correction"&&!linkedSourceIds.has(String(block.id)))errors.push("Un bloc Correction n’est associé à aucun exercice ou entraînement.");}
    const assessmentBlocks=(bl||[]).filter((block:any)=>block.interaction_mode==="assessment");const assessmentConfigGroups=new Map<string,any[]>();for(const block of assessmentBlocks){const lesson=(l||[]).find((x:any)=>String(x.id)===String(block.lesson_id));const scope=String(block.assessment_scope||"lesson");const target=scope==="lesson"?String(block.lesson_id):scope==="module"?String(lesson?.module_id||""):"course";const key=`${scope}:${target}`;assessmentConfigGroups.set(key,[...(assessmentConfigGroups.get(key)||[]),block]);}for(const [key,items] of assessmentConfigGroups.entries()){const signatures=new Set(items.map((block:any)=>{const cfg=assessmentBlockSettings(block);const scope=String(block.assessment_scope||"lesson");const effectiveRequired=cfg.required||(scope==="lesson"?requireLessonAssessments:scope==="module"?requireModuleAssessments:requireFinalAssessment);return `${effectiveRequired}:${cfg.passing_score}`}));if(signatures.size>1)errors.push(`Des blocs rattachés à la même évaluation (${key}) utilisent des seuils ou règles obligatoires réellement incompatibles. Harmonisez-les dans les paramètres des blocs.`);}
-   if(c.sale_mode==="paid"&&Number(c.desired_price_amount||0)<=0)errors.push("Indiquez le prix de vente souhaité.");
-   if(!c.sale_mode)errors.push("Choisissez si la formation est gratuite ou payante.");
+   if(publicationPhase&&c.sale_mode==="paid"&&Number(c.desired_price_amount||0)<=0)errors.push("Indiquez le prix de vente souhaité.");
+   if(publicationPhase&&!c.sale_mode)errors.push("Choisissez si la formation est gratuite ou payante.");
    const calculatedDuration=await recalculateCourseDuration(sb,courseId);
    if(calculatedDuration<=0)errors.push("La durée pédagogique officielle n’a pas pu être calculée.");
    const inferIssueTarget=(message:string)=>{
     const lower=message.toLowerCase();
-    if(lower.includes("évaluation")||lower.includes("seuil")||lower.includes("remédiation")||lower.includes("certification")||lower.includes("prix")||lower.includes("gratuite")||lower.includes("payante"))return {target:"finalization"};
     if(lower.includes("code")||lower.includes("titre de la formation")||lower.includes("description")||lower.includes("image de couverture")||lower.includes("catégorie")||lower.includes("niveau")||lower.includes("langue")||lower.includes("public cible")||lower.includes("objectif pédagogique"))return {target:"information"};
     const lesson=(l||[]).find((x:any)=>message.includes(`« ${x.title} »`));if(lesson)return {target:"lesson",lesson_id:lesson.id,module_id:lesson.module_id};
     const mod=(m||[]).find((x:any)=>message.includes(`« ${x.title} »`));if(mod)return {target:"module",module_id:mod.id};
     if(lower.includes("introduction"))return {target:"introduction",module_id:intro?.id||null};
     if(lower.includes("conclusion"))return {target:"conclusion",module_id:conclusion?.id||null};
+    if(publicationPhase&&(lower.includes("évaluation")||lower.includes("seuil")||lower.includes("remédiation")||lower.includes("certification")||lower.includes("prix")||lower.includes("gratuite")||lower.includes("payante")||lower.includes("cohorte")||lower.includes("déblocage progressif")))return {target:"finalization"};
     return {target:"content"};
    };
    const explicitMessages=new Set(explicitIssues.map((x:any)=>x.message));
    const issues=[...errors.map(message=>({severity:"error",message,...inferIssueTarget(message)})),...warnings.filter(message=>!explicitMessages.has(message)).map(message=>({severity:"warning",message,...inferIssueTarget(message)})),...explicitIssues];
-   const report={valid:errors.length===0,errors,warnings,issues,checked_at:new Date().toISOString(),calculated_duration_minutes:calculatedDuration};
-   await sb.from("courses").update({calculated_duration_minutes:calculatedDuration,quality_status:report.valid?"ready":"incomplete",quality_report:report,quality_checked_at:report.checked_at,ready_to_submit:report.valid,updated_at:new Date().toISOString()}).eq("id",courseId);
-   await log(sb,courseId,userId,"quality_check",{valid:report.valid,error_count:errors.length,warning_count:warnings.length});
+   const report={valid:errors.length===0,errors,warnings,issues,phase,checked_at:new Date().toISOString(),calculated_duration_minutes:calculatedDuration};
+   if(publicationPhase){
+    await sb.from("courses").update({calculated_duration_minutes:calculatedDuration,ready_to_submit:report.valid,updated_at:new Date().toISOString()}).eq("id",courseId);
+    await log(sb,courseId,userId,"publication_check",{valid:report.valid,error_count:errors.length,warning_count:warnings.length});
+   }else{
+    await sb.from("courses").update({calculated_duration_minutes:calculatedDuration,quality_status:report.valid?"ready":"incomplete",quality_report:report,quality_checked_at:report.checked_at,ready_to_submit:false,updated_at:new Date().toISOString()}).eq("id",courseId);
+    await log(sb,courseId,userId,"quality_check",{valid:report.valid,error_count:errors.length,warning_count:warnings.length});
+   }
    return json({success:true,...report});
   }
   if(action==="submit_course"){
    const {data:c,error}=await sb.from("courses").select("ready_to_submit,quality_report,sale_mode,desired_price_amount,current_version,creator_context,creator_id,pricing_status,admin_selected_price_xof,is_assisted,assisted_status,version_family_id,version_number").eq("id",courseId).single();if(error)throw error;
-   if(!c.ready_to_submit)return json({success:false,errors:c.quality_report?.errors||["Exécutez le contrôle qualité et corrigez les éléments manquants."],warnings:c.quality_report?.warnings||[]},400);
-   const {data:reviewState}=await sb.from("courses").select("assessment_policy").eq("id",courseId).maybeSingle();const reviewedPolicy=reviewState?.assessment_policy&&typeof reviewState.assessment_policy==="object"?reviewState.assessment_policy:{};if(!reviewedPolicy.builder_final_reviewed_at)return json({success:false,error:"ASSESSMENT_POLICY_FINAL_REVIEW_REQUIRED",errors:["Vérifiez une dernière fois les règles d’évaluation avant la soumission."],warnings:[]},409);
+   if(!c.ready_to_submit)return json({success:false,errors:["Exécutez la vérification de Finalisation avant la publication."],warnings:[]},400);
    if(c.sale_mode==="paid"&&Number(c.desired_price_amount||0)<=0)return json({success:false,errors:["Indiquez le prix de vente souhaité dans Commercialisation."],warnings:[]},400);
    if(c.is_assisted&&!["owner_validated","pricing_review","ready_to_publish","completed"].includes(String(c.assisted_status||"")))return json({success:false,errors:["Validez d’abord le brouillon préparé par Omnia, ou demandez les corrections nécessaires."],warnings:[]},409);
    const {data:mods}=await sb.from("course_modules").select("*").eq("course_id",courseId).order("position");

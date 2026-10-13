@@ -408,9 +408,9 @@ function CpdBar({ required, spent, reached, isActive, assessmentPassed, isComple
   );
 }
 
-function CourseInfoView({ info, modules, progressPct, preview, previewMode, onStart, onSelectLesson }: {
+function CourseInfoView({ info, modules, progressPct, preview, previewMode, onStart, onSelectLesson, onBackToCourses }: {
   info: CourseInfoPayload | null; modules: ModuleItem[]; progressPct: number; preview: boolean; previewMode?: string | null;
-  onStart: () => void; onSelectLesson: (id: string) => void;
+  onStart: () => void; onSelectLesson: (id: string) => void; onBackToCourses?: () => void;
 }) {
   const course = info?.course || {};
   const creator = info?.creator || {};
@@ -442,9 +442,10 @@ function CourseInfoView({ info, modules, progressPct, preview, previewMode, onSt
     <div className="min-h-screen pb-14" style={{ background: '#F5F7FB', fontFamily: 'Inter, system-ui, sans-serif' }}>
       {preview && (
         <div className="border-b" style={{ background: '#FFFBEB', borderColor: '#F4D788' }}>
-          <div className="mx-auto flex max-w-7xl items-start gap-3 px-4 py-3 text-sm sm:px-6">
-            <ShieldCheck size={17} className="mt-0.5 shrink-0" style={{ color: '#9A6D0F' }} />
-            <div><strong style={{ color: '#7A560C' }}>Prévisualisation {previewLabel}</strong><span className="text-amber-800"> — rendu réel de la formation, sans inscription, progression, tentative ni certificat enregistrés.</span></div>
+          <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-3 px-4 py-3 text-sm sm:px-6">
+            <ShieldCheck size={17} className="shrink-0" style={{ color: '#9A6D0F' }} />
+            <div className="min-w-0 flex-1"><strong style={{ color: '#7A560C' }}>Prévisualisation {previewLabel}</strong><span className="text-amber-800"> — rendu réel de la formation, sans inscription, progression, tentative ni certificat enregistrés.</span></div>
+            {previewMode === 'admin' && onBackToCourses && <button type="button" onClick={onBackToCourses} className="inline-flex shrink-0 items-center gap-2 rounded-lg border bg-white px-3 py-2 text-xs font-bold" style={{borderColor:'#E8C96F',color:'#7A560C'}}><ArrowLeft size={14}/>Mes formations OGA</button>}
           </div>
         </div>
       )}
@@ -1186,12 +1187,13 @@ export function CoursLecteur() {
     <div className="min-h-screen bg-slate-50 px-4 py-10"><div className="mx-auto max-w-2xl rounded-2xl border bg-white p-6" style={{borderColor:'#FCA5A5'}}><div className="flex gap-3"><AlertCircle size={20} className="mt-0.5 shrink-0 text-red-600"/><div><h1 className="font-black text-[#002050]">Prévisualisation indisponible</h1><p className="mt-2 text-sm text-slate-600">{courseInfoError}</p><p className="mt-3 text-xs text-slate-500">La formation elle-même n’a pas pu être chargée. Le lecteur ne redirige plus vers une page publique qui masquerait cette erreur.</p></div></div></div></div>
   );
 
-  if (!readerStarted) return <CourseInfoView info={courseInfo} modules={modules} progressPct={progressPct} preview={isPreview} previewMode={previewMode} onStart={() => { const first = modules.flatMap(m=>m.lessons).find(l=>l.stage_type==='introduction'||l.is_intro) || modules.flatMap(m=>m.lessons)[0]; if(first) goToLesson(first.lesson_id); else setReaderStarted(true); }} onSelectLesson={goToLesson} />;
+  if (!readerStarted) return <CourseInfoView info={courseInfo} modules={modules} progressPct={progressPct} preview={isPreview} previewMode={previewMode} onStart={() => { const first = modules.flatMap(m=>m.lessons).find(l=>l.stage_type==='introduction'||l.is_intro) || modules.flatMap(m=>m.lessons)[0]; if(first) goToLesson(first.lesson_id); else setReaderStarted(true); }} onSelectLesson={goToLesson} onBackToCourses={previewMode === 'admin' ? () => navigate('/admin/studio-mes-formations') : undefined} />;
 
   return (
     <div className="oga-course-reader-shell flex flex-col" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
       {/* Header */}
       <header className="flex items-center gap-3 px-4 flex-shrink-0" style={{ backgroundColor: '#002050', height: 56 }}>
+        {previewMode === 'admin' && <button type="button" onClick={() => navigate('/admin/studio-mes-formations')} className="inline-flex items-center gap-2 rounded-lg border border-white/20 px-2.5 py-1.5 hover:bg-white/10 transition-colors" title="Retour à Mes formations OGA" aria-label="Retour à Mes formations OGA"><ArrowLeft size={17} className="text-white"/><span className="hidden lg:inline text-xs font-semibold text-white">Mes formations OGA</span></button>}
         <button
           onClick={() => { setReaderStarted(false); setCurrentLessonId(null); navigate(`/cours/${courseId}/apprendre${previewRouteQuery}`, { replace: true }); }}
           className="inline-flex items-center gap-2 rounded-lg px-2.5 py-1.5 hover:bg-white/10 transition-colors"

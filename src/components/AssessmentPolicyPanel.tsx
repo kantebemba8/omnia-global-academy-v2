@@ -110,7 +110,7 @@ async function call(action: string, payload: Record<string, unknown>) {
   return data;
 }
 
-export function AssessmentPolicyPanel({ courseId, locked, onClose, onSaved }: { courseId: string; locked?: boolean; onClose: () => void; onSaved?: (policy: Record<string, unknown>) => void }) {
+export function AssessmentPolicyPanel({ courseId, locked, advancedMode = false, onClose, onSaved }: { courseId: string; locked?: boolean; advancedMode?: boolean; onClose: () => void; onSaved?: (policy: Record<string, unknown>) => void }) {
   const [rows, setRows] = useState<AssessmentRow[]>([]);
   const [frameworks, setFrameworks] = useState<Framework[]>([]);
   const [loading, setLoading] = useState(true);
@@ -129,12 +129,14 @@ export function AssessmentPolicyPanel({ courseId, locked, onClose, onSaved }: { 
     setError('');
     setFrameworkWarning('');
     try {
-      const catalogPromise = assessmentGovernanceCall<any>('framework_catalog').catch((caught) => {
-        setFrameworkWarning(caught instanceof Error
-          ? `Référentiels indisponibles : ${caught.message}`
-          : 'Les référentiels de compétences sont temporairement indisponibles.');
-        return { frameworks: [] };
-      });
+      const catalogPromise = advancedMode
+        ? assessmentGovernanceCall<any>('framework_catalog').catch((caught) => {
+            setFrameworkWarning(caught instanceof Error
+              ? `Référentiels indisponibles : ${caught.message}`
+              : 'Les référentiels de compétences sont temporairement indisponibles.');
+            return { frameworks: [] };
+          })
+        : Promise.resolve({ frameworks: [] });
 
       // Lire d'abord la configuration persistée. Une réconciliation complète ne doit
       // jamais bloquer l'ouverture d'un panneau qui possède déjà ses évaluations.
@@ -188,7 +190,7 @@ export function AssessmentPolicyPanel({ courseId, locked, onClose, onSaved }: { 
     } finally {
       setLoading(false);
     }
-  }, [courseId, locked]);
+  }, [courseId, locked, advancedMode]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -264,8 +266,8 @@ export function AssessmentPolicyPanel({ courseId, locked, onClose, onSaved }: { 
       <div role="dialog" aria-modal="true" aria-labelledby="assessment-policy-title" className="flex max-h-[100dvh] w-full max-w-7xl flex-col overflow-hidden bg-white shadow-2xl sm:max-h-[calc(100dvh-2rem)] sm:rounded-2xl">
         <div className="flex flex-shrink-0 items-start justify-between gap-4 border-b px-4 py-4 sm:px-6 sm:py-5" style={{ borderColor: BORDER }}>
           <div>
-            <h2 id="assessment-policy-title" className="text-lg font-bold" style={{ color: BLUE }}>Évaluations, tentatives, jurys et compétences</h2>
-            <p className="mt-1 max-w-4xl text-sm text-gray-600">Configurez chaque évaluation. Le Centre Qualité valide ensuite la surveillance, les jurys, les révisions, la remédiation et les compétences réellement évaluées.</p>
+            <h2 id="assessment-policy-title" className="text-lg font-bold" style={{ color: BLUE }}>{advancedMode ? 'Évaluations — paramètres avancés' : 'Progression & évaluations'}</h2>
+            <p className="mt-1 max-w-4xl text-sm text-gray-600">{advancedMode ? 'Configurez les règles avancées uniquement lorsque votre parcours en a réellement besoin.' : 'Réglez uniquement ce qui est nécessaire pour la progression : caractère obligatoire, seuil de réussite et reprises.'}</p>
           </div>
           <button onClick={onClose} className="rounded-lg p-2 hover:bg-gray-100" aria-label="Fermer"><X size={20} /></button>
         </div>
@@ -293,13 +295,13 @@ export function AssessmentPolicyPanel({ courseId, locked, onClose, onSaved }: { 
             </div>
           </div>
 
-          <div className="mb-5 grid gap-3 md:grid-cols-5">
+          {advancedMode && <div className="mb-5 grid gap-3 md:grid-cols-5">
             <Info icon={RotateCcw} title="Tentatives" text="La remédiation remplace le blocage définitif pour une formation achetée." />
             <Info icon={ShieldCheck} title="Contrôle qualité" text="L’Administration Omnia valide les règles proposées avant publication." />
             <Info icon={Monitor} title="Sessions" text="Les examens officiels peuvent être programmés à une date précise." />
             <Info icon={Users} title="Jurys" text="Un jury limité à l’épreuve peut être exigé sans créer un rôle permanent." />
             <Info icon={CheckCircle2} title="Compétences" text="Seules les compétences mappées et réellement réussies sont vérifiées." />
-          </div>
+          </div>}
 
           {loading ? (
             <div className="flex items-center justify-center gap-2 py-16 text-sm text-gray-500" role="status" aria-live="polite"><Loader2 className="animate-spin" size={18} />Chargement des règles…</div>
@@ -319,9 +321,9 @@ export function AssessmentPolicyPanel({ courseId, locked, onClose, onSaved }: { 
             </div>
           ) : (
             <div className="space-y-7">
-              <AssessmentGroup title="Évaluations des leçons" rows={groups.lesson} frameworks={frameworks} locked={locked} onUpdate={update} />
-              <AssessmentGroup title="Évaluations des modules" rows={groups.module} frameworks={frameworks} locked={locked} onUpdate={update} />
-              <AssessmentGroup title="Examen final" rows={groups.final} frameworks={frameworks} locked={locked} onUpdate={update} />
+              <AssessmentGroup title="Évaluations des leçons" rows={groups.lesson} frameworks={frameworks} locked={locked} advancedMode={advancedMode} onUpdate={update} />
+              <AssessmentGroup title="Évaluations des modules" rows={groups.module} frameworks={frameworks} locked={locked} advancedMode={advancedMode} onUpdate={update} />
+              <AssessmentGroup title="Examen final" rows={groups.final} frameworks={frameworks} locked={locked} advancedMode={advancedMode} onUpdate={update} />
             </div>
           )}
 
@@ -339,7 +341,7 @@ export function AssessmentPolicyPanel({ courseId, locked, onClose, onSaved }: { 
   );
 }
 
-function AssessmentGroup({ title, rows, frameworks, locked, onUpdate }: { title: string; rows: AssessmentRow[]; frameworks: Framework[]; locked?: boolean; onUpdate: (id: string, patch: Partial<AssessmentRow>) => void }) {
+function AssessmentGroup({ title, rows, frameworks, locked, advancedMode, onUpdate }: { title: string; rows: AssessmentRow[]; frameworks: Framework[]; locked?: boolean; advancedMode: boolean; onUpdate: (id: string, patch: Partial<AssessmentRow>) => void }) {
   if (!rows.length) return null;
   return (
     <section>
@@ -351,10 +353,11 @@ function AssessmentGroup({ title, rows, frameworks, locked, onUpdate }: { title:
         return (
           <div key={row.id} className="rounded-xl border p-4" style={{ borderColor: BORDER }}>
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-              <div><p className="font-medium" style={{ color: BLUE }}>{row.title}</p><p className="mt-1 text-xs text-gray-500">Niveau de surveillance proposé : {row.security_level}/4</p></div>
+              <div><p className="font-medium" style={{ color: BLUE }}>{row.title}</p>{advancedMode && <p className="mt-1 text-xs text-gray-500">Niveau de surveillance proposé : {row.security_level}/4</p>}</div>
               <label className="inline-flex items-center gap-2 text-xs font-semibold text-gray-600"><input type="checkbox" checked={row.required !== false} disabled={locked} onChange={event => onUpdate(row.id, { required: event.target.checked })} /> Obligatoire</label>
             </div>
 
+            {advancedMode ? <>
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
               <SelectField label="Type d’évaluation" value={row.assessment_type} disabled={locked} onChange={value => onUpdate(row.id, { assessment_type: value as AssessmentRow['assessment_type'] })} options={[
                 ['quiz', 'Quiz'], ['exam', 'Examen'], ['case_study', 'Étude de cas'], ['project', 'Projet'], ['practical', 'Épreuve pratique'], ['oral', 'Oral / soutenance'], ['assignment', 'Travail à remettre'],
@@ -450,6 +453,16 @@ function AssessmentGroup({ title, rows, frameworks, locked, onUpdate }: { title:
             </div>
             </details>
             <TextField className="mt-4" label="Instructions après un échec" value={row.retry_instructions || ''} disabled={locked} onChange={value => onUpdate(row.id, { retry_instructions: value })} placeholder="Ex. Revoyez le module avant de reprendre l’évaluation." />
+            </> : <>
+              <div className="grid gap-4 md:grid-cols-3">
+                <NumberField label="Seuil de réussite (%)" value={row.passing_score} min={1} max={100} disabled={locked} onChange={value => onUpdate(row.id, { passing_score: value })} />
+                <NumberField label="Nombre de tentatives" value={row.remediation_after_attempts} min={1} disabled={locked} onChange={value => onUpdate(row.id, { remediation_after_attempts: value, max_attempts: value })} />
+                <NumberField label="Délai avant reprise (heures)" value={row.retry_cooldown_hours} min={0} disabled={locked} onChange={value => onUpdate(row.id, { retry_cooldown_hours: value })} />
+              </div>
+              <div className="mt-4 rounded-xl border bg-slate-50 p-3 text-xs leading-5 text-slate-600" style={{ borderColor: BORDER }}>
+                Les questions et activités officielles se construisent dans le sous-espace <strong>Évaluation</strong> du Builder. Passez en <strong>Mode avancé</strong> uniquement pour la surveillance, les sessions, jurys, compétences, randomisation et règles d’intégrité.
+              </div>
+            </>}
           </div>
         );
       })}</div>

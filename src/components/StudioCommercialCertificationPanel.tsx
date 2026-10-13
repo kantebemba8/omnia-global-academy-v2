@@ -15,7 +15,7 @@ async function call(action:string, body:Record<string,unknown>={}){
   return data;
 }
 
-type Props={course:any;locked?:boolean;onPatch:(patch:Record<string,unknown>)=>void;onSaved?:(message:string)=>void};
+type Props={course:any;locked?:boolean;advancedMode?:boolean;onPatch:(patch:Record<string,unknown>)=>void;onSaved?:(message:string)=>void};
 type OrganizationOption={
   key:string;source:'certification_organization'|'recognition_partner';organization_id?:string|null;
   recognition_partner_id?:string|null;recognition_program_id?:string|null;name:string;type:string;
@@ -31,7 +31,7 @@ type CertDraft={registry_key:string;type:string;organization_id:string;recogniti
 
 const emptyCert:CertDraft={registry_key:'custom',type:'other',organization_id:'',recognition_partner_id:'',recognition_program_id:'',organization_name:'',certification_name:'',code:'',credit_value:'',credit_unit:'heures de formation',expires_at:'',verification_url:'',logo_url:'',badge_url:'',signature_url:'',stamp_url:'',display_on_course:true,display_on_certificate:true,use_registry_assets:true};
 
-export default function StudioCommercialCertificationPanel({course,locked=false,onPatch,onSaved}:Props){
+export default function StudioCommercialCertificationPanel({course,locked=false,advancedMode=false,onPatch,onSaved}:Props){
   const isProfessor = typeof window !== 'undefined' && window.location.pathname.includes('/professeur/');
   const [saving,setSaving]=useState(false);
   const [rules,setRules]=useState<any>(null);
@@ -57,6 +57,17 @@ export default function StudioCommercialCertificationPanel({course,locked=false,
     const option=organizations.find(item=>item.key===key);
     if(!option){setNewCert({...emptyCert,registry_key:'custom'});return;}
     setNewCert(current=>({...current,registry_key:key,type:option.type||'partner',organization_id:option.organization_id||'',recognition_partner_id:option.recognition_partner_id||'',recognition_program_id:option.recognition_program_id||'',organization_name:option.name,certification_name:option.default_certification_name||current.certification_name||`Certification ${option.name}`,credit_value:option.credit_value==null?'':String(option.credit_value),credit_unit:option.credit_unit||current.credit_unit,verification_url:option.website_url||'',logo_url:option.logo_url||'',badge_url:option.badge_url||'',signature_url:option.signature_url||'',stamp_url:option.stamp_url||'',use_registry_assets:true}));
+  }
+
+  async function chooseCertificateMode(mode:'omnia'|'external'|'none'){
+    onPatch({certificate_mode:mode,certification_requested:mode==='external'});
+    if(!course.id) return;
+    setSaving(true);
+    try{
+      const d=await call('update_course',{course_id:course.id,certificate_mode:mode,certification_requested:mode==='external'});
+      if(d.course) onPatch(d.course);
+      onSaved?.('Choix de certification enregistré.');
+    }catch(e:any){onSaved?.(e.message)}finally{setSaving(false)}
   }
 
   async function saveCommercial(){
@@ -88,7 +99,7 @@ export default function StudioCommercialCertificationPanel({course,locked=false,
 
   return <div className="space-y-4">
     <div className="rounded-xl border bg-white p-4" style={{borderColor:BORDER}}>
-      <div className="flex items-center gap-2"><Wallet size={17} color={GOLD}/><h3 className="text-sm font-semibold" style={{color:BLUE}}>Commercialisation</h3></div>
+      <div className="flex items-center gap-2"><Wallet size={17} color={GOLD}/><h3 className="text-sm font-semibold" style={{color:BLUE}}>2 · Commercialisation & accès</h3></div>
       <p className="mt-1 text-xs text-gray-500">Définissez le prix public souhaité. La répartition réelle est appliquée depuis les règles administratives déjà configurées.</p>
       <div className="mt-4 grid gap-3 md:grid-cols-2">
         <label className="text-xs font-medium text-gray-600">Mode de vente<select disabled={locked} value={course.sale_mode||'paid'} onChange={e=>onPatch({sale_mode:e.target.value})} className="mt-1 w-full rounded-lg border px-3 py-2 text-sm" style={{borderColor:BORDER}}><option value="paid">Payante</option><option value="free">Gratuite</option></select></label>
@@ -96,24 +107,24 @@ export default function StudioCommercialCertificationPanel({course,locked=false,
         <label className="text-xs font-medium text-gray-600">Devise<select disabled={locked} value={course.sale_currency||'XOF'} onChange={e=>onPatch({sale_currency:e.target.value})} className="mt-1 w-full rounded-lg border px-3 py-2 text-sm" style={{borderColor:BORDER}}><option>XOF</option><option>EUR</option><option>USD</option></select></label>
         {course.sale_mode!=='free'&&<label className="text-xs font-medium text-gray-600">Prix promotionnel facultatif<input disabled={locked} type="number" min="0" value={course.promotion_price_amount||''} onChange={e=>onPatch({promotion_price_amount:e.target.value})} className="mt-1 w-full rounded-lg border px-3 py-2 text-sm" style={{borderColor:BORDER}}/></label>}
       </div>
-      {professorShare&&<div className="mt-3 rounded-lg bg-amber-50 p-3 text-xs text-amber-900">Règle actuelle : créateur {professorShare.professeur??professorShare.structure??0}% · plateforme {professorShare.plateforme??0}%. Cette information vient des réglages de l’Administration Omnia.</div>}
+      {advancedMode&&professorShare&&<div className="mt-3 rounded-lg bg-amber-50 p-3 text-xs text-amber-900">Règle actuelle : créateur {professorShare.professeur??professorShare.structure??0}% · plateforme {professorShare.plateforme??0}%. Cette information vient des réglages de l’Administration Omnia.</div>}
       <button disabled={saving||locked} onClick={saveCommercial} className="mt-3 inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold text-white disabled:opacity-50" style={{background:BLUE}}><Save size={14}/>Enregistrer la commercialisation</button>
     </div>
 
-    <div className="rounded-xl border bg-white p-4" style={{borderColor:BORDER}}>
-      <div className="flex items-center gap-2"><Link2 size={17} color={GOLD}/><h3 className="text-sm font-semibold" style={{color:BLUE}}>Lives & Replays inclus</h3></div>
+    {advancedMode && <div className="rounded-xl border bg-white p-4" style={{borderColor:BORDER}}>
+      <div className="flex items-center gap-2"><Link2 size={17} color={GOLD}/><h3 className="text-sm font-semibold" style={{color:BLUE}}>Option avancée · Lives & Replays inclus</h3></div>
       <p className="mt-1 text-xs text-gray-500">Reliez sans duplication un Live, une formation synchrone ou un Replay Omnia Live. Toute inscription à cette formation accordera automatiquement l’accès correspondant.</p>
       <div className="mt-3 grid gap-2 md:grid-cols-[1fr_110px_auto]"><select disabled={locked||saving} value={linkTarget} onChange={e=>setLinkTarget(e.target.value)} className="rounded-lg border px-3 py-2 text-sm" style={{borderColor:BORDER}}><option value="">Choisir un contenu Omnia Live</option>{liveOptions.events.map(ev=><option key={`event:${ev.id}`} value={`event:${ev.id}`}>Live · {ev.title} · {String(ev.delivery_type||'').replaceAll('_',' ')}</option>)}{liveOptions.media.map(m=><option key={`media:${m.id}`} value={`media:${m.id}`}>{m.media_type==='replay'?'Replay':'Vidéo'} · {m.title||'Sans titre'}</option>)}</select><input disabled={locked||saving} type="number" min="0" value={linkPosition} onChange={e=>setLinkPosition(e.target.value)} className="rounded-lg border px-3 py-2 text-sm" style={{borderColor:BORDER}} placeholder="Ordre"/><button disabled={locked||saving||!linkTarget} onClick={addLiveLink} className="rounded-lg px-3 py-2 text-xs font-semibold text-white disabled:opacity-50" style={{background:BLUE}}>Relier</button></div>
       {liveLinks.length>0&&<div className="mt-3 divide-y rounded-lg border" style={{borderColor:BORDER}}>{liveLinks.map(link=>{const ev=link.live_events;const media=link.live_media;return <div key={link.id} className="flex items-center gap-3 px-3 py-2 text-sm"><span className="shrink-0" style={{color:GOLD}}>{media?<Video size={15}/>:<Radio size={15}/>}</span><div className="min-w-0 flex-1"><p className="truncate font-medium" style={{color:BLUE}}>{link.title_override||media?.title||ev?.title||'Contenu Omnia Live'}</p><p className="text-[11px] text-gray-500">{media?(media.media_type==='replay'?'Replay':'Vidéo'):String(ev?.delivery_type||'Live').replaceAll('_',' ')} · ordre {link.position||0}</p></div><button disabled={locked||saving} onClick={()=>removeLiveLink(link.id)} className="p-1 text-red-600 disabled:opacity-40" title="Retirer la liaison"><Trash2 size={14}/></button></div>})}</div>}
-    </div>
+        </div>}
 
 
 
     <div className="rounded-xl border bg-white p-4" style={{borderColor:BORDER}}>
-      <div className="flex items-center gap-2"><ShieldCheck size={17} color={GOLD}/><h3 className="text-sm font-semibold" style={{color:BLUE}}>Certification</h3></div>
+      <div className="flex items-center gap-2"><ShieldCheck size={17} color={GOLD}/><h3 className="text-sm font-semibold" style={{color:BLUE}}>3 · Certification & reconnaissance</h3></div>
       <p className="mt-1 text-xs text-gray-500">Choisissez ce que reçoit l’apprenant après réussite. Les détails externes ne sont demandés que lorsqu’ils sont réellement nécessaires.</p>
       <div className="mt-3 grid gap-2 sm:grid-cols-3">
-        {[['omnia','Certificat Omnia'],['external','Omnia + certification externe'],['none','Aucun certificat']].map(([value,label])=><label key={value} className={`rounded-xl border p-3 text-xs font-semibold ${course.certificate_mode===value||(!course.certificate_mode&&value==='omnia')?'bg-blue-50':'bg-white'}`} style={{borderColor:course.certificate_mode===value||(!course.certificate_mode&&value==='omnia')?BLUE:BORDER,color:BLUE}}><input type="radio" className="mr-2" name="certificate-mode" value={value} disabled={locked} checked={(course.certificate_mode||'omnia')===value} onChange={()=>onPatch({certificate_mode:value,certification_requested:value==='external'})}/>{label}</label>)}
+        {[['omnia','Certificat Omnia'],['external','Omnia + certification externe'],['none','Aucun certificat']].map(([value,label])=><label key={value} className={`rounded-xl border p-3 text-xs font-semibold ${course.certificate_mode===value||(!course.certificate_mode&&value==='omnia')?'bg-blue-50':'bg-white'}`} style={{borderColor:course.certificate_mode===value||(!course.certificate_mode&&value==='omnia')?BLUE:BORDER,color:BLUE}}><input type="radio" className="mr-2" name="certificate-mode" value={value} disabled={locked} checked={(course.certificate_mode||'omnia')===value} onChange={()=>void chooseCertificateMode(value as 'omnia'|'external'|'none')}/>{label}</label>)}
       </div>
     </div>
 
