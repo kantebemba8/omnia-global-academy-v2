@@ -34,7 +34,7 @@ async function gradeQualitativeTraining(sb:any,params:{userId:string;courseId:st
  try{const result=await runAnthropicText(sb,{context:{module:"formation",action:"training_ai_grading",userId:params.userId,courseId:params.courseId,lessonId:params.lessonId,blockId:String(params.block.id)},system,prompt,tier:"quality",effort:"low",maxTokens:900});const parsed=safeTrainingJson(result.text);if(!parsed||!Number.isFinite(Number(parsed.score)))return {ok:false,error:"AI_INVALID_GRADING_RESPONSE"};return {ok:true,score:Math.max(0,Math.min(100,Math.round(Number(parsed.score)))),feedback:String(parsed.feedback||""),provider:result.provider,model:result.model}}catch(error){const payload=aiErrorPayload(error);return {ok:false,error:payload.error||"AI_GRADING_FAILED",message:payload.message||"La correction IA est momentanément indisponible."}}
 }
 async function computeLessonGate(sb:any,userId:string,courseId:string,lessonId:string){
- const {data:lesson}=await sb.from("course_lessons").select("id,cpd_calculated_time_seconds").eq("id",lessonId).maybeSingle();
+ const {data:lesson}=await sb.from("course_lessons").select("id,cpd_calculated_time_seconds,stage_type,is_intro,is_module_intro,is_conclusion,is_final_exam").eq("id",lessonId).maybeSingle();
  if(!lesson)return {completed:false,cpdReached:false,timeSpent:0,required:0,trainingPassed:false,trainingRequired:0,trainingPassedCount:0,assessmentPassed:false,assessmentRequired:false,assessmentExists:false};
  const {data:progress}=await sb.from("user_lesson_progress").select("time_spent_seconds,quiz_passed,is_completed").eq("user_id",userId).eq("lesson_id",lessonId).maybeSingle();
  const timeSpent=Number(progress?.time_spent_seconds||0),required=Number(lesson.cpd_calculated_time_seconds||0),cpdReached=required===0||timeSpent>=required;
@@ -42,7 +42,8 @@ async function computeLessonGate(sb:any,userId:string,courseId:string,lessonId:s
  const requiredIds=(trainingBlocks||[]).map((b:any)=>b.id);const satisfiedIds=new Set<string>();
  if(requiredIds.length){const {data:attempts}=await sb.from("training_attempts").select("block_id,passed").eq("user_id",userId).eq("lesson_id",lessonId).in("block_id",requiredIds);const attemptedIds=new Set((attempts||[]).map((a:any)=>String(a.block_id)));const passedIds=new Set((attempts||[]).filter((a:any)=>a.passed===true).map((a:any)=>String(a.block_id)));for(const block of trainingBlocks||[]){const id=String(block.id);if(block.training_is_graded===false?attemptedIds.has(id):passedIds.has(id))satisfiedIds.add(id);}}
  const trainingRequired=requiredIds.length,trainingPassedCount=satisfiedIds.size,trainingPassed=trainingRequired===0||trainingPassedCount===trainingRequired;
- const {data:assessment}=await sb.from("course_assessments").select("id,required").eq("course_id",courseId).eq("lesson_id",lessonId).eq("scope","lesson").eq("is_active",true).maybeSingle();
+ const effectiveStage=String(lesson.stage_type||(lesson.is_intro?"introduction":lesson.is_module_intro?"module_presentation":lesson.is_conclusion?"conclusion":lesson.is_final_exam?"final_exam":"lesson"));
+ const {data:assessment}=effectiveStage==="lesson"?await sb.from("course_assessments").select("id,required").eq("course_id",courseId).eq("lesson_id",lessonId).eq("scope","lesson").eq("is_active",true).maybeSingle():{data:null};
  let assessmentPassed=false;if(assessment){const {data:passed}=await sb.from("assessment_attempts").select("id").eq("assessment_id",assessment.id).eq("user_id",userId).eq("passed",true).limit(1).maybeSingle();assessmentPassed=!!passed;}
  const assessmentRequired=Boolean(assessment?.required);
  const completed=cpdReached&&trainingPassed&&(!assessmentRequired||assessmentPassed);
@@ -164,7 +165,7 @@ Deno.serve(async(req:Request)=>{
    }
   }
   const gate=previewAllowed?{timeSpent:0,required:Number(lesson.cpd_calculated_time_seconds||0),cpdReached:false,completed:false,assessmentPassed:false,assessmentRequired:false,assessmentExists:false,trainingPassed:false,trainingRequired:0,trainingPassedCount:0}:await computeLessonGate(sb,userId,courseId,lessonId);
-  if(previewAllowed){const {data:previewAssessment}=await sb.from("course_assessments").select("id,required").eq("course_id",courseId).eq("lesson_id",lessonId).eq("scope","lesson").eq("is_active",true).maybeSingle();(gate as any).assessmentExists=Boolean(previewAssessment);(gate as any).assessmentRequired=Boolean(previewAssessment?.required);}
+  if(previewAllowed){const previewStage=String(lesson.stage_type||(lesson.is_intro?"introduction":lesson.is_module_intro?"module_presentation":lesson.is_conclusion?"conclusion":lesson.is_final_exam?"final_exam":"lesson"));const {data:previewAssessment}=previewStage==="lesson"?await sb.from("course_assessments").select("id,required").eq("course_id",courseId).eq("lesson_id",lessonId).eq("scope","lesson").eq("is_active",true).maybeSingle():{data:null};(gate as any).assessmentExists=Boolean(previewAssessment);(gate as any).assessmentRequired=Boolean(previewAssessment?.required);}
   const {timeSpent,required,cpdReached,completed,assessmentPassed,assessmentRequired,trainingPassed,trainingRequired,trainingPassedCount}=gate;
   const quizPassed=!assessmentRequired||assessmentPassed;
   const [{data:viewerUser},{data:viewerProfile}]=await Promise.all([

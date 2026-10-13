@@ -228,6 +228,7 @@ export default function StudioConceptionFormation() {
   const blockSaveQueues = useRef<Record<string, Promise<any>>>({});
   const [selectedBlock, setSelectedBlock] = useState<Block | null>(null);
   const [selectedBlockDef, setSelectedBlockDef] = useState<typeof BLOCK_DEFS[0] | null>(null);
+  const [assessmentWorkspace, setAssessmentWorkspace] = useState<{ scope: 'lesson'|'module'|'final'; lessonId: string; moduleId: string } | null>(null);
 
   // UI
   const [loading, setLoading] = useState(true);
@@ -419,11 +420,20 @@ export default function StudioConceptionFormation() {
 
   // ─── Sélection leçon ──────────────────────────────────────
   async function selectLesson(mod: Module, lesson: Lesson) {
+    setAssessmentWorkspace(null);
     setCurrentModule(mod);
     setCurrentLesson(lesson);
     setSelectedBlock(null);
     setBlocks([]);
     await loadBlocks(lesson.id);
+  }
+
+  async function selectAssessmentWorkspace(mod: Module, lesson: Lesson, scope: 'lesson'|'module'|'final') {
+    await selectLesson(mod, lesson);
+    setAssessmentWorkspace({ scope, lessonId: lesson.id, moduleId: mod.id });
+    setActiveLibTab('blocs');
+    setSelectedBlock(null);
+    setSelectedBlockDef(null);
   }
 
   const sectionTypeOf = (m: Module) => m.section_type || (m.is_intro ? 'introduction' : m.is_conclusion ? 'conclusion' : m.is_final_exam ? 'final_exam' : 'module');
@@ -514,10 +524,15 @@ export default function StudioConceptionFormation() {
     if (!course?.id || !currentModule?.id || !currentLesson?.id) {
       showToast('Sélectionnez d\'abord une leçon', 'error'); return;
     }
+    if (assessmentWorkspace && !ASSESSMENT_CAPABLE_BLOCKS.has(blockType)) {
+      showToast('Dans le sous-espace Évaluation, ajoutez uniquement un bloc pouvant servir de question officielle.', 'error');
+      return;
+    }
     const defaultContent = contentDefaultForLanguage(getDefaultContent(blockType), course.language || 'fr');
     const data = await api('create_block', {
       course_id: course.id, module_id: currentModule.id, lesson_id: currentLesson.id,
       block_type: blockType, content_json: defaultContent, settings_json: {},
+      ...(assessmentWorkspace ? { interaction_mode: 'assessment', assessment_scope: assessmentWorkspace.scope } : {}),
     });
     if (data.success) {
       setBlocks(bs => [...bs, data.block]);
@@ -921,15 +936,20 @@ export default function StudioConceptionFormation() {
   const locked = ['pending_validation', 'validated', 'suspended'].includes(course.studio_status || '') || (course.studio_status === 'published' && !publishedSuperAdminEditable);
   const workflowLocked = ['pending_validation', 'validated', 'published', 'suspended'].includes(course.studio_status || '');
   const statusCfg = STATUS_CFG[course.studio_status || 'draft'] || STATUS_CFG.draft;
-  const visibleBlocks = BLOCK_DEFS;
+  const visibleBlocks = assessmentWorkspace
+    ? BLOCK_DEFS.filter(def => ASSESSMENT_CAPABLE_BLOCKS.has(def.type))
+    : BLOCK_DEFS;
+  const displayedBlocks = assessmentWorkspace
+    ? blocks.filter(block => block.interaction_mode === 'assessment')
+    : blocks.filter(block => block.interaction_mode !== 'assessment');
 
   const quickBlockMatches = quickBlockQuery.trim()
-    ? BLOCK_DEFS.filter(def => {
+    ? visibleBlocks.filter(def => {
         const query = quickBlockQuery.trim().toLowerCase().replace(/^\//, '');
         const aliases = BLOCK_SEARCH_ALIASES[def.type] || [];
         return def.label.toLowerCase().includes(query) || def.type.toLowerCase().includes(query) || aliases.some(alias => alias.toLowerCase().includes(query));
       }).slice(0, 8)
-    : BLOCK_DEFS.filter(def => ESSENTIAL_BLOCK_TYPES.includes(def.type)).slice(0, 8);
+    : (assessmentWorkspace ? visibleBlocks : visibleBlocks.filter(def => ESSENTIAL_BLOCK_TYPES.includes(def.type))).slice(0, 8);
 
   if (loading) {
     return (
@@ -1055,7 +1075,7 @@ export default function StudioConceptionFormation() {
           {/* Tabs bibliothèque */}
           <div className="flex items-center border-b" style={{ borderColor: '#E4E7EC' }}>
             <button type="button" onClick={() => setMobileLibraryOpen(false)} className="ml-2 rounded-lg p-2 text-slate-500 md:hidden" aria-label="Fermer la bibliothèque"><X size={16} /></button>
-            {(['blocs', 'sections', 'templates'] as const).map(tab => (
+            {(assessmentWorkspace ? (['blocs'] as const) : (['blocs', 'sections', 'templates'] as const)).map(tab => (
               <button key={tab} onClick={() => setActiveLibTab(tab)}
                 className="flex-1 py-2.5 text-xs font-semibold capitalize transition-all"
                 style={activeLibTab === tab ? { color: '#002050', borderBottom: '2px solid #BF8813' } : { color: '#9CA3AF' }}>
@@ -1245,6 +1265,12 @@ export default function StudioConceptionFormation() {
                           : { borderColor: lesson.is_module_intro ? '#BF8813' : '#E4E7EC', color: lesson.is_module_intro ? '#92400E' : '#6B7280', background: lesson.is_module_intro ? '#FFFBEB' : 'white' }}>
                         {lesson.title}
                       </button>
+                      {stageTypeOf(lesson) === 'lesson' && (
+                        <button type="button" onClick={() => selectAssessmentWorkspace(mod, lesson, 'lesson')} disabled={locked} className="text-[10px] px-1.5 py-0.5 rounded-full border" style={assessmentWorkspace?.lessonId===lesson.id&&assessmentWorkspace.scope==='lesson'?{background:'#7C3AED',color:'white',borderColor:'#7C3AED'}:{borderColor:'#DDD6FE',color:'#6D28D9',background:'#F5F3FF'}}>Évaluation</button>
+                      )}
+                      {stageTypeOf(lesson) === 'module_summary' && (
+                        <button type="button" onClick={() => selectAssessmentWorkspace(mod, lesson, 'module')} disabled={locked} className="text-[10px] px-1.5 py-0.5 rounded-full border" style={assessmentWorkspace?.lessonId===lesson.id&&assessmentWorkspace.scope==='module'?{background:'#7C3AED',color:'white',borderColor:'#7C3AED'}:{borderColor:'#DDD6FE',color:'#6D28D9',background:'#F5F3FF'}}>Évaluation module</button>
+                      )}
                       {!mod.is_intro && !mod.is_conclusion && !mod.is_final_exam && (
                         <button type="button" onClick={() => deleteLesson(mod, lesson)} disabled={locked} className="rounded-full p-0.5 text-red-500 hover:bg-red-50" title="Supprimer cette étape"><Trash2 size={10}/></button>
                       )}
@@ -1286,7 +1312,10 @@ export default function StudioConceptionFormation() {
                   />
                   <div className="flex gap-1">
                     {(mod.lessons||[]).map(lesson => (
-                      <button key={lesson.id} onClick={()=>{setShowFinalization(false);selectLesson(mod,lesson);}} className="text-xs px-2 py-0.5 rounded-full border transition-all" style={currentLesson?.id===lesson.id?{background:'#002050',color:'white',borderColor:'#002050'}:{borderColor:'#E4E7EC',color:'#6B7280',background:'white'}}>{lesson.title}</button>
+                      <span key={lesson.id} className="inline-flex items-center gap-1">
+                        <button onClick={()=>{setShowFinalization(false);selectLesson(mod,lesson);}} className="text-xs px-2 py-0.5 rounded-full border transition-all" style={currentLesson?.id===lesson.id&&!assessmentWorkspace?{background:'#002050',color:'white',borderColor:'#002050'}:{borderColor:'#E4E7EC',color:'#6B7280',background:'white'}}>{lesson.title}</button>
+                        {stageTypeOf(lesson)==='final_exam' && <button type="button" onClick={()=>selectAssessmentWorkspace(mod,lesson,'final')} disabled={locked} className="text-[10px] px-1.5 py-0.5 rounded-full border" style={assessmentWorkspace?.lessonId===lesson.id&&assessmentWorkspace.scope==='final'?{background:'#7C3AED',color:'white',borderColor:'#7C3AED'}:{borderColor:'#DDD6FE',color:'#6D28D9',background:'#F5F3FF'}}>Épreuve officielle</button>}
+                      </span>
                     ))}
                   </div>
                 </div>
@@ -1478,7 +1507,13 @@ export default function StudioConceptionFormation() {
                       }
                     }}
                     disabled={locked} spellCheck lang={course?.instruction_language || course?.language || 'fr'} />
-                  {!locked && course.id && (
+                  {assessmentWorkspace && (
+                    <div className="mt-3 rounded-xl border px-3 py-2" style={{borderColor:'#DDD6FE',background:'#F5F3FF'}}>
+                      <p className="text-xs font-bold" style={{color:'#6D28D9'}}>{assessmentWorkspace.scope==='lesson'?'Sous-espace · Évaluation de la leçon':assessmentWorkspace.scope==='module'?'Sous-espace · Évaluation du module':'Sous-espace · Épreuve officielle finale'}</p>
+                      <p className="mt-1 text-[11px] text-slate-500">Ajoutez ici uniquement les questions de l’évaluation officielle. Elles ne seront pas répétées dans le contenu pédagogique.</p>
+                    </div>
+                  )}
+                  {!assessmentWorkspace && !locked && course.id && (
                     <div className="mt-3 flex flex-wrap items-center gap-3">
                       <button type="button" onClick={() => setBuilderImportTarget({ type: 'lesson', id: currentLesson.id })} className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold" style={{ borderColor: '#E4E7EC', color: '#002050' }}>
                         <UploadCloud size={13} /> Importer un document dans cette leçon
@@ -1514,7 +1549,8 @@ export default function StudioConceptionFormation() {
 
                 {/* Blocs */}
                 <div className="space-y-3">
-                  {blocks.map((block, idx) => {
+                  {displayedBlocks.map((block) => {
+                    const idx = blocks.findIndex(item => item.id === block.id);
                     const def = BLOCK_DEFS.find(d => d.type === block.block_type);
                     const isSelected = selectedBlock?.id === block.id;
                     return (
@@ -1602,7 +1638,7 @@ export default function StudioConceptionFormation() {
                         />
                         <button type="button" onClick={() => setMobileLibraryOpen(true)} className="rounded-lg border px-2.5 py-1.5 text-xs font-semibold" style={{ borderColor: '#E4E7EC', color: '#002050' }}>Tous les blocs</button>
                       </div>
-                      {(quickBlockQuery.trim() || blocks.length === 0) && (
+                      {(quickBlockQuery.trim() || displayedBlocks.length === 0) && (
                         <div className="mt-2 flex flex-wrap gap-2">
                           {quickBlockMatches.map(def => <button key={def.type} type="button" onClick={async()=>{await addBlock(def.type);setQuickBlockQuery('');}} className="flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium" style={{ borderColor: '#E4E7EC', color: '#374151' }}><def.icon size={12} style={{ color: def.color }}/>{def.label}</button>)}
                         </div>
@@ -1749,6 +1785,7 @@ export default function StudioConceptionFormation() {
                     moduleId={currentModule?.id || ''}
                     lessonId={currentLesson?.id || ''}
                     lessonBlocks={blocks}
+                    forcedAssessmentScope={assessmentWorkspace?.scope || null}
                   />
                 </div>
               </div>
@@ -2337,12 +2374,12 @@ function PedagogicalLocalizationEditor({ block, locked, onUpdate }: { block: Blo
 }
 
 // ─── Panneau réglages du bloc ─────────────────────────────────
-function BlockSettings({ block, locked, onUpdate, onAI, onRemoveResource, courseId, moduleId, lessonId, lessonBlocks }: {
+function BlockSettings({ block, locked, onUpdate, onAI, onRemoveResource, courseId, moduleId, lessonId, lessonBlocks, forcedAssessmentScope }: {
   block: Block; locked: boolean;
   onUpdate: (updates: Partial<Block>) => void;
   onAI: (action: string, prompt: string) => void;
   onRemoveResource: () => void;
-  courseId: string; moduleId: string; lessonId: string; lessonBlocks: Block[];
+  courseId: string; moduleId: string; lessonId: string; lessonBlocks: Block[]; forcedAssessmentScope?: 'lesson'|'module'|'final'|null;
 }) {
   const c = block.content_json;
   const relationActivityTypes = new Set(['qcm','true_false','open_question','exercise','assignment_upload','case_study','flashcards','interactive_table','checklist','cloze','dictation','pronunciation','matching','sentence_order','oral_response','listening_comprehension','written_expression']);
@@ -2545,12 +2582,15 @@ function BlockSettings({ block, locked, onUpdate, onAI, onRemoveResource, course
             <p className="text-xs font-bold" style={{ color: '#002050' }}>Usage pédagogique</p>
             <p className="mt-1 text-[11px] text-gray-500">Une activité d’entraînement produit une note d’entraînement distincte. Une activité d’évaluation alimente l’évaluation officielle choisie.</p>
           </div>
-          <select className={inputCls} style={style} value={block.interaction_mode || 'training'} disabled={locked}
-            onChange={e => onUpdate({ interaction_mode: e.target.value as Block['interaction_mode'], assessment_scope: e.target.value === 'assessment' ? (block.assessment_scope || 'lesson') : null })}>
-            {['flashcards','interactive_table','checklist'].includes(block.block_type) && <option value="content">Contenu interactif</option>}
-            <option value="training">Entraînement</option>
-            {ASSESSMENT_CAPABLE_BLOCKS.has(block.block_type) && <option value="assessment">Évaluation officielle</option>}
-          </select>
+          {forcedAssessmentScope ? (
+            <div className="rounded-lg border px-3 py-2 text-xs font-semibold" style={{borderColor:'#DDD6FE',background:'#F5F3FF',color:'#6D28D9'}}>Évaluation officielle · {forcedAssessmentScope==='lesson'?'leçon':forcedAssessmentScope==='module'?'module':'finale'}</div>
+          ) : (
+            <select className={inputCls} style={style} value={block.interaction_mode || 'training'} disabled={locked}
+              onChange={e => onUpdate({ interaction_mode: e.target.value as Block['interaction_mode'], assessment_scope: null })}>
+              {['flashcards','interactive_table','checklist'].includes(block.block_type) && <option value="content">Contenu interactif</option>}
+              <option value="training">Entraînement</option>
+            </select>
+          )}
           {(block.interaction_mode || 'training') === 'training' && <>
             <label className="flex items-center gap-2 text-xs font-semibold text-gray-700"><input type="checkbox" checked={block.is_required === true} disabled={locked} onChange={e => onUpdate({ is_required: e.target.checked })}/> Obligatoire pour progresser</label>
             <label className="flex items-center gap-2 text-xs font-semibold text-gray-700"><input type="checkbox" checked={block.training_is_graded !== false} disabled={locked} onChange={e => onUpdate({ training_is_graded: e.target.checked })}/> Entraînement noté</label>
@@ -2560,14 +2600,6 @@ function BlockSettings({ block, locked, onUpdate, onAI, onRemoveResource, course
             </div> : <p className="rounded-lg bg-emerald-50 px-3 py-2 text-[11px] text-emerald-800">Non noté : aucune note ni seuil de réussite. Si l’activité est obligatoire, une tentative/soumission suffit pour progresser.</p>}
           </>}
           {block.interaction_mode === 'assessment' && <div className="space-y-3">
-            <div>
-              <label className="block text-xs mb-1" style={{ color: '#6B7280' }}>Compte dans</label>
-              <select className={inputCls} style={style} value={block.assessment_scope || 'lesson'} disabled={locked} onChange={e => onUpdate({ assessment_scope: e.target.value as Block['assessment_scope'] })}>
-                <option value="lesson">Évaluation de la leçon</option>
-                <option value="module">Évaluation du module</option>
-                <option value="final">Évaluation finale</option>
-              </select>
-            </div>
             <label className="flex items-center gap-2 text-xs font-semibold text-gray-700"><input type="checkbox" checked={block.settings_json?.assessment_required === true} disabled={locked} onChange={e=>onUpdate({settings_json:{...(block.settings_json||{}),assessment_required:e.target.checked}})}/>Évaluation obligatoire pour progresser / certifier</label>
             <div>
               <label className="block text-xs mb-1" style={{color:'#6B7280'}}>Seuil de réussite de l’évaluation (%)</label>

@@ -1372,8 +1372,30 @@ Deno.serve(async(req)=>{
    const finalRequired=policy.final_assessment_required===true||course.certification_requested===true||course.requested_cpd===true||course.cpd_accredited===true;
    const evalTypes=["qcm","true_false","open_question","exercise","assignment_upload","case_study","cloze","dictation","pronunciation","matching","sentence_order","oral_response","listening_comprehension","written_expression"];
 
+   // Le niveau d'une évaluation est déterminé par son emplacement structurel :
+   // une Synthèse porte l'évaluation du module et la section Examen final porte l'épreuve finale.
+   // Les évaluations historiques placées dans une leçon ordinaire conservent leur scope existant
+   // afin de ne pas déplacer automatiquement un ancien contenu pédagogique.
+   const lessonById=new Map((lessons||[]).map((lesson:any)=>[String(lesson.id),lesson]));
+   const staleAssessmentIds=new Set<string>();
+   for(const block of blocks||[]){
+    if(String(block.interaction_mode)!=="assessment")continue;
+    const lesson:any=lessonById.get(String(block.lesson_id));
+    const stage=String(lesson?.stage_type||(lesson?.is_intro?"introduction":lesson?.is_module_intro?"module_presentation":lesson?.is_conclusion?"conclusion":lesson?.is_final_exam?"final_exam":"lesson"));
+    const currentScope=["lesson","module","final"].includes(String(block.assessment_scope||""))?String(block.assessment_scope):"lesson";
+    const expectedScope=stage==="final_exam"?"final":stage==="module_summary"?"module":currentScope;
+    if(expectedScope===currentScope)continue;
+    const {data:oldQuestions,error:oldQuestionError}=await sb.from("assessment_questions").select("assessment_id").eq("source_lesson_block_id",String(block.id));if(oldQuestionError)throw oldQuestionError;
+    for(const row of oldQuestions||[])if(row.assessment_id)staleAssessmentIds.add(String(row.assessment_id));
+    const deleteOld=await sb.from("assessment_questions").delete().eq("source_lesson_block_id",String(block.id));if(deleteOld.error)throw deleteOld.error;
+    const updateScope=await sb.from("lesson_blocks").update({assessment_scope:expectedScope,updated_at:new Date().toISOString()}).eq("id",String(block.id));if(updateScope.error)throw updateScope.error;
+    block.assessment_scope=expectedScope;
+    await syncExistingOfficialAssessmentFromBlock(sb,block);
+   }
+   for(const assessmentId of staleAssessmentIds){const {count,error:countError}=await sb.from("assessment_questions").select("id",{count:"exact",head:true}).eq("assessment_id",assessmentId);if(countError)throw countError;if(Number(count||0)===0){const deactivate=await sb.from("course_assessments").update({is_active:false,updated_at:new Date().toISOString()}).eq("id",assessmentId);if(deactivate.error)throw deactivate.error;}}
+
    const ensureOne=async(scope:string,title:string,moduleId?:string,lessonId?:string,passing=80,required=false)=>{
-    const targetLessonIds=lessonId?[lessonId]:moduleId?(lessons||[]).filter((lesson:any)=>String(lesson.module_id)===String(moduleId)&&String(lesson.stage_type||"lesson")==="lesson").map((lesson:any)=>String(lesson.id)):(lessons||[]).filter((lesson:any)=>String(lesson.stage_type||"lesson")==="lesson").map((lesson:any)=>String(lesson.id));
+    const targetLessonIds=lessonId?[lessonId]:moduleId?(lessons||[]).filter((lesson:any)=>String(lesson.module_id)===String(moduleId)).map((lesson:any)=>String(lesson.id)):scope==="final"?(lessons||[]).filter((lesson:any)=>String(lesson.stage_type||(lesson.is_final_exam?"final_exam":"lesson"))==="final_exam").map((lesson:any)=>String(lesson.id)):(lessons||[]).filter((lesson:any)=>String(lesson.stage_type||"lesson")==="lesson").map((lesson:any)=>String(lesson.id));
     const configuredBlocks=(blocks||[]).filter((block:any)=>targetLessonIds.includes(String(block.lesson_id))&&block.interaction_mode==="assessment"&&String(block.assessment_scope||"lesson")===scope);
     if(configuredBlocks.length){const cfg=assessmentBlockSettings(configuredBlocks[0]);required=required||cfg.required;passing=cfg.passing_score;}
 
@@ -1400,7 +1422,7 @@ Deno.serve(async(req)=>{
     const questionCount=await sb.from("assessment_questions").select("id",{count:"exact",head:true}).eq("assessment_id",assessment.id);
     if(questionCount.error)throw questionCount.error;
     if(!questionCount.count){
-     const sourceLessonIds=lessonId?[lessonId]:moduleId?(lessons||[]).filter((lesson:any)=>String(lesson.module_id)===String(moduleId)&&String(lesson.stage_type||"lesson")==="lesson").map((lesson:any)=>lesson.id):(lessons||[]).filter((lesson:any)=>String(lesson.stage_type||"lesson")==="lesson").map((lesson:any)=>lesson.id);
+     const sourceLessonIds=lessonId?[lessonId]:moduleId?(lessons||[]).filter((lesson:any)=>String(lesson.module_id)===String(moduleId)).map((lesson:any)=>lesson.id):scope==="final"?(lessons||[]).filter((lesson:any)=>String(lesson.stage_type||(lesson.is_final_exam?"final_exam":"lesson"))==="final_exam").map((lesson:any)=>lesson.id):(lessons||[]).filter((lesson:any)=>String(lesson.stage_type||"lesson")==="lesson").map((lesson:any)=>lesson.id);
      const sourceBlocks=(blocks||[]).filter((block:any)=>sourceLessonIds.includes(block.lesson_id)&&evalTypes.includes(block.block_type)&&block.interaction_mode==="assessment"&&String(block.assessment_scope||"lesson")===scope);
      for(const [position,block] of sourceBlocks.entries()){
       const content=block.content_json||{};

@@ -5,6 +5,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useCpdTimer } from '../hooks/useCpdTimer';
 import { ENDPOINTS } from '../lib/config';
 import { LessonBlocksRenderer } from '../components/BlockRenderer';
+import { AssessmentEngine } from '../components/AssessmentEngine';
 import { acknowledgeOfflineSeconds, getResilientDeviceId, listOfflineProgress, listResilientLessonIds, loadResilientCourseProgress, loadResilientLesson, queueOfflineSeconds, saveResilientCourseProgress, saveResilientLesson } from '../lib/resilientCourseStore';
 import { useOmniaNetworkStatus } from '../hooks/useOmniaNetwork';
 import { openExternalUrl } from '../lib/mobile';
@@ -20,13 +21,14 @@ interface LessonItem {
   lesson_id: string; title: string; position: number;
   content_type: 'video' | 'audio' | 'text' | 'external'; duration_seconds: number;
   is_free: boolean; is_completed: boolean; time_spent_seconds: number; quiz_passed: boolean;
+  assessment_exists?: boolean; assessment_required?: boolean; assessment_passed?: boolean;
   is_unlocked?: boolean; is_external?: boolean;
   is_intro?: boolean; is_module_intro?: boolean; is_conclusion?: boolean; is_final_exam?: boolean;
   stage_type?: 'introduction' | 'module_presentation' | 'lesson' | 'module_summary' | 'conclusion' | 'final_exam';
 }
 interface ModuleItem {
   module_id: string; title: string; position: number; description?: string;
-  lessons: LessonItem[]; exam_required?: boolean; exam_unlocked: boolean; exam_passed: boolean;
+  lessons: LessonItem[]; exam_exists?: boolean; exam_required?: boolean; exam_unlocked: boolean; exam_passed: boolean;
   exam_score: number | null; exam_attempts: number; is_unlocked: boolean;
   is_intro?: boolean; is_conclusion?: boolean; is_final_exam?: boolean; is_required?: boolean;
   section_type?: 'introduction' | 'module' | 'conclusion' | 'final_exam';
@@ -56,6 +58,7 @@ interface CourseInfoPayload {
 interface CourseProgressSnapshot {
   modules: ModuleItem[];
   finalUnlocked: boolean;
+  finalAssessmentExists: boolean;
   progressPct: number;
   savedAt: string;
 }
@@ -68,6 +71,7 @@ interface LessonDataPayload {
   next_lesson_id: string | null;
   blocks?: Array<Record<string, unknown>>;
   training?: { required_count: number; passed_count: number; passed: boolean; latest_attempts?: Array<Record<string, any>> };
+  assessment?: { exists: boolean; required: boolean; passed: boolean };
   block_states?: Array<{ block_id: string; state_json: Record<string, any>; completed: boolean }>;
   localization?: { country_code?: string | null; preferred_currency?: string | null; suggested_currency?: string | null; currency_code?: string | null; locale?: string; available_currencies?: string[] };
 }
@@ -236,13 +240,15 @@ function DicteeAudioExercise({ texteReference, audioUrl }: { texteReference: str
 }
 
 // ── Sidebar ───────────────────────────────────────────────────────────────────
-function CourseSidebar({ modules, currentLessonId, onSelectLesson, onGoExam, onGoFinal, finalUnlocked, isOnline, offlineLessonIds, dataSaver, onToggleDataSaver }: {
+function CourseSidebar({ modules, currentLessonId, onSelectLesson, onGoLessonAssessment, onGoExam, onGoFinal, finalUnlocked, finalAssessmentExists, isOnline, offlineLessonIds, dataSaver, onToggleDataSaver }: {
   modules: ModuleItem[];
   currentLessonId: string | null;
   onSelectLesson: (id: string) => void;
+  onGoLessonAssessment: (lessonId: string) => void;
   onGoExam: (modId: string, summaryLessonId?: string) => void;
   onGoFinal: () => void;
   finalUnlocked: boolean;
+  finalAssessmentExists: boolean;
   isOnline: boolean;
   offlineLessonIds: ReadonlySet<string>;
   dataSaver: boolean;
@@ -284,26 +290,32 @@ function CourseSidebar({ modules, currentLessonId, onSelectLesson, onGoExam, onG
     const stage = lesson.stage_type || (lesson.is_module_intro ? 'module_presentation' : 'lesson');
     const stageLabel = stage === 'module_presentation' ? 'Présentation' : stage === 'module_summary' ? 'Synthèse' : stage === 'introduction' ? 'Introduction' : stage === 'conclusion' ? 'Conclusion' : stage === 'final_exam' ? 'Examen final' : null;
     return (
-      <button
-        key={lesson.lesson_id}
-        onClick={() => canOpen && onSelectLesson(lesson.lesson_id)}
-        disabled={!canOpen}
-        title={!isOnline && !availableOffline ? 'Cette étape n’est pas conservée sur cet appareil.' : undefined}
-        className="w-full flex items-center gap-2.5 pl-6 pr-4 py-2 text-left transition-colors"
-        style={{ backgroundColor: current ? '#EEF2FF' : 'transparent', cursor: canOpen ? 'pointer' : 'not-allowed', opacity: canOpen ? 1 : 0.42 }}
-      >
-        {lesson.is_completed
-          ? <CheckCircle size={14} style={{ color: '#1E7A52', flexShrink: 0 }} />
-          : current
-            ? <PlayCircle size={14} style={{ color: '#002050', flexShrink: 0 }} />
-            : <Circle size={14} style={{ color: '#D1D5DB', flexShrink: 0 }} />}
-        <span className="min-w-0 flex-1">
-          {stageLabel && stage !== 'lesson' && <span className="mr-1 rounded bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold uppercase text-slate-500">{stageLabel}</span>}
-          <span className="text-xs leading-tight" style={{ color: current ? '#002050' : '#374151', fontWeight: current ? 600 : 400 }}>{lesson.title}</span>
-        </span>
-        {!isOnline && availableOffline && <Database size={12} aria-label="Disponible hors connexion" style={{ color: '#1E7A52', flexShrink: 0 }} />}
-        <span className="ml-auto flex-shrink-0" style={{ color: '#9CA3AF' }}>{typeIcon(lesson.content_type)}</span>
-      </button>
+      <div key={lesson.lesson_id}>
+        <button
+          onClick={() => canOpen && onSelectLesson(lesson.lesson_id)}
+          disabled={!canOpen}
+          title={!isOnline && !availableOffline ? 'Cette étape n’est pas conservée sur cet appareil.' : undefined}
+          className="w-full flex items-center gap-2.5 pl-6 pr-4 py-2 text-left transition-colors"
+          style={{ backgroundColor: current ? '#EEF2FF' : 'transparent', cursor: canOpen ? 'pointer' : 'not-allowed', opacity: canOpen ? 1 : 0.42 }}
+        >
+          {lesson.is_completed
+            ? <CheckCircle size={14} style={{ color: '#1E7A52', flexShrink: 0 }} />
+            : current
+              ? <PlayCircle size={14} style={{ color: '#002050', flexShrink: 0 }} />
+              : <Circle size={14} style={{ color: '#D1D5DB', flexShrink: 0 }} />}
+          <span className="min-w-0 flex-1">
+            {stageLabel && stage !== 'lesson' && <span className="mr-1 rounded bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold uppercase text-slate-500">{stageLabel}</span>}
+            <span className="text-xs leading-tight" style={{ color: current ? '#002050' : '#374151', fontWeight: current ? 600 : 400 }}>{lesson.title}</span>
+          </span>
+          {!isOnline && availableOffline && <Database size={12} aria-label="Disponible hors connexion" style={{ color: '#1E7A52', flexShrink: 0 }} />}
+          <span className="ml-auto flex-shrink-0" style={{ color: '#9CA3AF' }}>{typeIcon(lesson.content_type)}</span>
+        </button>
+        {stage === 'lesson' && lesson.assessment_exists === true && (
+          <button type="button" onClick={() => canOpen && isOnline && onGoLessonAssessment(lesson.lesson_id)} disabled={!canOpen || !isOnline} className="w-full flex items-center gap-2.5 pl-11 pr-4 py-1.5 text-left text-[11px] font-semibold disabled:opacity-40" style={{color:lesson.assessment_passed?'#1E7A52':'#6D28D9'}}>
+            <ClipboardList size={12}/>{lesson.assessment_passed ? 'Évaluation de la leçon ✓' : 'Évaluation de la leçon'}
+          </button>
+        )}
+      </div>
     );
   };
 
@@ -325,9 +337,9 @@ function CourseSidebar({ modules, currentLessonId, onSelectLesson, onGoExam, onG
               <div key={module.module_id} className="border-b last:border-b-0" style={{borderColor:'#EEF0F3'}}>
                 <div className="px-4 pt-3 pb-1 text-[10px] font-black uppercase tracking-[.12em]" style={{color:'#BF8813'}}>{sectionLabel(module)}</div>
                 {lesson ? renderLessonButton(lesson, module) : <div className="px-6 pb-3 text-xs text-slate-400">{module.title}</div>}
-                {type === 'final_exam' && finalUnlocked && (
+                {type === 'final_exam' && finalUnlocked && finalAssessmentExists && (
                   <button onClick={() => isOnline && onGoFinal()} disabled={!isOnline} className="mb-3 ml-6 flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-bold text-white disabled:opacity-40" style={{background:'#BF8813'}}>
-                    <Trophy size={14}/>Commencer l’évaluation finale
+                    <Trophy size={14}/>Épreuve officielle
                   </button>
                 )}
               </div>
@@ -347,7 +359,7 @@ function CourseSidebar({ modules, currentLessonId, onSelectLesson, onGoExam, onG
               {open.has(module.module_id) && (
                 <div>
                   {module.lessons.map(lesson => renderLessonButton(lesson, module))}
-                  {module.is_unlocked && module.exam_required !== false && (
+                  {module.is_unlocked && module.exam_exists === true && (
                     <button onClick={() => { const summaryLesson = module.lessons.find(lesson => lesson.stage_type === 'module_summary'); if (isOnline && module.exam_unlocked) onGoExam(module.module_id, summaryLesson?.lesson_id); }} disabled={!isOnline || !module.exam_unlocked} className="w-full flex items-center gap-2.5 pl-6 pr-4 py-2 text-left hover:bg-gray-50 transition-colors" style={{ opacity: isOnline && module.exam_unlocked ? 1 : 0.4, cursor: isOnline && module.exam_unlocked ? 'pointer' : 'default' }}>
                       <ClipboardList size={14} style={{ color: module.exam_passed ? '#1E7A52' : '#BF8813', flexShrink: 0 }} />
                       <span className="text-xs font-semibold" style={{ color: module.exam_passed ? '#1E7A52' : '#BF8813' }}>
@@ -513,6 +525,7 @@ export function CoursLecteur() {
 
   const [modules, setModules] = useState<ModuleItem[]>([]);
   const [finalUnlocked, setFinalUnlocked] = useState(false);
+  const [finalAssessmentExists, setFinalAssessmentExists] = useState(false);
   const [progressPct, setProgressPct] = useState(0);
   const [currentLessonId, setCurrentLessonId] = useState<string | null>(routeLessonId ?? null);
   const [readerStarted, setReaderStarted] = useState(Boolean(routeLessonId));
@@ -529,6 +542,7 @@ export function CoursLecteur() {
   const [externalVisited, setExternalVisited] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
   const [programOpen, setProgramOpen] = useState(false);
+  const [assessmentFocusPending, setAssessmentFocusPending] = useState(false);
   const [aiMessages, setAiMessages] = useState<AiMessage[]>([]);
   const [aiInput, setAiInput] = useState('');
   const [aiMode, setAiMode] = useState('question');
@@ -601,6 +615,7 @@ export function CoursLecteur() {
   const applyProgressSnapshot = useCallback((snapshot: CourseProgressSnapshot) => {
     setModules(normalizeReaderModules(snapshot.modules));
     setFinalUnlocked(snapshot.finalUnlocked);
+    setFinalAssessmentExists(snapshot.finalAssessmentExists);
     setProgressPct(snapshot.progressPct);
   }, []);
 
@@ -634,6 +649,7 @@ export function CoursLecteur() {
       const snapshot: CourseProgressSnapshot = {
         modules: normalizeReaderModules(data.modules ?? []),
         finalUnlocked: data.final_validation_unlocked ?? false,
+        finalAssessmentExists: data.final_assessment_exists === true,
         progressPct: data.progress?.percent ?? 0,
         savedAt: new Date().toISOString(),
       };
@@ -855,6 +871,36 @@ export function CoursLecteur() {
     setCurrentLessonId(id);
     navigate(`/cours/${courseId}/apprendre/${id}${previewRouteQuery}`, { replace: true });
   };
+
+
+  const focusAssessmentForLesson = useCallback((lessonId: string) => {
+    setAssessmentFocusPending(true);
+    setProgramOpen(false);
+    goToLesson(lessonId);
+  }, [courseId, isPreview, modules, previewRouteQuery]);
+
+  useEffect(() => {
+    if (!assessmentFocusPending || lessonLoading || !lessonData) return;
+    const timer = window.setTimeout(() => {
+      document.getElementById('official-assessment')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      setAssessmentFocusPending(false);
+    }, 80);
+    return () => window.clearTimeout(timer);
+  }, [assessmentFocusPending, lessonLoading, lessonData, currentLessonId]);
+
+  const refreshAfterAssessment = useCallback(async () => {
+    await loadProgress();
+    if (!isOnline || !currentLessonId || !courseId || !sessionToken) return;
+    try {
+      const response = await fetch(`${ENDPOINTS.lessonContent}?lesson_id=${currentLessonId}&course_id=${courseId}${previewQuery}`, {
+        headers: { Authorization: `Bearer ${sessionToken}` },
+      });
+      const data = await response.json();
+      if (response.ok && !data.error) setLessonData(data);
+    } catch {
+      // La progression a déjà été rafraîchie ; une erreur de relecture ne casse pas le lecteur.
+    }
+  }, [loadProgress, isOnline, currentLessonId, courseId, sessionToken, previewQuery]);
 
   const handleNext = () => {
     const moduleNow = modules.find(m => m.lessons.some(l => l.lesson_id === currentLessonId));
@@ -1218,15 +1264,18 @@ export function CoursLecteur() {
                   setProgramOpen(false);
                   goToLesson(lessonId);
                 }}
-                onGoExam={(modId, summaryLessonId) => {
-                  setProgramOpen(false);
-                  navigate(`/cours/${courseId}/examen-module/${modId}${previewRouteQuery}`, { state: { returnLessonId: summaryLessonId || null } });
+                onGoLessonAssessment={focusAssessmentForLesson}
+                onGoExam={(_modId, summaryLessonId) => {
+                  if (summaryLessonId) focusAssessmentForLesson(summaryLessonId);
                 }}
                 onGoFinal={() => {
-                  setProgramOpen(false);
-                  navigate(`/cours/${courseId}/validation-finale${previewRouteQuery}`);
+                  const finalLessonId = modules
+                    .flatMap(module => module.lessons)
+                    .find(item => item.stage_type === 'final_exam')?.lesson_id;
+                  if (finalLessonId) focusAssessmentForLesson(finalLessonId);
                 }}
                 finalUnlocked={finalUnlocked}
+                finalAssessmentExists={finalAssessmentExists}
                 isOnline={isOnline}
                 offlineLessonIds={offlineLessonSet}
                 dataSaver={dataSaver}
@@ -1405,27 +1454,52 @@ export function CoursLecteur() {
                 </div>
               )}
 
-              {isOnline && courseId && currentLessonId && lessonData?.assessment?.exists === true && !(lesson.is_external || lesson.content_type === 'external') && (
-                <div className="mb-4 flex items-center justify-between gap-3 rounded-xl border px-4 py-3" style={{ borderColor: '#D8DEE8', backgroundColor: '#F8FAFC' }}>
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold" style={{ color: '#002050' }}>Évaluation de la leçon</p>
-                    <p className="mt-0.5 text-xs text-slate-500">{lessonData?.assessment?.passed ? 'Évaluation déjà réussie. Vous pouvez consulter votre résultat.' : 'L’évaluation officielle s’ouvre sur une page dédiée.'}</p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => navigate(`/cours/${courseId}/evaluation-lecon/${currentLessonId}${previewRouteQuery}`, { state: { returnLessonId: currentLessonId } })}
-                    className="shrink-0 rounded-lg px-3 py-2 text-xs font-bold text-white hover:opacity-85"
-                    style={{ backgroundColor: '#002050' }}
-                  >
-                    {isPreview ? 'Prévisualiser' : lessonData?.assessment?.passed ? 'Voir le résultat' : 'Passer l’évaluation'}
-                  </button>
-                </div>
-              )}
-              {!isOnline && lessonData?.assessment?.exists === true && !(lesson.is_external || lesson.content_type === 'external') && (
-                <div className="mb-5 rounded-xl border px-4 py-3 text-sm" style={{ borderColor: '#BF8813', backgroundColor: '#FFFBEB', color: '#002050' }}>
-                  Les évaluations et examens nécessitent une connexion afin de protéger les tentatives et les résultats.
-                </div>
-              )}
+              {(() => {
+                if (!courseId || !currentLessonId) return null;
+                const assessmentScope = lesson.stage_type === 'final_exam'
+                  ? 'final'
+                  : lesson.stage_type === 'module_summary'
+                    ? 'module'
+                    : 'lesson';
+                const assessmentExists = lesson.stage_type === 'final_exam'
+                  ? finalAssessmentExists
+                  : lesson.stage_type === 'module_summary'
+                    ? currentMod?.exam_exists === true
+                    : lesson.stage_type === 'lesson' && lessonData?.assessment?.exists === true;
+                const assessmentAccessible = isPreview || lesson.stage_type !== 'module_summary' || currentMod?.exam_unlocked !== false;
+                if (!assessmentExists || lesson.is_external || lesson.content_type === 'external') return null;
+                if (!isOnline) {
+                  return (
+                    <div id="official-assessment" className="mb-5 scroll-mt-20 rounded-xl border px-4 py-3 text-sm" style={{ borderColor: '#BF8813', backgroundColor: '#FFFBEB', color: '#002050' }}>
+                      Les évaluations et examens nécessitent une connexion afin de protéger les tentatives et les résultats.
+                    </div>
+                  );
+                }
+                if (!assessmentAccessible) {
+                  return (
+                    <div id="official-assessment" className="mb-5 scroll-mt-20 rounded-xl border px-4 py-3 text-sm" style={{ borderColor: '#D8DEE8', backgroundColor: '#F8FAFC', color: '#475569' }}>
+                      Terminez d’abord les leçons obligatoires du module pour accéder à son évaluation.
+                    </div>
+                  );
+                }
+                return (
+                  <section id="official-assessment" className="mb-6 scroll-mt-20 border-t pt-6" style={{ borderColor: '#E4E7EC' }}>
+                    <div className="mb-4">
+                      <p className="text-xs font-black uppercase tracking-[.12em]" style={{ color: '#BF8813' }}>
+                        {assessmentScope === 'final' ? 'Épreuve officielle' : assessmentScope === 'module' ? 'Évaluation du module' : 'Évaluation de la leçon'}
+                      </p>
+                    </div>
+                    <AssessmentEngine
+                      courseId={courseId}
+                      lessonId={assessmentScope === 'lesson' ? currentLessonId : undefined}
+                      moduleId={assessmentScope === 'module' ? currentMod?.module_id : undefined}
+                      scope={assessmentScope}
+                      preview={isPreview}
+                      onSubmitted={() => void refreshAfterAssessment()}
+                    />
+                  </section>
+                );
+              })()}
 
               {/* CPD row — hidden for external lessons */}
               {!lesson.is_external && lesson.content_type !== 'external' && (
@@ -1433,11 +1507,6 @@ export function CoursLecteur() {
                 <CpdBar required={lessonData?.required_seconds ?? 0} spent={timeSpent}
                   reached={effectiveCpd} isActive={isActive} assessmentPassed={quizPassed}
                   isCompleted={isCompleted} />
-                {lesson.stage_type === 'module_summary' && isOnline && currentMod?.exam_unlocked && !currentMod.exam_passed && (
-                  <button onClick={() => navigate(`/cours/${courseId}/examen-module/${currentMod.module_id}${previewRouteQuery}`, { state: { returnLessonId: currentLessonId } })}
-                    className="text-xs font-bold px-3 py-1.5 rounded-lg hover:opacity-80"
-                    style={{ backgroundColor: '#BF8813', color: '#FFF' }}>Passer l'examen</button>
-                )}
               </div>
               )}
 
