@@ -1633,7 +1633,7 @@ export default function StudioConceptionFormation() {
                               )}
                             </div>
                             <div className="flex items-center gap-1 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100">
-                              {course.id && ['text','heading','subtitle','objective','summary','example','definition','important','key_takeaway','callout','quote','list','table','code'].includes(block.block_type) && (
+                              {course.id && ['text','heading','subtitle','objective','summary','example','definition','important','remember','key_takeaway','callout','quote','bullet_list','numbered_list','list','interactive_table','table','code'].includes(block.block_type) && (
                                 <button title="Remplir ce bloc depuis un document" onClick={e => { e.stopPropagation(); setBuilderImportTarget({ type: 'block', id: block.id }); }} className="p-1 rounded hover:bg-gray-100" disabled={locked}>
                                   <UploadCloud size={13} style={{ color: '#BF8813' }} />
                                 </button>

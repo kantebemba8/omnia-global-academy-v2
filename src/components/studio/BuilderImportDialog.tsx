@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { FileUp, X } from 'lucide-react';
 import { edgeAuthHeaders } from '../../lib/edgeAuth';
+import { uploadCourseImportFile } from '../../lib/courseImportUpload';
 
 const API = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/studio-unified`;
 const MAX_IMPORT_BYTES = 25 * 1024 * 1024;
@@ -39,8 +40,7 @@ export default function BuilderImportDialog({open,onClose,courseId,targetType,ta
     try{
       validate(file);setBusy(true);setStatus('Téléversement sécurisé…');
       const prepared=await call('prepare_course_import_upload',{creator_context:creatorContext,original_name:file.name,file_size:file.size,file_mime:file.type||'application/octet-stream'});
-      const upload=await fetch(prepared.signedUrl,{method:'PUT',headers:{'Content-Type':file.type||'application/octet-stream'},body:file});
-      if(!upload.ok) throw new Error('Le téléversement du document a échoué.');
+      await uploadCourseImportFile({bucket:prepared.bucket,path:prepared.path,token:prepared.token,upload_mime:prepared.upload_mime},file);
       setStatus('Analyse du document…');
       const data=await call('analyze_course_import',{creator_context:creatorContext,course_id:courseId,target_type:targetType,target_id:targetId,bucket_name:prepared.bucket,storage_path:prepared.path,original_name:file.name,file_size:file.size,file_mime:file.type||'application/octet-stream',mode,allow_ai:mode!=='faithful'});
       setPreview(data);setStatus('Analyse terminée. Vérifiez avant insertion.');

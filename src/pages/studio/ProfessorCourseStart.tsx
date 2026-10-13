@@ -12,6 +12,7 @@ import {
 import { AdminLayout } from '../../components/AdminLayout';
 import { ProfessorFormationsLayout, StructureFormationsLayout } from '../../components/formations/FormationsRoleLayout';
 import { edgeAuthHeaders } from '../../lib/edgeAuth';
+import { uploadCourseImportFile } from '../../lib/courseImportUpload';
 
 const API = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/studio-unified`;
 const BLUE = '#002050';
@@ -127,13 +128,13 @@ export default function ProfessorCourseStart() {
         file_mime: importFile.type || 'application/octet-stream',
       });
 
-      setImportStatus('Téléversement du fichier…');
-      const upload = await fetch(prepared.signedUrl, {
-        method: 'PUT',
-        headers: { 'Content-Type': importFile.type || 'application/octet-stream' },
-        body: importFile,
-      });
-      if (!upload.ok) throw new Error('Le téléversement du fichier a échoué.');
+      setImportStatus('Téléversement sécurisé du fichier…');
+      await uploadCourseImportFile({
+        bucket: prepared.bucket,
+        path: prepared.path,
+        token: prepared.token,
+        upload_mime: prepared.upload_mime,
+      }, importFile);
 
       setImportStatus('Analyse du document et préparation de l’aperçu…');
       const analyzed = await call('analyze_course_import', {

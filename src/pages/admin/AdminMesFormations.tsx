@@ -6,7 +6,7 @@ import { AdminLayout } from '../../components/AdminLayout';
 import {
   BookOpen, PlusCircle, Edit2, Eye, RefreshCw, FileUp,
   Clock, CheckCircle, AlertCircle, Archive,
-  BarChart2, Send, XCircle, Trash2, ChevronDown, MapPin
+  BarChart2, Send, XCircle, Trash2, ChevronDown, MapPin, Copy
 } from 'lucide-react';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
@@ -64,6 +64,7 @@ export default function AdminMesFormations() {
   const [search, setSearch] = useState('');
   const [toast, setToast] = useState('');
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; title: string } | null>(null);
   const [previewTarget, setPreviewTarget] = useState<Formation | null>(null);
   const [createMenuOpen, setCreateMenuOpen] = useState(false);
@@ -119,6 +120,29 @@ export default function AdminMesFormations() {
     }
   }
 
+
+  async function duplicateCourse(course: Formation) {
+    if (duplicatingId) return;
+    const confirmed = window.confirm(`Dupliquer « ${course.title} » comme nouveau brouillon indépendant ?`);
+    if (!confirmed) return;
+    setDuplicatingId(course.id);
+    try {
+      const response = await fetch(API, {
+        method: 'POST',
+        headers: edgeAuthHeaders(),
+        body: JSON.stringify({ action: 'duplicate_course', course_id: course.id }),
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok || data?.success === false) throw new Error(data?.message || data?.error || 'Duplication impossible');
+      const newId = data?.course?.id;
+      if (!newId) throw new Error('Le brouillon dupliqué ne possède pas d’identifiant.');
+      navigate(`/admin/studio/${newId}`);
+    } catch (error) {
+      setToast(error instanceof Error ? error.message : 'Duplication impossible');
+    } finally {
+      setDuplicatingId(null);
+    }
+  }
 
   async function openStats(course: Formation) {
     setStatsTarget(course); setCourseStats(null); setStatsLoading(true);
@@ -408,6 +432,17 @@ export default function AdminMesFormations() {
                           {deletingId === f.id ? 'Suppression…' : 'Supprimer'}
                         </button>
                       )}
+
+                      <button
+                        type="button"
+                        onClick={() => void duplicateCourse(f)}
+                        disabled={duplicatingId === f.id}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border disabled:opacity-50"
+                        style={{ borderColor: '#CBD5E1', color: '#475569' }}
+                        title="Créer un nouveau brouillon indépendant à partir de cette formation"
+                      >
+                        <Copy size={12} /> {duplicatingId === f.id ? 'Duplication…' : 'Dupliquer'}
+                      </button>
 
                       <button onClick={() => navigate(`/formations/${f.id}/sessions`)}
                         className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border"
