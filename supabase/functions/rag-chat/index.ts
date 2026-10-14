@@ -4,7 +4,7 @@ import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 import { getActiveOmniaSessionResult, omniaInternalHeaders } from "../_shared/omnia-auth.ts";
 declare const EdgeRuntime: { waitUntil(promise: Promise<unknown>): void };
 import { getAnthropicQualityModel, normalizeAnthropicModel } from "../_shared/ai-models.ts";
-import { runAnthropicText, runOpenAIEmbedding, aiErrorPayload } from "../_shared/ai-runtime.ts";
+import { runAiText, parseAiObject, normalizeAiPlainText, runOpenAIEmbedding, aiErrorPayload } from "../_shared/ai-runtime.ts";
 const cors = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-omnia-session-token",
@@ -118,7 +118,7 @@ RÈGLES ABSOLUES :
 
 SOURCES VALIDÉES :\n${context}`;
     const historyText = history.map((item: any) => `${item.role === "assistant" ? "Assistant" : "Apprenant"}: ${String(item.content || "")}`).join("\n");
-    const ai = await runAnthropicText(sb, { context: { module: "rag_chat", action: mode, userId, courseId }, model, tier: "quality", system, prompt: `${historyText ? `HISTORIQUE RÉCENT:\n${historyText}\n\n` : ""}DEMANDE DE L'APPRENANT:\n${message}`, maxTokens, effort: "low" });
+    const ai = await runAiText(sb, { context: { module: "rag_chat", action: mode, userId, courseId }, model, tier: "quality", system, prompt: `${historyText ? `HISTORIQUE RÉCENT:\n${historyText}\n\n` : ""}DEMANDE DE L'APPRENANT:\n${message}`, maxTokens, effort: "low" });
     const reply = ai.text;
     await sb.from("ai_pedagogical_usage_logs").insert({ user_id: userId, course_id: courseId, mode, question: logConversationContent ? message : "", response_excerpt: logConversationContent ? reply.slice(0, 1000) : null, status: "answered", chunks_used: validChunks.length, model });
     return json({ success: true, reply, sources_found: true, chunks_used: validChunks.length, mode });

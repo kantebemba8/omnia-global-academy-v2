@@ -7,7 +7,7 @@ import * as XLSX from "npm:xlsx@0.18.5";
 import { extractText as extractPdfDocumentText, getDocumentProxy } from "npm:unpdf@0.10.1";
 
 import { getActiveOmniaSessionResult, omniaInternalHeaders } from "../_shared/omnia-auth.ts";
-import { runAnthropicText, runAnthropicPdfText, runOpenAIImage, aiErrorPayload } from "../_shared/ai-runtime.ts";
+import { runAiText, parseAiObject, normalizeAiPlainText, runAnthropicPdfText, runOpenAIImage, aiErrorPayload } from "../_shared/ai-runtime.ts";
 import { cloudflareStreamConfigured, createDirectStreamUpload, deleteStreamVideo, getStreamVideo, signedStreamManifest } from "../_shared/cloudflare-stream.ts";
 import { dispatchOmniaInAppNotification } from "../_shared/notifications.ts";
 const cors = {"Access-Control-Allow-Origin":"*","Access-Control-Allow-Headers":"authorization, x-client-info, apikey, content-type, x-omnia-session-token","Access-Control-Allow-Methods":"POST, OPTIONS"};
@@ -117,7 +117,7 @@ async function rubricCriteriaForTarget(sb:any,targetBlockId:string){
 }
 function rubricPointTotal(criteria:any){return (Array.isArray(criteria)?criteria:[]).reduce((sum:number,item:any)=>sum+Math.max(0,Number(item?.points||0)),0)}
 function gradingModeLabel(mode:any){return mode==="automatic"?"Automatique":mode==="ai"?"IA":mode==="ai_human"?"IA + validation humaine":"Évaluateur humain";}
-function safeJsonObject(text:any){const raw=String(text||"").trim().replace(/^```(?:json)?\s*/i,"").replace(/\s*```$/,"");try{return JSON.parse(raw)}catch{const a=raw.indexOf("{"),b=raw.lastIndexOf("}");if(a>=0&&b>a){try{return JSON.parse(raw.slice(a,b+1))}catch{}}return null}}
+function safeJsonObject(text:any){try{return parseAiObject(text)}catch{return null}}
 async function gradeAnswerWithAi(sb:any,params:{userId:string;courseId:string;assessmentId:string;question:any;answer:any}){
  const q=params.question;const max=Math.max(0,Number(q.points||0));const rubric=Array.isArray(q.rubric)?q.rubric:[];
  const answerText=typeof params.answer==="string"?params.answer:JSON.stringify(params.answer??null);
@@ -126,7 +126,7 @@ async function gradeAnswerWithAi(sb:any,params:{userId:string;courseId:string;as
  const system=`Vous êtes le moteur de correction pédagogique d'Omnia Global Academy. Corrigez uniquement à partir de la consigne, de la réponse et de la grille fournies. N'ajoutez jamais de points. Le score doit être compris entre 0 et le maximum. Répondez uniquement en JSON valide: {"score":number,"feedback":"texte bref","criteria":[{"criterion":"texte","score":number,"max":number,"feedback":"texte"}]}.`;
  const prompt=`QUESTION:\n${String(q.prompt||"")}\n\nRÉPONSE APPRENANT:\n${answerText}\n\nBARÈME MAXIMUM: ${max}\n\nGRILLE:\n${rubricText}\n\nAttribuez les points. Le total des critères ne doit jamais dépasser ${max}.`;
  try{
-  const result=await runAnthropicText(sb,{context:{module:"studio",action:"assessment_ai_grading",userId:params.userId,courseId:params.courseId,metadata:{assessment_id:params.assessmentId,question_id:q.id}},system,prompt,tier:"quality",effort:"medium",maxTokens:3500});
+  const result=await runAiText(sb,{context:{module:"studio",action:"assessment_ai_grading",userId:params.userId,courseId:params.courseId,metadata:{assessment_id:params.assessmentId,question_id:q.id}},system,prompt,tier:"quality",effort:"medium",maxTokens:3500,output:"structured",validate:value=>Number.isFinite(Number(value.score))});
   const parsed=safeJsonObject(result.text);if(!parsed||!Number.isFinite(Number(parsed.score)))return {ok:false,error:"AI_INVALID_GRADING_RESPONSE"};
   const score=Math.min(max,Math.max(0,Math.round(Number(parsed.score)*100)/100));
   return {ok:true,score,feedback:String(parsed.feedback||""),criteria:Array.isArray(parsed.criteria)?parsed.criteria:[],provider:result.provider,model:result.model,request_id:result.requestId};
@@ -692,13 +692,13 @@ async function aiImportBlueprint(sb:any,userId:string,text:string,fallback:Cours
 
 CONTENU :
 ${excerpt}`;
- try{const result=await runAnthropicText(sb,{context:{module:"studio",action:"import_blueprint",userId,metadata:{language,source_chars:excerpt.length}},tier:"fast",prompt,maxTokens:10000,effort:"low"});const raw=String(result.text||"");const start=raw.indexOf("{");const end=raw.lastIndexOf("}");if(start<0||end<=start)return {blueprint:fallback,ai_used:false,ai_error:"AI_RESPONSE_INVALID"};return {blueprint:normalizeImportBlueprint(JSON.parse(raw.slice(start,end+1)),fallback,language),ai_used:true,ai_error:null};}catch(error){const ai=aiErrorPayload(error);return {blueprint:fallback,ai_used:false,ai_error:ai.error}}
+ try{const result=await runAiText(sb,{context:{module:"studio",action:"import_blueprint",userId,metadata:{language,source_chars:excerpt.length}},tier:"fast",prompt,maxTokens:10000,effort:"low",output:"structured"});const parsed=parseAiObject(result.text);return {blueprint:normalizeImportBlueprint(parsed,fallback,language),ai_used:true,ai_error:null};}catch(error){const ai=aiErrorPayload(error);return {blueprint:fallback,ai_used:false,ai_error:ai.error}}
 }
 function importMode(value:any){const mode=String(value||"structured");return ["faithful","structured","enriched"].includes(mode)?mode:"structured"}
 function importBlockFromLesson(lesson:any,mode:string){const blocks:any[]=[];if(lesson.objective)blocks.push({block_type:"objective",content_json:{text:lesson.objective}});if(lesson.content)blocks.push({block_type:"text",content_json:{html:textToHtml(lesson.content)}});if(mode==="enriched"&&lesson.summary)blocks.push({block_type:"summary",content_json:{content:lesson.summary,intro:lesson.summary,points:[]}});if(mode==="enriched")for(const q of lesson.questions||[])blocks.push({block_type:"qcm",content_json:q,interaction_mode:"training",is_required:false,training_passing_score:80});return blocks}
 async function aiImportBlueprintFromPdf(sb:any,userId:string,pdfBytes:Uint8Array,fallback:CourseImportBlueprint,language:string,mode:string){
  const faithful=mode==="faithful";const prompt=`Analyse ce PDF comme source pédagogique multimodale${faithful?" en transcription fidèle":" en structuration fidèle"}. Préserve titres, tableaux, graphiques et informations visibles. N'invente aucun fait. Langue: ${language}. Retourne uniquement un JSON strict conforme à : {"title":"","short_description":"","long_description":"","prerequisites":"","introduction":"","objectives":[""],"target_audience":"","learning_outcomes":[""],"modules":[{"title":"","objective":"","presentation":"","lessons":[{"title":"","objective":"","content":"","summary":"","questions":[{"question":"","options":["","","",""],"correctIndex":0,"explanation":""}]}],"synthesis":""}]}. ${faithful?"N'ajoute aucun enrichissement et laisse vides les champs absents du document.":"Organise et reformule sans ajouter de connaissances externes."} Ne génère jamais la Conclusion de formation ni l'Examen final.`;
- try{const result=await runAnthropicPdfText(sb,{context:{module:"studio",action:"import_pdf_multimodal_blueprint",userId,metadata:{language,mode}},tier:"quality",pdfBytes,prompt,maxTokens:10000,effort:"low"});const raw=String(result.text||"");const start=raw.indexOf("{");const end=raw.lastIndexOf("}");if(start<0||end<=start)throw new Error("AI_IMPORT_JSON_MISSING");return {blueprint:normalizeImportBlueprint(JSON.parse(raw.slice(start,end+1)),fallback,language),ai_used:true,ai_error:null,pdf_multimodal:true};}catch(error){console.warn("IMPORT_PDF_MULTIMODAL_FALLBACK",(error as Error)?.message||error);return {blueprint:fallback,ai_used:false,ai_error:(error as Error)?.message||String(error),pdf_multimodal:false};}
+ try{const result=await runAnthropicPdfText(sb,{context:{module:"studio",action:"import_pdf_multimodal_blueprint",userId,metadata:{language,mode}},tier:"quality",pdfBytes,prompt,maxTokens:10000,effort:"low",output:"structured"});const parsed=parseAiObject(result.text);return {blueprint:normalizeImportBlueprint(parsed,fallback,language),ai_used:true,ai_error:null,pdf_multimodal:true};}catch(error){console.warn("IMPORT_PDF_MULTIMODAL_FALLBACK",(error as Error)?.message||error);return {blueprint:fallback,ai_used:false,ai_error:(error as Error)?.message||String(error),pdf_multimodal:false};}
 }
 
 async function analyzeImportSource(sb:any,userId:string,params:any){
@@ -1135,6 +1135,50 @@ Deno.serve(async(req)=>{
    await log(sb,data.id,userId,"course_created",{template:data.template_used}); return json({success:true,course:data,modules});
   }
 
+  // Unified AI blueprint: review is mandatory, no database write before confirmation.
+  if(action==="ai_course_blueprint_preview"){
+   const creatorContext=String(b.creator_context||"")==="structure"?"structure":((String(b.creator_context||"")==="admin"||String(b.creator_context||"")==="super_admin")&&isAdmin?"super_admin":"professeur");
+   if(creatorContext==="structure"&&!isAdmin){const access=await validatedStructureAccess(sb,userId);if(!access||!hasStructurePermission(access,"can_create_courses"))return json({success:false,error:"STRUCTURE_COURSE_PERMISSION_REQUIRED"},403)}
+   const topic=String(b.topic||"").trim().slice(0,500);if(topic.length<4)return json({success:false,error:"TOPIC_REQUIRED"},400);
+   const language=normalizedCourseLanguage(b.language||"fr");const audience=String(b.audience||"").slice(0,500);const level=String(b.level||"debutant").slice(0,80);
+   const duration=Math.min(120,Math.max(1,Number(b.duration_hours)||8));const count=Math.min(12,Math.max(1,Math.round(Number(b.module_count)||4)));
+   const objectives=String(b.objectives||"").slice(0,2400);const orientation=String(b.orientation||"equilibree").slice(0,70);
+   const detailed=b.generate_content===true;
+   const fallback:CourseImportBlueprint={title:topic,short_description:"",long_description:"",prerequisites:"",introduction:"",objectives:[],target_audience:audience,learning_outcomes:[],modules:[]};
+   const prompt=`Tu es concepteur pédagogique pour Omnia Global Academy. Propose un BLUEPRINT de formation contrôlable par un professeur. Langue ${language}; thème ${topic}; public ${audience}; niveau ${level}; durée cible ${duration} heures; ${count} modules; objectifs ${objectives}; orientation ${orientation}. ${detailed?"Rédige pour chaque leçon un contenu pédagogique substantiel et structuré, sans inventer de références ni sources, et signale les éléments nécessitant vérification.":"Propose le plan, objectifs, présentations, synthèses et leçons; pour chaque leçon fournis un bref contenu préliminaire éditable."} La durée officielle sera calculée par le moteur OGA, ne promets pas ${duration} heures. N'invente pas d'attestation, certification, Conclusion ou Examen final sans demande. Réponds uniquement en JSON strict {"title":"","short_description":"","long_description":"","prerequisites":"","introduction":"","objectives":[""],"target_audience":"","learning_outcomes":[""],"modules":[{"title":"","objective":"","presentation":"","lessons":[{"title":"","objective":"","content":"","summary":"","questions":[]}],"synthesis":""}]}.`;
+   try{
+    const result=await runAiText(sb,{context:{module:"studio",action:"ai_course_blueprint_preview",userId,metadata:{duration_target_hours:duration,module_count:count}},prompt,tier:"quality",maxTokens:12000,effort:"low",output:"structured"});
+    const parsed=parseAiObject(result.text);const blueprint=normalizeImportBlueprint(parsed,fallback,language);
+    if(!blueprint.modules.length)return json({success:false,error:"AI_BLUEPRINT_EMPTY",message:"Aucun programme utilisable n'a été généré."},502);
+    return json({success:true,blueprint,language,creator_context:creatorContext,generated_content:detailed,provider:result.provider,model:result.model,message:"Vérifiez et modifiez le programme avant de confirmer la création."});
+   }catch(error){const safe=aiErrorPayload(error);return json({success:false,...safe,message:"La génération IA est indisponible. Aucun brouillon n'a été créé."},safe.status||502)}
+  }
+  if(action==="ai_course_blueprint_apply"){
+   const requested=String(b.creator_context||"");const creatorContext=requested==="structure"?"structure":((requested==="admin"||requested==="super_admin")&&isAdmin?"super_admin":"professeur");
+   if(creatorContext==="structure"&&!isAdmin){const access=await validatedStructureAccess(sb,userId);if(!access||!hasStructurePermission(access,"can_create_courses"))return json({success:false,error:"STRUCTURE_COURSE_PERMISSION_REQUIRED"},403)}
+   const raw=b.blueprint;
+   if(!raw||typeof raw!=="object"||Array.isArray(raw)||!Array.isArray(raw.modules)||raw.modules.length<1||raw.modules.length>12)return json({success:false,error:"INVALID_BLUEPRINT"},400);
+   const language=normalizedCourseLanguage(b.language||"fr");const fallback:CourseImportBlueprint={title:String(raw.title||"Formation").slice(0,500),short_description:"",long_description:"",prerequisites:"",introduction:"",objectives:[],target_audience:"",learning_outcomes:[],modules:[]};
+   const blueprint=normalizeImportBlueprint(raw,fallback,language);if(!blueprint.modules.length)return json({success:false,error:"INVALID_BLUEPRINT"},400);
+   const result=await createImportedCourse(sb,userId,creatorContext,blueprint,{bucket:"",path:"",name:"Création assistée IA",mime:"application/json",size:0,sha256:"",job_id:null},true,language,"structured");
+   return json({success:true,...result,draft_only:true});
+  }
+  if(action==="analyze_multi_course_import"){
+   const sources=Array.isArray(b.sources)?b.sources:[];
+   if(sources.length<2||sources.length>4)return json({success:false,error:"SOURCE_COUNT_INVALID",message:"Sélectionnez entre 2 et 4 documents."},400);
+   const requestedContext=String(b.creator_context||"");const creatorContext=requestedContext==="structure"?"structure":((requestedContext==="admin"||requestedContext==="super_admin")&&isAdmin?"super_admin":"professeur");
+   if(creatorContext==="structure"&&!isAdmin){const access=await validatedStructureAccess(sb,userId);if(!access||!hasStructurePermission(access,"can_create_courses"))return json({success:false,error:"STRUCTURE_COURSE_PERMISSION_REQUIRED"},403)}
+   const entries=[] as any[];let total=0;
+   for(const source of sources){const item=await analyzeImportSource(sb,userId,{...source,mode:"faithful",allow_ai:false});total+=item.bytes.byteLength;if(total>70*1024*1024)return json({success:false,error:"IMPORT_TOTAL_SIZE_EXCEEDED"},400);entries.push({source,item})}
+   const language=normalizedCourseLanguage(b.language||entries[0].item.language);const priority=String(b.instructions||"Chaque document contribue au cours, sans doublons.").slice(0,1200);
+   const fallback:CourseImportBlueprint={...entries[0].item.blueprint,modules:entries.flatMap(e=>e.item.blueprint.modules).slice(0,12)};
+   const consolidated=entries.map((e,i)=>`DOCUMENT ${i+1}: ${String(e.source.original_name||"Document")}\n${e.item.extracted}`).join("\n\n----\n\n").slice(0,160000);
+   const ai=await aiImportBlueprint(sb,userId,`Consignes de fusion et priorité: ${priority}\n\n${consolidated}`,fallback,language);
+   const source=entries[0].source;
+   const jobSource={bucket:String(source.bucket_name),path:String(source.storage_path),name:entries.map(e=>String(e.source.original_name)).join(" + ").slice(0,500),mime:"application/x-omnia-multi-import",size:total,sha256:entries[0].item.sha256};
+   const {data:job,error:jobError}=await sb.from("course_import_jobs").insert({user_id:userId,course_id:null,target_type:"course",target_id:null,mode:"structured",bucket_name:jobSource.bucket,storage_path:jobSource.path,original_name:jobSource.name,mime_type:jobSource.mime,size_bytes:jobSource.size,sha256:jobSource.sha256,detected_language:language,status:"ready",blueprint:ai.blueprint,analysis_metadata:{ai_used:ai.ai_used,ai_error:ai.ai_error,creator_context:creatorContext,sources:entries.map(e=>({name:e.source.original_name,path:e.source.storage_path,sha256:e.item.sha256})),instructions:priority}}).select("*").single();if(jobError)throw jobError;
+   return json({success:true,job_id:job.id,blueprint:ai.blueprint,detected:{modules:ai.blueprint.modules.length,lessons:ai.blueprint.modules.reduce((n:number,m:any)=>n+m.lessons.length,0),sources:sources.length,ai_used:ai.ai_used},mode:"structured",message:"Fusion préparée. Vérifiez la structure avant de créer le brouillon."});
+  }
   if(action==="prepare_course_import_upload"){
    const requestedContext=String(b.creator_context||"");
    const creatorContext=requestedContext==="structure"?"structure":((requestedContext==="admin"||requestedContext==="super_admin")&&isAdmin?"super_admin":"professeur");
@@ -1643,7 +1687,7 @@ Grille/rubrique : ${JSON.stringify(q.rubric||[])}
 Points maximum : ${maxPoints}
 
 Retourne uniquement un JSON valide : {"suggested_points": nombre entre 0 et ${maxPoints}, "feedback": "commentaire bref et constructif", "reasoning_summary": "justification concise destinée au correcteur"}. N'invente aucun critère absent de la consigne ou de la grille.`;
-   try{const ai=await runAnthropicText(sb,{context:{module:"studio",action:"grader_ai_suggest_answer",userId,courseId:String(att.course_id||""),metadata:{answer_id:answerId,question_type:q.question_type}},tier:"quality",prompt,maxTokens:1800,effort:"low"});let parsed:any=null;try{const match=ai.text.match(/\{[\s\S]*\}/);parsed=JSON.parse(match?match[0]:ai.text)}catch{return json({success:false,error:"AI_SUGGESTION_INVALID",message:"La suggestion IA n'a pas pu être structurée. Aucune note n'a été enregistrée."},502)}const suggested=Math.min(maxPoints,Math.max(0,Number(parsed?.suggested_points||0)));return json({success:true,suggestion:{suggested_points:suggested,feedback:String(parsed?.feedback||""),reasoning_summary:String(parsed?.reasoning_summary||"")},provider:ai.provider,model:ai.model,advisory_only:true});}catch(error){const payload=aiErrorPayload(error);return json({success:false,...payload,message:"La correction assistée par IA est momentanément indisponible. Aucune note n'a été modifiée."},payload.status||502)}
+   try{const ai=await runAiText(sb,{context:{module:"studio",action:"grader_ai_suggest_answer",userId,courseId:String(att.course_id||""),metadata:{answer_id:answerId,question_type:q.question_type}},tier:"quality",prompt,maxTokens:1800,effort:"low",output:"structured",validate:value=>Number.isFinite(Number(value.suggested_points))});let parsed:any=null;try{parsed=parseAiObject(ai.text)}catch{return json({success:false,error:"AI_SUGGESTION_INVALID",message:"La suggestion IA n'a pas pu être structurée. Aucune note n'a été enregistrée."},502)}const suggested=Math.min(maxPoints,Math.max(0,Number(parsed?.suggested_points||0)));return json({success:true,suggestion:{suggested_points:suggested,feedback:String(parsed?.feedback||""),reasoning_summary:String(parsed?.reasoning_summary||"")},provider:ai.provider,model:ai.model,advisory_only:true});}catch(error){const payload=aiErrorPayload(error);return json({success:false,...payload,message:"La correction assistée par IA est momentanément indisponible. Aucune note n'a été modifiée."},payload.status||502)}
   }
   if(action==="prepare_assessment_correction_upload"){
    const attemptId=String(b.attempt_id||"");const {data:att}=await sb.from("assessment_attempts").select("course_id").eq("id",attemptId).maybeSingle();if(!att||!(await owns(sb,userId,att.course_id,"can_upload_files")))return json({success:false,error:"FORBIDDEN"},403);const fileName=String(b.file_name||"correction").replace(/[^a-zA-Z0-9._-]+/g,"-").slice(-160);if(Number(b.size_bytes||0)>52428800)return json({success:false,error:"FILE_TOO_LARGE"},400);const path=`${att.course_id}/${attemptId}/${userId}/${crypto.randomUUID()}-${fileName}`;const {data,error}=await sb.storage.from("assessment-corrections").createSignedUploadUrl(path,{upsert:false});if(error)throw error;return json({success:true,...data,bucket:"assessment-corrections",path});
@@ -1829,8 +1873,8 @@ Retourne uniquement un JSON valide : {"suggested_points": nombre entre 0 et ${ma
    const language=String(c?.language||"fr").toLowerCase();
    const prompt=`Tu es un correcteur éditorial professionnel pour une plateforme de formation. Analyse uniquement les fautes manifestes d'orthographe, grammaire, accords et formulation maladroite dans la langue principale ${language}. Ne corrige pas les noms propres, acronymes, termes métier ou variantes africaines plausibles sans certitude. Ne réécris pas le fond pédagogique. Retourne STRICTEMENT un JSON {"suggestions":[{"source":"...","block_id":"uuid ou null","original":"segment court","replacement":"correction courte","reason":"raison brève"}]}. Maximum 30 suggestions, aucune explication hors JSON.\n\nCONTENUS:\n${payload}`;
    try{
-    const ai=await runAnthropicText(sb,{context:{module:"studio",action:"quality_spelling_review",userId,courseId},tier:"fast",prompt,maxTokens:2600,effort:"low"});
-    let parsed:any={suggestions:[]};try{const match=ai.text.match(/\{[\s\S]*\}/);parsed=JSON.parse(match?match[0]:ai.text)}catch{return json({success:false,error:"WRITING_REVIEW_INVALID",message:"L’analyse rédactionnelle n’a pas pu être structurée."},502)}
+    const ai=await runAiText(sb,{context:{module:"studio",action:"quality_spelling_review",userId,courseId},tier:"fast",prompt,maxTokens:2600,effort:"low",output:"structured",validate:value=>Array.isArray(value.suggestions)});
+    let parsed:any={suggestions:[]};try{parsed=parseAiObject(ai.text)}catch{return json({success:false,error:"WRITING_REVIEW_INVALID",message:"L’analyse rédactionnelle n’a pas pu être structurée."},502)}
     const suggestions=Array.isArray(parsed?.suggestions)?parsed.suggestions.slice(0,30).map((x:any)=>({source:String(x.source||""),block_id:x.block_id?String(x.block_id):null,lesson_id:x.lesson_id?String(x.lesson_id):null,module_id:x.module_id?String(x.module_id):null,original:String(x.original||"").slice(0,500),replacement:String(x.replacement||"").slice(0,500),reason:String(x.reason||"").slice(0,500)})).filter((x:any)=>x.original&&x.replacement):[];
     return json({success:true,suggestions,provider:ai.provider,model:ai.model,blocking:false});
    }catch(error){const payload=aiErrorPayload(error);return json({success:false,...payload,message:"L’analyse orthographique globale est momentanément indisponible. Le correcteur local du navigateur reste actif."},payload.status||502)}
@@ -2103,8 +2147,12 @@ Retourne uniquement un JSON valide : {"suggested_points": nombre entre 0 et ${ma
    let aiCourse:any=null;let courseLanguage=String(b.language||b.instruction_language||"").trim();
    if(b.course_id){const result=await sb.from("courses").select("language,instruction_language,target_language,course_type,cefr_start_level,cefr_target_level").eq("id",String(b.course_id)).maybeSingle();aiCourse=result.data;if(!courseLanguage)courseLanguage=String(aiCourse?.instruction_language||aiCourse?.language||"").trim();}
    const languageRule=courseLanguage?`Langue d'enseignement : ${courseLanguage}. ${aiCourse?.course_type==="language_learning"&&aiCourse?.target_language?`Langue cible : ${aiCourse.target_language}. Niveau : ${aiCourse.cefr_start_level||"?"} → ${aiCourse.cefr_target_level||"?"}.`:""} Réponds dans la langue d'enseignement sauf si l'exercice exige explicitement la langue cible.`:"Conserve strictement la langue du texte source. Ne traduis pas le contenu sauf demande explicite du créateur.";
-   const ai=await runAnthropicText(sb,{context:{module:"studio",action:normalizedAction,userId,courseId:String(b.course_id||courseId||"")||null,lessonId:String(b.lesson_id||"")||null,blockId:String(b.block_id||"")||null},tier:"fast",prompt:`${languageRule}\n${prompts[normalizedAction]}\n\nTitre de la leçon : ${String(b.lesson_title||"")}\n\n${input}`,maxTokens:["ai_generate_quiz","ai_suggest_structure"].includes(normalizedAction)?3600:2400,effort:"low"});
-   return json({success:true,result:ai.text,provider:ai.provider,model:ai.model,action:normalizedAction});
+   const ai=await runAiText(sb,{context:{module:"studio",action:normalizedAction,userId,courseId:String(b.course_id||courseId||"")||null,lessonId:String(b.lesson_id||"")||null,blockId:String(b.block_id||"")||null},tier:"fast",prompt:`${languageRule}\n${prompts[normalizedAction]}\n\nTitre de la leçon : ${String(b.lesson_title||"")}\n\n${input}`,maxTokens:["ai_generate_quiz","ai_suggest_structure"].includes(normalizedAction)?3600:2400,effort:"low",output:["ai_generate_qcm","ai_generate_true_false","ai_generate_quiz"].includes(normalizedAction)?"structured":"rich_text"});
+   const structured=["ai_generate_qcm","ai_generate_true_false","ai_generate_quiz"].includes(normalizedAction);
+   let resultText=ai.text;
+   if(structured){try{resultText=JSON.stringify(parseAiObject(ai.text))}catch{return json({success:false,error:"AI_INVALID_STRUCTURED_RESPONSE",message:"La génération n’a pas produit des données exploitables. Aucun contenu n’a été modifié."},502)}}
+   else if(!["ai_create_summary","ai_create_remember","ai_suggest_structure"].includes(normalizedAction))resultText=normalizeAiPlainText(ai.text);
+   return json({success:true,result:resultText,provider:ai.provider,model:ai.model,action:normalizedAction});
   }
   return json({success:false,error:"UNKNOWN_ACTION",action},400);
  }catch(e){console.error("studio-unified",e);const ai=aiErrorPayload(e);if(ai.error!=="AI_RUNTIME_ERROR")return json({success:false,error:ai.error,provider:ai.provider,message:ai.message},ai.status);return json({success:false,error:"SERVER_ERROR",message:(e as Error).message},500)}

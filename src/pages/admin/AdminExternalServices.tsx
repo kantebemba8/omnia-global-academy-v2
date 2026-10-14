@@ -334,6 +334,8 @@ export default function AdminExternalServices() {
   const [message, setMessage] = useState('');
   const [entryForm, setEntryForm] = useState<any>(null);
   const [budgetForm, setBudgetForm] = useState<any>(null);
+  const [aiDiagnostics, setAiDiagnostics] = useState<Record<string, any>>({});
+  const [aiDiagnosticRunning, setAiDiagnosticRunning] = useState('');
 
   async function call(method: 'GET' | 'POST', body?: Record<string, unknown>) {
     const response = await fetch(
@@ -347,6 +349,15 @@ export default function AdminExternalServices() {
     const result = await response.json().catch(() => ({}));
     if (!response.ok || result?.success === false) throw new Error(result?.message || result?.error || 'Erreur de gouvernance');
     return result;
+  }
+
+  async function testAiCapability(capability: string) {
+    setAiDiagnosticRunning(capability); setError('');
+    try {
+      const result = await call('POST', { action: 'application_ai_diagnostic', capability });
+      setAiDiagnostics(previous => ({ ...previous, [capability]: result }));
+    } catch (e) { setError(e instanceof Error ? e.message : 'Diagnostic IA impossible'); }
+    finally { setAiDiagnosticRunning(''); }
   }
 
   async function load() {
@@ -470,6 +481,29 @@ export default function AdminExternalServices() {
 
         {error && <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"><strong>Erreur :</strong> {error}</div>}
         {message && <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 flex items-center justify-between"><span>{message}</span><button onClick={() => setMessage('')}><XCircle size={16}/></button></div>}
+
+        <section className="rounded-xl border border-gray-200 bg-white p-4 space-y-3" aria-label="Diagnostic des clés IA applicatives">
+          <div>
+            <h2 className="font-black" style={{ color: BLUE }}>Diagnostic IA applicatif</h2>
+            <p className="text-xs text-gray-600">Vérification des clés utilisées par les Edge Functions, indépendamment des clés administratives de facturation. Les tests actifs consomment potentiellement des crédits. Aucune clé n’est affichée.</p>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+            {([
+              ['anthropic_fast','Anthropic rapide'], ['anthropic_quality','Anthropic qualité'],
+              ['openai_text','OpenAI texte'], ['openai_embeddings','OpenAI embeddings'],
+              ['openai_images','OpenAI images'], ['openai_tts','OpenAI synthèse vocale'],
+              ['openai_transcription','OpenAI transcription'],
+            ] as const).map(([id,label]) => {
+              const result=aiDiagnostics[id];
+              return <div key={id} className="rounded-lg border border-gray-200 p-3 space-y-2">
+                <p className="text-sm font-semibold">{label}</p>
+                <p className="text-xs text-gray-500">{!result ? 'Non vérifié' : !result.configured ? 'Clé applicative absente' : result.verified ? 'Test API réussi' : result.note ? 'Clé présente — appel non testé' : `Échec : ${result.error || 'réponse invalide'}`}</p>
+                {result && <p className="text-[11px] text-gray-500">{result.model} · {result.elapsed_ms} ms · {result.checked_at}</p>}
+                <button type="button" className="rounded-md border border-gray-300 px-2 py-1 text-xs font-bold disabled:opacity-50" disabled={Boolean(aiDiagnosticRunning)} onClick={() => void testAiCapability(id)}>{aiDiagnosticRunning === id ? 'Vérification…' : 'Vérifier'}</button>
+              </div>;
+            })}
+          </div>
+        </section>
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <div className="rounded-xl border border-gray-200 bg-white p-4"><Server size={20} style={{ color: GOLD }}/><p className="text-2xl font-black mt-2" style={{ color: BLUE }}>{configuredCount}/{data.providers.length || 9}</p><p className="text-xs text-gray-500">services configurés</p></div>

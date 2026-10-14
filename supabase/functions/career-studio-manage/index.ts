@@ -2,7 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 
 import { getActiveOmniaSessionResult } from "../_shared/omnia-auth.ts";
-import { runAnthropicText, aiErrorPayload } from "../_shared/ai-runtime.ts";
+import { runAiText, parseAiObject, normalizeAiPlainText, aiErrorPayload } from "../_shared/ai-runtime.ts";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
@@ -443,7 +443,7 @@ function parseAiJsonObject(text: string): Record<string, unknown> | null {
 }
 
 async function callClaude(sb: ReturnType<typeof createClient>, userId: string, action: string, system: string, prompt: string) {
-  return await runAnthropicText(sb, {
+  return await runAiText(sb, {
     context: { module: "career", action, userId },
     tier: "quality",
     system,

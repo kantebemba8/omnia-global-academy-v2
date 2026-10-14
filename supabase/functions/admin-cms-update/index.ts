@@ -2,7 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 import { getActiveOmniaSessionResult } from "../_shared/omnia-auth.ts";
 import { getAnthropicApiKey } from "../_shared/ai-models.ts";
-import { runAnthropicText, runOpenAIChatText } from "../_shared/ai-runtime.ts";
+import { runAiText, runOpenAIChatText } from "../_shared/ai-runtime.ts";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
@@ -54,7 +54,7 @@ async function generateTranslationValues(sb: ReturnType<typeof createClient>, la
   ].join("\n");
   if (getAnthropicApiKey()) {
     try {
-      const result = await runAnthropicText(sb, { context: { module: "translation", action: `admin_ui_${language}` }, tier: "fast", prompt, maxTokens: 7000, effort: "low" });
+      const result = await runAiText(sb, { context: { module: "translation", action: `admin_ui_${language}` }, tier: "fast", prompt, maxTokens: 7000, effort: "low" });
       const parsed = extractTranslationArray(result.text); if (parsed?.length === sources.length) return parsed;
     } catch (error) { console.error("Admin i18n Anthropic error", error); }
   }

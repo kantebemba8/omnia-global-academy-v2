@@ -1,7 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
 import { getAnthropicApiKey } from "../_shared/ai-models.ts";
-import { runAnthropicText, runOpenAIChatText } from "../_shared/ai-runtime.ts";
+import { runAiText, runOpenAIChatText } from "../_shared/ai-runtime.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": Deno.env.get('ALLOWED_ORIGIN') || "https://omniaglobalacademy.com",
@@ -58,7 +58,7 @@ async function generateUiTranslations(sb: ReturnType<typeof createClient>, langu
   ].join("\n");
   if (getAnthropicApiKey()) {
     try {
-      const result = await runAnthropicText(sb, { context: { module: "translation", action: `public_ui_${language}` }, tier: "fast", prompt, maxTokens: 7000, effort: "low" });
+      const result = await runAiText(sb, { context: { module: "translation", action: `public_ui_${language}` }, tier: "fast", prompt, maxTokens: 7000, effort: "low" });
       const parsed = extractJsonArray(result.text); if (parsed?.length === sources.length) return parsed;
     } catch (error) { console.error("UI translation Anthropic error", error); }
   }

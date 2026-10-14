@@ -4,7 +4,7 @@ import { isOmniaInternalRequest, omniaInternalHeaders } from "../_shared/omnia-a
 import { fetchStreamCaption, signedStreamDownload, uploadStreamCaption } from "../_shared/cloudflare-stream.ts";
 import { corsHeaders } from "../_shared/cors.ts";
 import { storageRef } from "../_shared/protected-storage.ts";
-import { runAnthropicText, runOpenAITranscription, aiErrorPayload } from "../_shared/ai-runtime.ts";
+import { runAiText, parseAiObject, normalizeAiPlainText, runOpenAITranscription, aiErrorPayload } from "../_shared/ai-runtime.ts";
 
 const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
@@ -42,7 +42,7 @@ async function translateSrt(sb: any, job: any, srt: string) {
   const chunks = splitSrtForTranslation(srt);
   for (let index=0; index<chunks.length; index++) {
     const prompt = `Traduis cet extrait SRT de ${job.source_language} vers ${job.target_language}.\nRègles absolues : conserve exactement les numéros et timestamps ; traduis uniquement les lignes de texte ; retourne uniquement le SRT, sans markdown ni commentaire. Ceci est la partie ${index+1}/${chunks.length}.\n\n${chunks[index]}`;
-    const result = await runAnthropicText(sb, { context: { module: "subtitles", action: "translate_srt", userId: job.requested_by, courseId: job.course_id, lessonId: job.lesson_id, blockId: job.block_id, metadata: { chunk: index + 1, chunks: chunks.length } }, tier: "quality", prompt, maxTokens: 7000, effort: "low" });
+    const result = await runAiText(sb, { context: { module: "subtitles", action: "translate_srt", userId: job.requested_by, courseId: job.course_id, lessonId: job.lesson_id, blockId: job.block_id, metadata: { chunk: index + 1, chunks: chunks.length } }, tier: "quality", prompt, maxTokens: 7000, effort: "low" });
     const text = String(result.text || "").trim();
     if (!text.includes("-->")) throw new Error("SUBTITLE_TRANSLATION_INVALID");
     translated.push(text);

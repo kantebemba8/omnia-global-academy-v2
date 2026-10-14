@@ -3,7 +3,7 @@ import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 import * as XLSX from "npm:xlsx@0.18.5";
 import { PRIVATE_COURSE_BUCKET_SET, createSignedObjectUrl, parseStorageLocator } from "../_shared/protected-storage.ts";
 import { signedStreamManifest } from "../_shared/cloudflare-stream.ts";
-import { runAnthropicText, aiErrorPayload } from "../_shared/ai-runtime.ts";
+import { runAiText, parseAiObject, normalizeAiPlainText, aiErrorPayload } from "../_shared/ai-runtime.ts";
 
 import { getActiveOmniaSessionResult } from "../_shared/omnia-auth.ts";
 import { canPreviewCourse } from "../_shared/course-preview-access.ts";
@@ -20,7 +20,7 @@ function scormBridgeScript(runtime:any,preview=false){
 
 const json=(d:unknown,s=200)=>new Response(JSON.stringify(d),{status:s,headers:{...corsHeaders,"Content-Type":"application/json"}});
 function plainTrainingText(value:any){return String(value??"").replace(/<[^>]*>/g," ").replace(/&nbsp;/gi," ").replace(/\s+/g," ").trim()}
-function safeTrainingJson(text:any){const raw=String(text||"").trim().replace(/^```(?:json)?\s*/i,"").replace(/\s*```$/," ");try{return JSON.parse(raw)}catch{const a=raw.indexOf("{"),b=raw.lastIndexOf("}");if(a>=0&&b>a){try{return JSON.parse(raw.slice(a,b+1))}catch{}}return null}}
+function safeTrainingJson(text:any){try{return parseAiObject(text)}catch{return null}}
 async function gradeQualitativeTraining(sb:any,params:{userId:string;courseId:string;lessonId:string;block:any;answer:any;threshold:number}){
  const c=params.block?.content_json||{};const type=String(params.block?.block_type||"");
  const answerText=typeof params.answer?.text==="string"?params.answer.text:params.answer?.answers&&typeof params.answer.answers==="object"?Object.entries(params.answer.answers).map(([k,v])=>`${Number(k)+1}. ${String(v||"")}`).join("\n"):JSON.stringify(params.answer||{});
@@ -31,7 +31,7 @@ async function gradeQualitativeTraining(sb:any,params:{userId:string;courseId:st
  const context=plainTrainingText(c.context||c.data||"");
  const system='Vous êtes le moteur de correction des entraînements d’Omnia Global Academy. Évaluez la pertinence réelle de la réponse, pas sa longueur. Une réponse hors sujet, aléatoire ou vide doit recevoir un score très faible. Répondez uniquement en JSON valide: {"score":number,"feedback":"texte bref"}. Le score va de 0 à 100.';
  const prompt=`TYPE D’ACTIVITÉ: ${type}\n\nCONSIGNE:\n${promptParts.join("\n")||"Répondre à l’activité proposée."}\n${context?`\nCONTEXTE:\n${context}`:""}${questions.length?`\nQUESTIONS:\n${questions.join("\n")}`:""}${reference?`\nÉLÉMENTS ATTENDUS / RÉFÉRENCE:\n${reference}`:""}\n\nRÉPONSE APPRENANT:\n${answerText}\n\nSEUIL DE RÉUSSITE: ${params.threshold}%\n\nAttribuez un score strictement fondé sur la qualité et la pertinence de la réponse.`;
- try{const result=await runAnthropicText(sb,{context:{module:"formation",action:"training_ai_grading",userId:params.userId,courseId:params.courseId,lessonId:params.lessonId,blockId:String(params.block.id)},system,prompt,tier:"quality",effort:"low",maxTokens:900});const parsed=safeTrainingJson(result.text);if(!parsed||!Number.isFinite(Number(parsed.score)))return {ok:false,error:"AI_INVALID_GRADING_RESPONSE"};return {ok:true,score:Math.max(0,Math.min(100,Math.round(Number(parsed.score)))),feedback:String(parsed.feedback||""),provider:result.provider,model:result.model}}catch(error){const payload=aiErrorPayload(error);return {ok:false,error:payload.error||"AI_GRADING_FAILED",message:payload.message||"La correction IA est momentanément indisponible."}}
+ try{const result=await runAiText(sb,{context:{module:"formation",action:"training_ai_grading",userId:params.userId,courseId:params.courseId,lessonId:params.lessonId,blockId:String(params.block.id)},system,prompt,tier:"quality",effort:"low",maxTokens:900,output:"structured",validate:value=>Number.isFinite(Number(value.score))});const parsed=safeTrainingJson(result.text);if(!parsed||!Number.isFinite(Number(parsed.score)))return {ok:false,error:"AI_INVALID_GRADING_RESPONSE"};return {ok:true,score:Math.max(0,Math.min(100,Math.round(Number(parsed.score)))),feedback:String(parsed.feedback||""),provider:result.provider,model:result.model}}catch(error){const payload=aiErrorPayload(error);return {ok:false,error:payload.error||"AI_GRADING_FAILED",message:payload.message||"La correction IA est momentanément indisponible."}}
 }
 async function computeLessonGate(sb:any,userId:string,courseId:string,lessonId:string){
  const {data:lesson}=await sb.from("course_lessons").select("id,cpd_calculated_time_seconds,stage_type,is_intro,is_module_intro,is_conclusion,is_final_exam").eq("id",lessonId).maybeSingle();

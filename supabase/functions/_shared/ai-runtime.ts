@@ -230,26 +230,93 @@ export async function runAnthropicPdfText(sb: any, options: {
   }
 }
 
-export async function runOpenAIChatText(sb: any, options: { context: RuntimeContext; prompt: string; model?: string; temperature?: number; maxTokens?: number }) {
+export async function runOpenAIChatText(sb: any, options: { context: RuntimeContext; prompt: string; system?: string; model?: string; temperature?: number; maxTokens?: number }) {
   const key = String(Deno.env.get("OPENAI_API_KEY") || "").trim();
   if (!key) throw new AiRuntimeError("OPENAI_NOT_CONFIGURED", "openai", 503);
   const model = options.model || getOpenAITextModel();
-  const response = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model,
-      temperature: options.temperature ?? 0,
-      max_tokens: options.maxTokens || 5000,
-      messages: [{ role: "user", content: options.prompt }],
-    }),
-  });
-  const payload = await response.json().catch(() => ({} as any));
-  if (!response.ok) throw new AiRuntimeError("OPENAI_TEXT_FAILED", "openai", response.status, cleanDetail(payload?.error?.message || payload));
-  const text = String(payload?.choices?.[0]?.message?.content || "").trim();
-  if (!text) throw new AiRuntimeError("OPENAI_EMPTY_RESPONSE", "openai", 502);
-  await recordUsage(sb, "openai", String(payload?.model || model), options.context, payload?.usage || {}, String(payload?.id || "") || null);
-  return { text, provider: "openai", model: String(payload?.model || model), usage: payload?.usage || {}, requestId: String(payload?.id || "") };
+  const controller = new AbortController();
+  const timeoutMs = Math.max(10000, Math.min(120000, Number(Deno.env.get("OGA_AI_TEXT_TIMEOUT_MS") || 90000)));
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+      signal: controller.signal,
+      body: JSON.stringify({
+        model,
+        temperature: options.temperature ?? 0,
+        max_tokens: options.maxTokens || 5000,
+        messages: [...(options.system ? [{ role: "system", content: options.system }] : []), { role: "user", content: options.prompt }],
+      }),
+    });
+    const payload = await response.json().catch(() => ({} as any));
+    if (!response.ok) throw new AiRuntimeError("OPENAI_TEXT_FAILED", "openai", response.status, cleanDetail(payload?.error?.message || payload));
+    const value = payload?.choices?.[0]?.message?.content;
+    const result = typeof value === "string" ? value : Array.isArray(value) ? value.map((item: any) => String(item?.text || "")).join("") : "";
+    const text = result.trim();
+    if (!text) throw new AiRuntimeError("OPENAI_EMPTY_RESPONSE", "openai", 502);
+    await recordUsage(sb, "openai", String(payload?.model || model), options.context, payload?.usage || {}, String(payload?.id || "") || null);
+    return { text, provider: "openai", model: String(payload?.model || model), usage: payload?.usage || {}, requestId: String(payload?.id || "") };
+  } catch (error) {
+    if (error instanceof AiRuntimeError) throw error;
+    if ((error as Error)?.name === "AbortError") throw new AiRuntimeError("OPENAI_TIMEOUT", "openai", 504);
+    throw new AiRuntimeError("OPENAI_UNAVAILABLE", "openai", 502, cleanDetail((error as Error)?.message));
+  } finally { clearTimeout(timer); }
+}
+
+/** Readable plain text only. Do not apply to legitimate course HTML or SRT. */
+export function normalizeAiPlainText(input: unknown): string {
+  const source = String(input ?? "").trim().replace(/^```(?:text|plaintext|markdown)?\s*\n?/i, "").replace(/\n?```\s*$/i, "");
+  return source.replace(/<\s*br\s*\/?\s*>/gi, "\n")
+    .replace(/<\/(?:p|div|li|h[1-6])\s*>/gi, "\n")
+    .replace(/<[^>]*>/g, "")
+    .replace(/&(?:nbsp|amp|lt|gt|quot|apos|#39);/gi, token => ({ "&nbsp;": " ", "&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": "\"", "&apos;": "'", "&#39;": "'" }[token.toLowerCase()] || token))
+    .replace(/\n{3,}/g, "\n\n").trim();
+}
+
+/** Parse only a single JSON value or one JSON code fence; do not guess brace boundaries. */
+export function parseAiStructured(input: unknown): unknown {
+  const raw = String(input ?? "").trim();
+  const fenced = raw.match(/^```(?:json)?\s*\n?([\s\S]*?)\n?```$/i);
+  const source = fenced ? fenced[1].trim() : raw;
+  try { return JSON.parse(source); }
+  catch { throw new AiRuntimeError("AI_INVALID_STRUCTURED_RESPONSE", "runtime", 502); }
+}
+
+export function parseAiObject(input: unknown): Record<string, unknown> {
+  const data = parseAiStructured(input);
+  if (!data || Array.isArray(data) || typeof data !== "object") throw new AiRuntimeError("AI_INVALID_STRUCTURED_RESPONSE", "runtime", 502);
+  return data as Record<string, unknown>;
+}
+
+function shouldFallback(error: unknown): boolean {
+  if (!(error instanceof AiRuntimeError)) return false;
+  if (error.code === "AI_INVALID_STRUCTURED_RESPONSE") return true;
+  if (error.provider !== "anthropic") return false;
+  if (["ANTHROPIC_NOT_CONFIGURED", "ANTHROPIC_TIMEOUT", "ANTHROPIC_EMPTY_RESPONSE", "ANTHROPIC_UNAVAILABLE"].includes(error.code)) return true;
+  return error.status === 408 || error.status === 409 || error.status === 429 || error.status >= 500;
+}
+
+export async function runAiText(sb: any, options: Parameters<typeof runAnthropicText>[1] & {
+  output?: "plain_text" | "structured" | "rich_text" | "srt";
+  validate?: (value: Record<string, unknown>) => boolean;
+  fallback?: boolean;
+}) {
+  const output = options.output || "rich_text";
+  const process = (response: Awaited<ReturnType<typeof runAnthropicText>>) => {
+    if (output === "structured") {
+      const object = parseAiObject(response.text);
+      if (options.validate && !options.validate(object)) throw new AiRuntimeError("AI_INVALID_STRUCTURED_RESPONSE", "runtime", 502);
+      return { ...response, text: JSON.stringify(object), data: object };
+    }
+    return { ...response, text: output === "plain_text" ? normalizeAiPlainText(response.text) : response.text, data: undefined };
+  };
+  try { return process(await runAnthropicText(sb, options)); }
+  catch (error) {
+    if (options.fallback === false || !shouldFallback(error)) throw error;
+    const backup = await runOpenAIChatText(sb, { context: { ...options.context, metadata: { ...(options.context.metadata || {}), fallback_from: "anthropic" } }, system: options.system, prompt: options.prompt, maxTokens: options.maxTokens, temperature: options.temperature });
+    return process(backup);
+  }
 }
 
 export async function runOpenAIEmbedding(sb: any, options: { context: RuntimeContext; input: string; model?: string }) {

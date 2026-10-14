@@ -6,6 +6,8 @@ import { jaasConfigurationStatus } from "../_shared/jaas.ts";
 import { cloudflareStreamConfigured } from "../_shared/cloudflare-stream.ts";
 
 import { getActiveOmniaSessionResult } from "../_shared/omnia-auth.ts";
+import { getAnthropicApiKey, getAnthropicFastModel, getAnthropicQualityModel, getOpenAITextModel, getOpenAIImageModel, getOpenAIEmbeddingModel, getOpenAITtsModel, getOpenAISubtitleTranscriptionModel } from "../_shared/ai-models.ts";
+import { runAnthropicText, runOpenAIChatText, runOpenAIEmbedding, aiErrorPayload } from "../_shared/ai-runtime.ts";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
@@ -1892,11 +1894,51 @@ async function externalServiceGovernancePayload(sb: any, actorUserId: string | n
   };
 }
 
+/** Application-key diagnostics, deliberately separate from finance/admin provider sync. */
+async function applicationAiDiagnostic(sb: any, actorUserId: string, capability: string) {
+  const configured: Record<string, boolean> = {
+    anthropic_fast: Boolean(getAnthropicApiKey()), anthropic_quality: Boolean(getAnthropicApiKey()),
+    openai_text: Boolean(Deno.env.get("OPENAI_API_KEY")), openai_embeddings: Boolean(Deno.env.get("OPENAI_API_KEY")),
+    openai_images: Boolean(Deno.env.get("OPENAI_API_KEY")), openai_tts: Boolean(Deno.env.get("OPENAI_API_KEY")),
+    openai_transcription: Boolean(Deno.env.get("OPENAI_API_KEY")),
+  };
+  const models: Record<string, string> = {
+    anthropic_fast: getAnthropicFastModel(), anthropic_quality: getAnthropicQualityModel(),
+    openai_text: getOpenAITextModel(), openai_embeddings: getOpenAIEmbeddingModel(),
+    openai_images: getOpenAIImageModel(), openai_tts: getOpenAITtsModel(), openai_transcription: getOpenAISubtitleTranscriptionModel(),
+  };
+  if (!(capability in configured)) return { success: false, error: "UNKNOWN_AI_CAPABILITY" };
+  const started = Date.now();
+  if (!configured[capability]) return { success: true, capability, configured: false, verified: false, model: models[capability], checked_at: new Date().toISOString(), elapsed_ms: 0 };
+  // Image/audio checks are deliberately configuration-only: a generation has real cost
+  // and needs an explicit product flow rather than a hidden destructive test.
+  if (["openai_images", "openai_tts", "openai_transcription"].includes(capability)) {
+    return { success: true, capability, configured: true, verified: false, model: models[capability], checked_at: new Date().toISOString(), elapsed_ms: 0, note: "Configuration présente ; capacité non testée par un appel génératif." };
+  }
+  try {
+    const context = { module: "admin_diagnostics", action: capability, userId: actorUserId };
+    if (capability.startsWith("anthropic")) {
+      await runAnthropicText(sb, { context, model: models[capability], prompt: "Respond with the single word OK.", maxTokens: 512, effort: "low" });
+    } else if (capability === "openai_text") {
+      await runOpenAIChatText(sb, { context, prompt: "Respond with the single word OK.", maxTokens: 20 });
+    } else if (capability === "openai_embeddings") {
+      const vector = await runOpenAIEmbedding(sb, { context, input: "OGA diagnostic" });
+      if (!vector.length || vector.some(x => !Number.isFinite(x))) throw new Error("INVALID_EMBEDDING_VECTOR");
+    }
+    return { success: true, capability, configured: true, verified: true, model: models[capability], checked_at: new Date().toISOString(), elapsed_ms: Date.now() - started };
+  } catch (error) {
+    const safe = aiErrorPayload(error);
+    return { success: true, capability, configured: true, verified: false, model: models[capability], checked_at: new Date().toISOString(), elapsed_ms: Date.now() - started, error: safe.error, status: safe.status };
+  }
+}
+
 async function handleOperationsPost(sb: any, session: SessionContext, body: any) {
   const action = String(body?.action || "");
-  const supported = new Set(["external_service_ledger_add", "external_service_ledger_update", "external_service_ledger_delete", "external_service_budget_save", "external_service_provider_sync", "cron_control_update"]);
+  const supported = new Set(["external_service_ledger_add", "external_service_ledger_update", "external_service_ledger_delete", "external_service_budget_save", "external_service_provider_sync", "cron_control_update", "application_ai_diagnostic"]);
   if (!supported.has(action)) return null;
   if (!session.isAdmin) return json({ error: "FORBIDDEN" }, 403);
+
+  if (action === "application_ai_diagnostic") return json(await applicationAiDiagnostic(sb, session.userId, String(body?.capability || "")));
 
   if (action === "external_service_provider_sync") {
     const provider = safeProvider(body?.provider);

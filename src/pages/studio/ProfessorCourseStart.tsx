@@ -22,7 +22,7 @@ const MAX_IMPORT_BYTES = 25 * 1024 * 1024;
 const IMPORT_EXTENSIONS = ['pdf', 'docx', 'xlsx', 'pptx', 'zip', 'txt', 'md', 'csv'];
 
 type CreatorContext = 'professeur' | 'structure' | 'admin';
-type CreationMode = 'file' | 'assisted' | null;
+type CreationMode = 'file' | 'assisted' | 'ai' | null;
 type ImportMode = 'faithful' | 'structured' | 'enriched';
 type ImportPreview = { job_id: string; blueprint: any; detected: { modules?: number; lessons?: number; suggested_questions?: number; language?: string; ai_used?: boolean; slides?: number; images?: number; tables?: number }; mode: ImportMode };
 
@@ -85,6 +85,16 @@ export default function ProfessorCourseStart() {
   const [mode, setMode] = useState<CreationMode>(() => isAdminFileImport ? 'file' : null);
   const [title, setTitle] = useState('');
   const [importFile, setImportFile] = useState<File | null>(null);
+  const [multiFiles, setMultiFiles] = useState<File[]>([]);
+  const [importInstructions, setImportInstructions] = useState('');
+  const [aiAudience, setAiAudience] = useState('');
+  const [aiObjectives, setAiObjectives] = useState('');
+  const [aiLevel, setAiLevel] = useState('debutant');
+  const [aiOrientation, setAiOrientation] = useState('equilibree');
+  const [aiHours, setAiHours] = useState(8);
+  const [aiModules, setAiModules] = useState(4);
+  const [aiContent, setAiContent] = useState(false);
+  const [aiPreview, setAiPreview] = useState<any>(null);
   const [importing, setImporting] = useState(false);
   const [importStatus, setImportStatus] = useState('');
   const [importMode, setImportMode] = useState<ImportMode>('structured');
@@ -99,6 +109,7 @@ export default function ProfessorCourseStart() {
     setError('');
     setImportStatus('');
     setImportPreview(null);
+    setAiPreview(null);
     setMode(next);
   }
 
@@ -109,6 +120,68 @@ export default function ProfessorCourseStart() {
     }
     if (file.size <= 0) throw new Error('Le fichier sélectionné est vide.');
     if (file.size > MAX_IMPORT_BYTES) throw new Error('Le fichier dépasse la limite de 25 Mo.');
+  }
+
+  async function prepareOneFile(file: File) {
+    validateImportFile(file);
+    const prepared = await call('prepare_course_import_upload', {
+      creator_context: creatorContext, original_name: file.name, file_size: file.size,
+      file_mime: file.type || 'application/octet-stream',
+    });
+    await uploadCourseImportFile({ bucket: prepared.bucket, path: prepared.path,
+      token: prepared.token, upload_mime: prepared.upload_mime }, file);
+    return { bucket_name: prepared.bucket, storage_path: prepared.path,
+      original_name: file.name, file_size: file.size, file_mime: file.type || 'application/octet-stream' };
+  }
+
+  async function submitMultiImport() {
+    setError(''); setImportPreview(null);
+    if (multiFiles.length < 2 || multiFiles.length > 4) return setError('Choisissez entre 2 et 4 documents.');
+    setImporting(true);
+    try {
+      const sources = [];
+      for (let i = 0; i < multiFiles.length; i++) {
+        setImportStatus(`Téléversement sécurisé du document ${i+1}/${multiFiles.length}…`);
+        sources.push(await prepareOneFile(multiFiles[i]));
+      }
+      setImportStatus('Analyse et fusion des documents…');
+      const result=await call('analyze_multi_course_import', {
+        creator_context:creatorContext, sources, instructions:importInstructions, title:title.trim(),
+      });
+      setImportPreview({job_id:result.job_id, blueprint:result.blueprint,
+        detected:result.detected || {}, mode:'structured'});
+      setImportStatus('Fusion terminée. Examinez le blueprint avant confirmation.');
+    } catch (caught) { setError(caught instanceof Error ? caught.message : 'Fusion des documents impossible.'); }
+    finally { setImporting(false); }
+  }
+
+  async function previewAiCourse() {
+    setError(''); setAiPreview(null);
+    if (title.trim().length < 4) return setError('Précisez le thème de la formation.');
+    setImporting(true);
+    try {
+      const result=await call('ai_course_blueprint_preview', {
+        creator_context:creatorContext, topic:title, audience:aiAudience, objectives:aiObjectives,
+        level:aiLevel, duration_hours:aiHours, module_count:aiModules,
+        orientation:aiOrientation, generate_content:aiContent, language:'fr',
+      });
+      setAiPreview(result.blueprint);
+    } catch (caught) { setError(caught instanceof Error ? caught.message : 'Génération IA impossible.'); }
+    finally { setImporting(false); }
+  }
+
+  async function applyAiCourse() {
+    if (!aiPreview) return;
+    setImporting(true); setError('');
+    try {
+      const result=await call('ai_course_blueprint_apply', {
+        creator_context:creatorContext, blueprint:aiPreview, language:'fr',
+      });
+      const courseId=result.course?.id || result.course_id;
+      if(!courseId) throw new Error('Identifiant du brouillon absent.');
+      navigate(`${routes.studio}/${courseId}?source=ai-draft-v3`, {replace:true});
+    } catch(caught) { setError(caught instanceof Error ? caught.message : 'Création du brouillon impossible.'); }
+    finally { setImporting(false); }
   }
 
   async function submitFileImport() {
@@ -302,6 +375,39 @@ export default function ProfessorCourseStart() {
           </button>
         </div>}
 
+        {!isAdminFileImport && <button type="button" onClick={() => resetPanels('ai')}
+          className="mt-4 w-full text-left rounded-2xl border bg-white p-6 hover:shadow-md"
+          style={{ borderColor: mode === 'ai' ? GOLD : BORDER }}>
+          <div className="flex items-center gap-3"><Sparkles color={GOLD} size={23}/>
+            <h2 className="text-lg font-semibold" style={{color:BLUE}}>Créer avec l'IA</h2></div>
+          <p className="mt-2 text-sm text-gray-500">Générez un programme pédagogique et son contenu préliminaire, modifiez le blueprint, puis créez un brouillon non publié.</p>
+        </button>}
+
+        {mode === 'ai' && <section className="mt-6 rounded-2xl border bg-white p-6 space-y-4" style={{borderColor:BORDER}}>
+          <h2 className="font-semibold" style={{color:BLUE}}>Création pédagogique assistée par IA</h2>
+          <div className="grid gap-3 md:grid-cols-2">
+            <label className="text-sm">Thème<input className="mt-1 w-full rounded-lg border p-2" value={title} maxLength={500} onChange={e=>setTitle(e.target.value)}/></label>
+            <label className="text-sm">Public cible<input className="mt-1 w-full rounded-lg border p-2" value={aiAudience} maxLength={500} onChange={e=>setAiAudience(e.target.value)}/></label>
+            <label className="text-sm">Niveau<select className="mt-1 w-full rounded-lg border p-2" value={aiLevel} onChange={e=>setAiLevel(e.target.value)}><option value="debutant">Débutant</option><option value="intermediaire">Intermédiaire</option><option value="avance">Avancé</option><option value="expert">Expert</option></select></label>
+            <label className="text-sm">Orientation<select className="mt-1 w-full rounded-lg border p-2" value={aiOrientation} onChange={e=>setAiOrientation(e.target.value)}><option value="equilibree">Équilibrée</option><option value="pratique">Pratique</option><option value="theorique">Théorique</option></select></label>
+            <label className="text-sm">Durée cible (heures)<input className="mt-1 w-full rounded-lg border p-2" type="number" min={1} max={120} value={aiHours} onChange={e=>setAiHours(Number(e.target.value))}/></label>
+            <label className="text-sm">Nombre de modules<input className="mt-1 w-full rounded-lg border p-2" type="number" min={1} max={12} value={aiModules} onChange={e=>setAiModules(Number(e.target.value))}/></label>
+          </div>
+          <label className="block text-sm">Objectifs<textarea className="mt-1 w-full rounded-lg border p-2" rows={3} value={aiObjectives} maxLength={2400} onChange={e=>setAiObjectives(e.target.value)}/></label>
+          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={aiContent} onChange={e=>setAiContent(e.target.checked)}/>Rédiger aussi une première version du contenu des leçons (consomme davantage de crédits IA)</label>
+          {aiPreview && <div className="rounded-lg border p-3 space-y-3">
+            <h3 className="font-semibold">Programme modifiable — aucune formation créée à ce stade</h3>
+            <input className="w-full rounded border p-2" value={aiPreview.title||''} onChange={e=>setAiPreview({...aiPreview,title:e.target.value})}/>
+            {(aiPreview.modules||[]).map((m:any,i:number)=><div key={i} className="rounded-lg bg-gray-50 p-2 space-y-2">
+              <input className="w-full rounded border p-2 font-semibold" value={m.title||''} onChange={e=>{const next=structuredClone(aiPreview);next.modules[i].title=e.target.value;setAiPreview(next)}}/>
+              {(m.lessons||[]).map((l:any,j:number)=><input key={j} className="w-full rounded border p-2 text-sm" value={l.title||''} onChange={e=>{const next=structuredClone(aiPreview);next.modules[i].lessons[j].title=e.target.value;setAiPreview(next)}}/>)}
+            </div>)}
+            <p className="text-xs text-gray-500">Après création, tous les contenus restent modifiables dans le Builder V3. Durée officielle recalculée. Pas de publication automatique.</p>
+          </div>}
+          {error && <p className="text-sm text-red-700">{error}</p>}
+          <div className="flex justify-end"><button type="button" disabled={importing} onClick={() => void (aiPreview?applyAiCourse():previewAiCourse())} className="rounded-lg px-5 py-2 text-white disabled:opacity-50" style={{background:GOLD}}>{importing?'Traitement…':aiPreview?'Confirmer et créer le brouillon':'Générer le programme'}</button></div>
+        </section>}
+
         {mode === 'file' && (
           <section className="mt-6 rounded-2xl border bg-white p-6" style={{ borderColor: BORDER }}>
             <div className="mb-4 flex items-start gap-3">
@@ -348,6 +454,14 @@ export default function ProfessorCourseStart() {
                 <span className="ml-2 text-xs text-gray-500">{(importFile.size / 1024 / 1024).toFixed(2)} Mo</span>
               </div>
             )}
+
+            <div className="mt-5 rounded-xl border border-gray-200 p-3 space-y-3">
+              <p className="text-sm font-semibold" style={{color:BLUE}}>Ou analyser plusieurs documents ensemble</p>
+              <input type="file" multiple accept=".pdf,.docx,.xlsx,.pptx,.txt,.md,.csv" onChange={e=>{setMultiFiles(Array.from(e.target.files||[]));setImportPreview(null);}} className="w-full text-sm"/>
+              <p className="text-xs text-gray-500">2 à 4 documents, 25 Mo maximum chacun. Les PDF, Word, PowerPoint et Excel sont acceptés.</p>
+              <textarea className="w-full rounded-lg border p-2 text-sm" rows={2} maxLength={1200} placeholder="Priorités, par exemple : PowerPoint pour la structure, Word pour le contenu…" value={importInstructions} onChange={e=>setImportInstructions(e.target.value)}/>
+              <button type="button" disabled={importing||multiFiles.length<2||multiFiles.length>4} onClick={() => void submitMultiImport()} className="rounded-lg border px-4 py-2 text-sm font-semibold disabled:opacity-40" style={{borderColor:GOLD,color:BLUE}}>Analyser les {multiFiles.length} documents ensemble</button>
+            </div>
 
             <div className="mt-4">
               <p className="text-sm font-semibold" style={{ color: BLUE }}>Mode de transformation</p>
