@@ -6,6 +6,7 @@ export type CareerPrintOptions = {
   title: string;
   docType: CareerDocType;
   tokensConsumed?: number;
+  reservedWindow?: Window | null;
 };
 
 function escapeHtml(value: string): string {
@@ -29,6 +30,16 @@ function collectStyles() {
     .join('\n');
 }
 
+/** Reserve the browser popup synchronously on the user's click, before async save/credit calls. */
+export function reserveCareerPrintWindow(): Window | null {
+  if (isNativeApp()) return null;
+  const popup = window.open('', '_blank', 'width=920,height=1200');
+  if (!popup) throw new Error('Le navigateur bloque la fenêtre PDF. Autorisez les fenêtres pour OGA avant de consommer des jetons.');
+  try { popup.opener = null; } catch { /* Restrictive browser sandbox. */ }
+  popup.document.title = 'Préparation du document OGA';
+  return popup;
+}
+
 function printCareerElementInBrowser(element: HTMLElement, options: CareerPrintOptions): void {
   const cloned = element.cloneNode(true) as HTMLElement;
   cloned.querySelectorAll('[data-no-print="true"]').forEach((node) => node.remove());
@@ -37,7 +48,7 @@ function printCareerElementInBrowser(element: HTMLElement, options: CareerPrintO
   const escapedTitle = escapeHtml(title);
   const fileName = safeFileName(title);
   const styles = collectStyles();
-  const popup = window.open('', '_blank', 'width=920,height=1200');
+  const popup = options.reservedWindow || reserveCareerPrintWindow();
 
   if (!popup) {
     throw new Error('Le navigateur a bloqué la fenêtre PDF. Autorisez les pop-ups pour Omnia Global Academy.');
@@ -73,6 +84,7 @@ function printCareerElementInBrowser(element: HTMLElement, options: CareerPrintO
     .print-page-wrap { width: 100%; padding: 24px 16px; display: flex; justify-content: center; }
     .print-page { background: white; box-shadow: 0 12px 40px rgba(15,23,42,.12); }
     .print-page > * { transform: none !important; transform-origin: initial !important; }
+    .print-page { overflow: visible !important; }
     .print-page { break-inside: auto; }
     @page { size: A4; margin: 0; }
     @media print {

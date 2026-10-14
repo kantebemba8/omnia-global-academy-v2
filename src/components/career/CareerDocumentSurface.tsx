@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { DesignOptions } from './CvTemplates';
 import type { LmDesign } from './LmTemplates';
 import { getPageDimensions } from '../../lib/careerBuilderV2';
@@ -19,23 +19,36 @@ export default function CareerDocumentSurface({ design, title, children }: { des
   const { page, margins, scale } = getCareerSurfaceMetrics(design);
   const densityScale = advanced.density === 'compact' ? 0.98 : advanced.density === 'spacious' ? 0.94 : 1;
   const finalScale = scale * densityScale;
+  const contentRef = useRef<HTMLDivElement>(null);
+  const [contentHeight, setContentHeight] = useState(1123);
+  useEffect(() => {
+    const el = contentRef.current;
+    if (!el) return;
+    const update = () => setContentHeight(Math.max(1123, el.scrollHeight));
+    update();
+    const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(update) : null;
+    observer?.observe(el);
+    return () => observer?.disconnect();
+  }, [children]);
+  const totalHeight = Math.max(page.height, Math.ceil((margins.top + contentHeight * finalScale + margins.bottom) / page.height) * page.height);
   return (
     <div
       className="relative bg-white"
       aria-label={title}
       style={{
         width: page.width,
-        minHeight: page.height,
+        minHeight: totalHeight,
         background: advanced.colors?.background || '#ffffff',
         border: `${Number(advanced.border_width || 0)}px solid ${advanced.border_color || 'transparent'}`,
         boxSizing: 'border-box',
       }}
     >
       <div
+        ref={contentRef}
         style={{
-          position: 'absolute',
+          position: 'relative',
           left: margins.left + Math.max(0, (page.width - margins.left - margins.right - 794 * finalScale) / 2),
-          top: margins.top + Math.max(0, (page.height - margins.top - margins.bottom - 1123 * finalScale) / 2),
+          marginTop: margins.top,
           width: 794,
           minHeight: 1123,
           transform: `scale(${finalScale})`,
@@ -48,7 +61,7 @@ export default function CareerDocumentSurface({ design, title, children }: { des
       {(advanced.footer_text || advanced.page_numbers) && (
         <div className="absolute bottom-2 left-5 right-5 flex items-center justify-between text-[9px] text-slate-500">
           <span>{advanced.footer_text || ''}</span>
-          <span />
+          <span>{advanced.page_numbers ? `${Math.ceil(totalHeight / page.height)} page(s)` : ''}</span>
         </div>
       )}
     </div>

@@ -46,9 +46,9 @@ import {
   normalizeTemplateKey,
 } from '../../lib/careerStudioData';
 import { consumeCareerTokenAction, deleteCareerDocument, fetchCareerTemplateCatalog, getCareerDocument, listCareerDocuments, prepareCareerPdfExport, renameCareerDocument, runCareerAiAction, saveCareerDocument } from '../../lib/careerStudioApi';
-import { printCareerElementAsPdf } from '../../lib/careerPdfExport';
+import { printCareerElementAsPdf, reserveCareerPrintWindow } from '../../lib/careerPdfExport';
 import { approximateDataUrlBytes, isNativeApp, pickNativeImageAsDataUrl } from '../../lib/mobile';
-import ManualDocumentEditor, { ManualDocumentCanvas, type ManualLayout, type ManualBlock } from '../../components/career/ManualDocumentEditor';
+import ManualDocumentEditor, { ManualDocumentCanvas, layoutCanvasHeight, type ManualLayout, type ManualBlock } from '../../components/career/ManualDocumentEditor';
 import { BUILTIN_CV_LAYOUTS, BUILTIN_LM_LAYOUTS } from '../../components/career/EditableCareerTemplates';
 import TemplateLiveCard from '../../components/career/TemplateLiveCard';
 import CareerSourcePanel from '../../components/career/CareerSourcePanel';
@@ -448,7 +448,7 @@ export default function CareerStudioEditor() {
 
   const previewMetrics = useMemo(() => {
     if (!document) return { width: 794, height: 1123 };
-    if (isManualMode && manualLayout) return { width: manualLayout.page.width, height: manualLayout.page.height };
+    if (isManualMode && manualLayout) return { width: manualLayout.page.width, height: layoutCanvasHeight(manualLayout) };
     return getCareerSurfaceMetrics(document.design_options).page;
   }, [document, isManualMode, manualLayout]);
 
@@ -920,8 +920,13 @@ export default function CareerStudioEditor() {
     if (!document) return;
     if (exportingPdf) return;
 
+    // A popup must be opened synchronously within the user's click; browsers
+    // otherwise block window.open after the asynchronous save/payment steps.
+    let reservedWindow: Window | null = null;
     setExportingPdf(true);
     try {
+      if (!printRef.current) throw new Error('Aucun aperçu disponible pour ce PDF.');
+      reservedWindow = reserveCareerPrintWindow();
       let currentDocument = document;
       if (!alreadyNamed) {
         const saved = await saveNow(true, 'pdf');
@@ -937,7 +942,9 @@ export default function CareerStudioEditor() {
         title: currentDocument.title || (currentDocument.doc_type === 'cv' ? 'CV Omnia Career' : 'Lettre Omnia Career'),
         docType: currentDocument.doc_type,
         tokensConsumed: result.tokens_consumed,
+        reservedWindow,
       });
+      reservedWindow = null;
 
       const message = currentDocument.doc_type === 'cv'
         ? result.remote
@@ -955,6 +962,7 @@ export default function CareerStudioEditor() {
         showToast(e.message || 'Impossible de préparer le PDF.');
       }
     } finally {
+      if (reservedWindow && !reservedWindow.closed) reservedWindow.close();
       setExportingPdf(false);
     }
   }

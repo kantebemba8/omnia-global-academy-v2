@@ -82,6 +82,24 @@ function contentBottom(layout: ManualLayout): number {
 }
 
 const id = () => `block_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+export function layoutCanvasHeight(layout: ManualLayout): number {
+  return Math.ceil(contentBottom(layout) / layout.page.height) * layout.page.height;
+}
+
+function reflowText(layout: ManualLayout, blockId: string): ManualLayout {
+  const source = layout.blocks.find(b => b.id === blockId);
+  if (!source || source.type !== 'text') return layout;
+  const expanded = estimateTextHeight(source);
+  const delta = expanded - source.height;
+  if (delta <= 0) return layout;
+  return { ...layout, blocks: layout.blocks.map(block => {
+    if (block.id === blockId) return { ...block, height: expanded };
+    const sameColumn = block.x < source.x + source.width && block.x + block.width > source.x;
+    return sameColumn && block.y >= source.y + source.height
+      ? { ...block, y: block.y + delta } : block;
+  }) };
+}
+
 
 function normalize(layout: ManualLayout): ManualLayout {
   return {
@@ -138,7 +156,7 @@ export default function ManualDocumentEditor({ open, title, initialLayout, onCha
           event.preventDefault();
           const step = event.shiftKey ? 10 : 1;
           const pageWidth = layout.page.width;
-          const pageHeight = layout.page.height;
+          const pageHeight = layoutCanvasHeight(layout);
           const deltaX = event.key === 'ArrowLeft' ? -step : event.key === 'ArrowRight' ? step : 0;
           const deltaY = event.key === 'ArrowUp' ? -step : event.key === 'ArrowDown' ? step : 0;
           patchBlock(current.id, {
@@ -298,7 +316,7 @@ export default function ManualDocumentEditor({ open, title, initialLayout, onCha
     const dy = (event.clientY - g.startY) / zoom;
     const nextBlock = g.mode === 'drag'
       ? { ...g.original, x: Math.max(0, Math.min(layout.page.width - g.original.width, g.original.x + dx)), y: Math.max(0, Math.min(Math.max(layout.page.height, contentBottom(layout)) - g.original.height, g.original.y + dy)) }
-      : { ...g.original, width: Math.max(30, Math.min(layout.page.width - g.original.x, g.original.width + dx)), height: Math.max(20, Math.min(layout.page.height - g.original.y, g.original.height + dy)) };
+      : { ...g.original, width: Math.max(30, Math.min(layout.page.width - g.original.x, g.original.width + dx)), height: Math.max(20, Math.min(layoutCanvasHeight(layout) - g.original.y, g.original.height + dy)) };
     const next = { ...layout, blocks: layout.blocks.map(b => b.id === g.id ? nextBlock : b) };
     setLayout(next); onChange(next);
   }
@@ -361,12 +379,12 @@ export default function ManualDocumentEditor({ open, title, initialLayout, onCha
             <span className="w-16 text-center text-xs font-semibold">{Math.round(zoom*100)}%</span>
             <button onClick={() => setZoom(z => Math.min(1.4, z+.1))} className="rounded-lg bg-white p-2 shadow"><ZoomIn className="h-4 w-4" /></button>
           </div>
-          <div className="mx-auto" style={{ width: layout.page.width * zoom, height: contentBottom(layout) * zoom }}>
+          <div className="mx-auto" style={{ width: layout.page.width * zoom, height: layoutCanvasHeight(layout) * zoom }}>
             <div
               ref={node => { canvasRef.current = node; if (printRef && typeof printRef !== 'function') (printRef as React.MutableRefObject<HTMLDivElement | null>).current = node; }}
               onPointerDown={() => setSelectedId(null)}
               className="relative origin-top-left bg-white shadow-2xl"
-              style={{ width: layout.page.width, minHeight: contentBottom(layout), transform: `scale(${zoom})`, transformOrigin: 'top left', background: layout.page.background }}
+              style={{ width: layout.page.width, minHeight: layoutCanvasHeight(layout), transform: `scale(${zoom})`, transformOrigin: 'top left', background: layout.page.background }}
             >
               {layout.blocks.filter(block => !block.hidden).map(block => {
                 const isSelected = selectedId === block.id;
@@ -377,7 +395,7 @@ export default function ManualDocumentEditor({ open, title, initialLayout, onCha
                         contentEditable={!block.locked}
                         suppressContentEditableWarning
                         onPointerDown={e => { e.stopPropagation(); setSelectedId(block.id); }}
-                        onBlur={e => patchBlock(block.id, { content: sanitizeRichText(e.currentTarget.innerHTML) }, false)}
+                        onBlur={e => patchBlock(block.id, { content: sanitizeRichText(e.currentTarget.innerHTML), height: Math.max(block.height, e.currentTarget.scrollHeight) }, false)}
                         dangerouslySetInnerHTML={{ __html: sanitizeRichText(block.content || '') }}
                         style={{ width:'100%', minHeight:'100%', height:'auto', overflow:'visible', fontFamily:block.style.fontFamily, fontSize:block.style.fontSize, fontWeight:block.style.fontWeight, fontStyle:block.style.fontStyle, textDecoration:block.style.textDecoration, textAlign:block.style.textAlign as any, color:block.style.color, background:block.style.backgroundColor, lineHeight:block.style.lineHeight, padding:block.style.padding, whiteSpace:'pre-wrap', wordBreak:'break-word', outline:'none' }}
                       />
@@ -434,7 +452,7 @@ export default function ManualDocumentEditor({ open, title, initialLayout, onCha
 export function ManualDocumentCanvas({ layout, className = '' }: { layout: ManualLayout; className?: string }) {
   const safe = normalize(layout);
   return (
-    <div className={`relative bg-white ${className}`} style={{ width: safe.page.width, minHeight: contentBottom(safe), background: safe.page.background }}>
+    <div className={`relative bg-white ${className}`} style={{ width: safe.page.width, minHeight: layoutCanvasHeight(safe), background: safe.page.background }}>
       {safe.blocks.filter(block => !block.hidden).map(block => (
         <div key={block.id} className="absolute" style={{ left:block.x, top:block.y, width:block.width, height:block.height, zIndex:block.zIndex, transform:`rotate(${block.rotation}deg)`, opacity:block.style.opacity ?? 1 }}>
           {block.type === 'text' && <div dangerouslySetInnerHTML={{__html:sanitizeRichText(block.content || '')}} style={{ width:'100%', minHeight:'100%', height:'auto', overflow:'visible', whiteSpace:'pre-wrap', wordBreak:'break-word', fontFamily:block.style.fontFamily, fontSize:block.style.fontSize, fontWeight:block.style.fontWeight, fontStyle:block.style.fontStyle, textDecoration:block.style.textDecoration, textAlign:block.style.textAlign as any, color:block.style.color, background:block.style.backgroundColor, lineHeight:block.style.lineHeight, padding:block.style.padding }} />}
