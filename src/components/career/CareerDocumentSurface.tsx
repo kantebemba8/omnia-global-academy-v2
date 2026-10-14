@@ -21,11 +21,11 @@ export default function CareerDocumentSurface({ design, title, children }: { des
   const finalScale = scale * densityScale;
   return (
     <div
-      className="relative overflow-hidden bg-white"
+      className="relative bg-white"
       aria-label={title}
       style={{
         width: page.width,
-        height: page.height,
+        minHeight: page.height,
         background: advanced.colors?.background || '#ffffff',
         border: `${Number(advanced.border_width || 0)}px solid ${advanced.border_color || 'transparent'}`,
         boxSizing: 'border-box',
@@ -48,7 +48,7 @@ export default function CareerDocumentSurface({ design, title, children }: { des
       {(advanced.footer_text || advanced.page_numbers) && (
         <div className="absolute bottom-2 left-5 right-5 flex items-center justify-between text-[9px] text-slate-500">
           <span>{advanced.footer_text || ''}</span>
-          <span>{advanced.page_numbers ? '1 / 1' : ''}</span>
+          <span />
         </div>
       )}
     </div>

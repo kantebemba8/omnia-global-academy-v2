@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react';
 import { CvPreview, type DocData, type DesignOptions } from './CvTemplates';
 import { LmPreview, type LmData, type LmDesign } from './LmTemplates';
 import { BUILTIN_CV_LAYOUTS } from './EditableCareerTemplates';
@@ -44,13 +45,25 @@ function designFrom(template: CareerTemplateMeta): DesignOptions {
 export default function TemplateLiveCard({ template, docType, selected=false, onClick, compact=false }:{
   template: CareerTemplateMeta; docType: CareerDocType; selected?: boolean; onClick?:()=>void; compact?:boolean;
 }) {
+  const frameRef = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(0);
+  useEffect(() => {
+    const node = frameRef.current;
+    if (!node) return;
+    const refresh = () => setWidth(node.clientWidth);
+    refresh();
+    const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(refresh) : null;
+    observer?.observe(node);
+    return () => observer?.disconnect();
+  }, []);
+  const previewScale = Math.max(0.05, Math.min(1, (width || (compact ? 160 : 220)) / 794));
   const design = designFrom(template);
   const lmDesign: LmDesign = { colors: template.default_colors, font:'inter', font_size_body:10, line_spacing:1.65 };
   return (
     <button type="button" onClick={onClick} className={`group w-full overflow-hidden rounded-2xl border bg-white text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg ${selected?'border-[#002050] ring-4 ring-[#002050]/10':'border-slate-200'}`}>
       <div className={`relative w-full overflow-hidden bg-slate-100 ${compact?'aspect-[9/11]':'aspect-[9/12]'}`}>
-        <div className="absolute inset-0 flex items-start justify-center overflow-hidden bg-white">
-          <div style={{ transform:`scale(${compact?0.205:0.285})`, transformOrigin:'top center', width:794, minHeight:1123 }}>
+        <div ref={frameRef} className="absolute inset-0 flex items-start justify-center overflow-hidden bg-white">
+          <div style={{ transform:`scale(${previewScale})`, transformOrigin:'top center', width:794, minHeight:1123 }}>
             {docType==='cv'
               ? <CvPreview templateKey={template.template_key} data={SAMPLE_CV} design={design} />
               : <LmPreview templateKey={template.template_key} data={SAMPLE_LM} design={lmDesign} />}

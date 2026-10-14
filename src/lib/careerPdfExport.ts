@@ -8,6 +8,10 @@ export type CareerPrintOptions = {
   tokensConsumed?: number;
 };
 
+function escapeHtml(value: string): string {
+  return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
 function safeFileName(value: string) {
   return (value || 'omnia-career-document')
     .normalize('NFD')
@@ -30,21 +34,23 @@ function printCareerElementInBrowser(element: HTMLElement, options: CareerPrintO
   cloned.querySelectorAll('[data-no-print="true"]').forEach((node) => node.remove());
 
   const title = options.title || 'Document Omnia Career';
+  const escapedTitle = escapeHtml(title);
   const fileName = safeFileName(title);
   const styles = collectStyles();
-  const popup = window.open('', '_blank', 'width=920,height=1200,noopener,noreferrer');
+  const popup = window.open('', '_blank', 'width=920,height=1200');
 
   if (!popup) {
     throw new Error('Le navigateur a bloqué la fenêtre PDF. Autorisez les pop-ups pour Omnia Global Academy.');
   }
 
+  try { popup.opener = null; } catch { /* Some browser contexts disallow changing opener. */ }
   popup.document.open();
   popup.document.write(`<!doctype html>
 <html lang="fr">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>${title}</title>
+  <title>${escapedTitle}</title>
   ${styles}
   <style>
     :root { --omnia-blue: #002050; --omnia-gold: #bf8813; }
@@ -67,12 +73,15 @@ function printCareerElementInBrowser(element: HTMLElement, options: CareerPrintO
     .print-page-wrap { width: 100%; padding: 24px 16px; display: flex; justify-content: center; }
     .print-page { background: white; box-shadow: 0 12px 40px rgba(15,23,42,.12); }
     .print-page > * { transform: none !important; transform-origin: initial !important; }
+    .print-page { break-inside: auto; }
     @page { size: A4; margin: 0; }
     @media print {
       html, body { background: white !important; }
       .print-toolbar { display: none !important; }
       .print-page-wrap { padding: 0 !important; display: block !important; }
-      .print-page { box-shadow: none !important; margin: 0 auto !important; width: 210mm !important; min-height: 297mm !important; }
+      .print-page { box-shadow: none !important; margin: 0 auto !important; width: 210mm !important; min-height: 297mm !important; height: auto !important; overflow: visible !important; }
+      #omnia-career-print-root, #omnia-career-print-root > * { overflow: visible !important; height: auto !important; }
+      .print-page-wrap { overflow: visible !important; }
       .print-page * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
     }
   </style>
@@ -80,7 +89,7 @@ function printCareerElementInBrowser(element: HTMLElement, options: CareerPrintO
 <body>
   <div class="print-toolbar">
     <div>
-      <h1>${title}</h1>
+      <h1>${escapedTitle}</h1>
       <p>${options.docType === 'cv' ? 'CV Omnia Career' : 'Lettre de motivation Omnia Career'}${options.tokensConsumed ? ` · ${options.tokensConsumed} jeton consommé` : ''}</p>
     </div>
     <div style="display:flex;gap:10px;align-items:center">
@@ -94,7 +103,10 @@ function printCareerElementInBrowser(element: HTMLElement, options: CareerPrintO
   <script>
     window.OMNIA_PDF_FILE_NAME = ${JSON.stringify(fileName + '.pdf')};
     window.addEventListener('load', function () {
-      setTimeout(function () { window.print(); }, 450);
+      Promise.all([
+        document.fonts ? document.fonts.ready : Promise.resolve(),
+        ...Array.from(document.images).map(function (img) { return img.complete ? Promise.resolve() : new Promise(function (resolve) { img.onload = resolve; img.onerror = resolve; }); })
+      ]).then(function () { setTimeout(function () { window.print(); }, 200); });
     });
   </script>
 </body>

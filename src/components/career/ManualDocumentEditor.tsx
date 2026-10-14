@@ -66,6 +66,21 @@ const FONTS = [
 ];
 
 const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value));
+function estimateTextHeight(block: ManualBlock): number {
+  if (block.type !== 'text') return block.height;
+  const raw = (block.content || '').replace(/<br\s*\/?\s*>/gi, '\n').replace(/<\/p>|<\/div>/gi, '\n').replace(/<[^>]*>/g, '');
+  const font = Math.max(6, block.style.fontSize || 18);
+  const charWidth = Math.max(4, font * 0.53);
+  const lineHeight = font * (block.style.lineHeight || 1.3);
+  const chars = Math.max(1, Math.floor((Math.max(30, block.width) - (block.style.padding || 0) * 2) / charWidth));
+  const lines = raw.split('\n').reduce((total, line) => total + Math.max(1, Math.ceil(line.length / chars)), 0);
+  return Math.max(block.height, Math.ceil(lines * lineHeight + (block.style.padding || 0) * 2 + 4));
+}
+
+function contentBottom(layout: ManualLayout): number {
+  return Math.max(layout.page.height, ...layout.blocks.filter(b => !b.hidden).map(b => b.y + estimateTextHeight(b) + 24));
+}
+
 const id = () => `block_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
 function normalize(layout: ManualLayout): ManualLayout {
@@ -128,7 +143,7 @@ export default function ManualDocumentEditor({ open, title, initialLayout, onCha
           const deltaY = event.key === 'ArrowUp' ? -step : event.key === 'ArrowDown' ? step : 0;
           patchBlock(current.id, {
             x: Math.max(0, Math.min(pageWidth - current.width, current.x + deltaX)),
-            y: Math.max(0, Math.min(pageHeight - current.height, current.y + deltaY)),
+            y: Math.max(0, Math.min(Math.max(pageHeight, contentBottom(layout)) - current.height, current.y + deltaY)),
           });
         }
       }
@@ -155,6 +170,10 @@ export default function ManualDocumentEditor({ open, title, initialLayout, onCha
 
   function patchBlock(blockId: string, patch: Partial<ManualBlock>, remember = true) {
     const next = { ...layout, blocks: layout.blocks.map(b => b.id === blockId ? { ...b, ...patch } : b) };
+    const target = next.blocks.find(b => b.id === blockId);
+    if (target?.type === 'text') {
+      target.height = estimateTextHeight(target);
+    }
     commit(next, remember);
   }
 
@@ -278,7 +297,7 @@ export default function ManualDocumentEditor({ open, title, initialLayout, onCha
     const dx = (event.clientX - g.startX) / zoom;
     const dy = (event.clientY - g.startY) / zoom;
     const nextBlock = g.mode === 'drag'
-      ? { ...g.original, x: Math.max(0, Math.min(layout.page.width - g.original.width, g.original.x + dx)), y: Math.max(0, Math.min(layout.page.height - g.original.height, g.original.y + dy)) }
+      ? { ...g.original, x: Math.max(0, Math.min(layout.page.width - g.original.width, g.original.x + dx)), y: Math.max(0, Math.min(Math.max(layout.page.height, contentBottom(layout)) - g.original.height, g.original.y + dy)) }
       : { ...g.original, width: Math.max(30, Math.min(layout.page.width - g.original.x, g.original.width + dx)), height: Math.max(20, Math.min(layout.page.height - g.original.y, g.original.height + dy)) };
     const next = { ...layout, blocks: layout.blocks.map(b => b.id === g.id ? nextBlock : b) };
     setLayout(next); onChange(next);
@@ -342,12 +361,12 @@ export default function ManualDocumentEditor({ open, title, initialLayout, onCha
             <span className="w-16 text-center text-xs font-semibold">{Math.round(zoom*100)}%</span>
             <button onClick={() => setZoom(z => Math.min(1.4, z+.1))} className="rounded-lg bg-white p-2 shadow"><ZoomIn className="h-4 w-4" /></button>
           </div>
-          <div className="mx-auto" style={{ width: layout.page.width * zoom, height: layout.page.height * zoom }}>
+          <div className="mx-auto" style={{ width: layout.page.width * zoom, height: contentBottom(layout) * zoom }}>
             <div
               ref={node => { canvasRef.current = node; if (printRef && typeof printRef !== 'function') (printRef as React.MutableRefObject<HTMLDivElement | null>).current = node; }}
               onPointerDown={() => setSelectedId(null)}
-              className="relative origin-top-left overflow-hidden bg-white shadow-2xl"
-              style={{ width: layout.page.width, height: layout.page.height, transform: `scale(${zoom})`, transformOrigin: 'top left', background: layout.page.background }}
+              className="relative origin-top-left bg-white shadow-2xl"
+              style={{ width: layout.page.width, minHeight: contentBottom(layout), transform: `scale(${zoom})`, transformOrigin: 'top left', background: layout.page.background }}
             >
               {layout.blocks.filter(block => !block.hidden).map(block => {
                 const isSelected = selectedId === block.id;
@@ -360,7 +379,7 @@ export default function ManualDocumentEditor({ open, title, initialLayout, onCha
                         onPointerDown={e => { e.stopPropagation(); setSelectedId(block.id); }}
                         onBlur={e => patchBlock(block.id, { content: sanitizeRichText(e.currentTarget.innerHTML) }, false)}
                         dangerouslySetInnerHTML={{ __html: sanitizeRichText(block.content || '') }}
-                        style={{ width:'100%', height:'100%', overflow:'hidden', fontFamily:block.style.fontFamily, fontSize:block.style.fontSize, fontWeight:block.style.fontWeight, fontStyle:block.style.fontStyle, textDecoration:block.style.textDecoration, textAlign:block.style.textAlign as any, color:block.style.color, background:block.style.backgroundColor, lineHeight:block.style.lineHeight, padding:block.style.padding, whiteSpace:'pre-wrap', wordBreak:'break-word', outline:'none' }}
+                        style={{ width:'100%', minHeight:'100%', height:'auto', overflow:'visible', fontFamily:block.style.fontFamily, fontSize:block.style.fontSize, fontWeight:block.style.fontWeight, fontStyle:block.style.fontStyle, textDecoration:block.style.textDecoration, textAlign:block.style.textAlign as any, color:block.style.color, background:block.style.backgroundColor, lineHeight:block.style.lineHeight, padding:block.style.padding, whiteSpace:'pre-wrap', wordBreak:'break-word', outline:'none' }}
                       />
                     )}
                     {block.type === 'image' && <img src={block.src} alt={block.altText || 'Élément visuel du document'} draggable={false} style={{ width:'100%', height:'100%', objectFit:'cover', borderRadius:block.style.borderRadius, border:`${block.style.borderWidth||0}px solid ${block.style.borderColor||'transparent'}` }} />}
@@ -415,10 +434,10 @@ export default function ManualDocumentEditor({ open, title, initialLayout, onCha
 export function ManualDocumentCanvas({ layout, className = '' }: { layout: ManualLayout; className?: string }) {
   const safe = normalize(layout);
   return (
-    <div className={`relative overflow-hidden bg-white ${className}`} style={{ width: safe.page.width, height: safe.page.height, background: safe.page.background }}>
+    <div className={`relative bg-white ${className}`} style={{ width: safe.page.width, minHeight: contentBottom(safe), background: safe.page.background }}>
       {safe.blocks.filter(block => !block.hidden).map(block => (
         <div key={block.id} className="absolute" style={{ left:block.x, top:block.y, width:block.width, height:block.height, zIndex:block.zIndex, transform:`rotate(${block.rotation}deg)`, opacity:block.style.opacity ?? 1 }}>
-          {block.type === 'text' && <div dangerouslySetInnerHTML={{__html:sanitizeRichText(block.content || '')}} style={{ width:'100%', height:'100%', overflow:'hidden', whiteSpace:'pre-wrap', wordBreak:'break-word', fontFamily:block.style.fontFamily, fontSize:block.style.fontSize, fontWeight:block.style.fontWeight, fontStyle:block.style.fontStyle, textDecoration:block.style.textDecoration, textAlign:block.style.textAlign as any, color:block.style.color, background:block.style.backgroundColor, lineHeight:block.style.lineHeight, padding:block.style.padding }} />}
+          {block.type === 'text' && <div dangerouslySetInnerHTML={{__html:sanitizeRichText(block.content || '')}} style={{ width:'100%', minHeight:'100%', height:'auto', overflow:'visible', whiteSpace:'pre-wrap', wordBreak:'break-word', fontFamily:block.style.fontFamily, fontSize:block.style.fontSize, fontWeight:block.style.fontWeight, fontStyle:block.style.fontStyle, textDecoration:block.style.textDecoration, textAlign:block.style.textAlign as any, color:block.style.color, background:block.style.backgroundColor, lineHeight:block.style.lineHeight, padding:block.style.padding }} />}
           {block.type === 'image' && <img src={block.src} alt={block.altText || 'Élément visuel du document'} style={{ width:'100%', height:'100%', objectFit:'cover', borderRadius:block.style.borderRadius, border:`${block.style.borderWidth||0}px solid ${block.style.borderColor||'transparent'}` }} />}
           {block.type === 'shape' && <div style={{ width:'100%', height:'100%', background:block.style.backgroundColor, borderRadius:block.style.borderRadius, border:`${block.style.borderWidth||0}px solid ${block.style.borderColor||'transparent'}` }} />}
           {block.type === 'line' && <div style={{ width:'100%', marginTop:block.height/2, borderTop:`${block.style.borderWidth||3}px solid ${block.style.borderColor||'#002050'}` }} />}
