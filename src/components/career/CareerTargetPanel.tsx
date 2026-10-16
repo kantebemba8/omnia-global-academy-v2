@@ -7,11 +7,12 @@ import { extractJobKeywords, getCareerMeta, withCareerMeta } from '../../lib/car
 type Props = {
   document: CareerDocumentFull;
   onChange: (document: CareerDocumentFull) => void;
+  onSpecialize?: () => void;
 };
 
 const inputClass = 'w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-[#002050] focus:ring-4 focus:ring-[#002050]/10';
 
-export default function CareerTargetPanel({ document, onChange }: Props) {
+export default function CareerTargetPanel({ document, onChange, onSpecialize }: Props) {
   const data = document.doc_data as DocData | LmData;
   const meta = getCareerMeta(data, document.doc_type);
   const target = meta.target;
@@ -42,6 +43,12 @@ export default function CareerTargetPanel({ document, onChange }: Props) {
       <div className="inline-flex items-center gap-2 rounded-full bg-[#bf8813]/10 px-3 py-1 text-xs font-bold text-[#bf8813]"><Target className="h-3.5 w-3.5" /> Poste ciblé</div>
       <h3 className="mt-3 text-lg font-semibold text-[#002050]">Dossier de candidature</h3>
       <p className="mt-1 text-sm leading-5 text-slate-600">Le CV, la lettre et l’analyse ATS utilisent la même offre et les mêmes exigences.</p>
+
+      {document.doc_type === 'cv' && onSpecialize && (
+        <button type="button" onClick={onSpecialize} className="mt-4 w-full rounded-xl border border-[#bf8813]/40 bg-[#fff8e8] px-4 py-3 text-left text-sm font-semibold text-[#002050] hover:bg-[#fff2d5]">
+          Créer un CV spécialisé à partir de ce profil →
+        </button>
+      )}
 
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
         <Field label="Poste visé" value={target.job_title} onChange={value => patch({ job_title: value })} />

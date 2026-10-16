@@ -395,16 +395,26 @@ export default function AdminCareerStudio() {
   }
 
   async function createCompatibleTemplate(type: 'cv' | 'lm') {
-    if (!customTemplate.template_key.trim() || !customTemplate.name_fr.trim()) {
-      showToast('Clé et nom du template obligatoires.', 'error');
+    const key = customTemplate.template_key.trim().toLowerCase();
+    const name = customTemplate.name_fr.trim();
+    if (!key || !name) {
+      showToast('Clé et nom du modèle obligatoires.', 'error');
+      return;
+    }
+    if (!new RegExp(`^${type}_[a-z0-9]+(?:_[a-z0-9]+)*$`).test(key) || key.length > 64) {
+      showToast(`La clé doit commencer par ${type}_ et contenir seulement lettres, chiffres et underscores.`, 'error');
+      return;
+    }
+    if (cvTemplates.some(item => item.template_key === key) || lmTemplates.some(item => item.template_key === key)) {
+      showToast('Cette clé est déjà utilisée. Choisissez une nouvelle clé pour préserver le modèle existant.', 'error');
       return;
     }
     setSaving(true);
     try {
       const payload = {
-        template_key: customTemplate.template_key,
+        template_key: key,
         template_type: type,
-        name_fr: customTemplate.name_fr,
+        name_fr: name,
         description_fr: customTemplate.description_fr,
         category: 'custom',
         is_free: customTemplate.is_free,

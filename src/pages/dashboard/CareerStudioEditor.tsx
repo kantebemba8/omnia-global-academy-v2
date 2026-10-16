@@ -67,18 +67,20 @@ import {
   hasCareerQualityStarted,
   markCareerDocumentModified,
   normalizeCareerDocument,
+  withCareerMeta,
   type CareerSourceProfile,
 } from '../../lib/careerBuilderV2';
 import { isLearnerPreviewMode, withLearnerPreview } from '../../lib/learnerPreview';
 import MobileBuilderAdvice from '../../components/MobileBuilderAdvice';
 import { createCareerHistory, recordCareerEdit, undoCareerEdit, redoCareerEdit, moveCareerEntry, type CareerHistory } from '../../lib/careerEditingHistory';
+import { appendVerifiedCareerSkills, buildSpecializedCareerCv, isCareerAiProposalCurrent } from '../../lib/careerFinalization';
 
 const BLUE = '#002050';
 const GOLD = '#bf8813';
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
-type AiSuggestionMode = 'cv_summary' | 'cv_experience' | 'cv_skills' | 'lm_full' | 'lm_section' | 'analysis';
-type AiSuggestion = { title: string; text: string; mode: AiSuggestionMode; targetId?: string; tokensConsumed?: number; tokensRemaining?: number; remote?: boolean };
+type AiSuggestionMode = 'cv_summary' | 'cv_experience' | 'cv_skills' | 'lm_full' | 'lm_section' | 'cv_personalize' | 'lm_personalize' | 'analysis';
+type AiSuggestion = { title: string; text: string; mode: AiSuggestionMode; targetId?: string; sourceValue?: string; sourceDocumentId?: string; tokensConsumed?: number; tokensRemaining?: number; remote?: boolean };
 
 type CvSectionKey = 'profile' | 'summary' | 'skills' | 'experiences' | 'education' | 'certifications' | 'languages' | 'projects' | 'interests';
 type LmSectionKey = 'sender' | 'recipient' | 'letter' | 'variables';
@@ -236,6 +238,12 @@ export default function CareerStudioEditor() {
   const [exportingWord, setExportingWord] = useState(false);
   const [aiLoadingAction, setAiLoadingAction] = useState<string | null>(null);
   const [aiSuggestion, setAiSuggestion] = useState<AiSuggestion | null>(null);
+  const [selectedExperienceId, setSelectedExperienceId] = useState('');
+  const [specializeOpen, setSpecializeOpen] = useState(false);
+  const [specializeJob, setSpecializeJob] = useState('');
+  const [specializeCompany, setSpecializeCompany] = useState('');
+  const [specializeCountry, setSpecializeCountry] = useState('');
+  const [specializeSaving, setSpecializeSaving] = useState(false);
   const [offerText, setOfferText] = useState('');
   const saveTimer = useRef<number | null>(null);
   const printRef = useRef<HTMLDivElement | null>(null);
@@ -688,11 +696,16 @@ export default function CareerStudioEditor() {
   }
 
 
+  function getSelectedExperience() {
+    const current = liveDocumentRef.current;
+    if (!current || current.doc_type !== 'cv') return undefined;
+    const experiences = getCvData(current).experiences || [];
+    return experiences.find(item => item.id === selectedExperienceId) || experiences[0];
+  }
+
   function getActiveExperienceText() {
-    if (!document || document.doc_type !== 'cv') return '';
-    const data = getCvData(document);
-    const first = data.experiences?.[0];
-    return first ? `${first.position} - ${first.company}\n${first.description}` : data.summary;
+    const active = getSelectedExperience();
+    return active ? `${active.position} - ${active.company}\n${active.description}` : '';
   }
 
   async function requestAi(mode: AiSuggestionMode, action: Parameters<typeof runCareerAiAction>[0]['action']) {
@@ -704,6 +717,15 @@ export default function CareerStudioEditor() {
       const isCvDoc = document.doc_type === 'cv';
       const cv = isCvDoc ? getCvData(document) : null;
       const lm = !isCvDoc ? getLmData(document) : null;
+      const activeExperience = mode === 'cv_experience' ? getSelectedExperience() : undefined;
+      if (mode === 'cv_experience' && !activeExperience) {
+        showToast('Ajoutez une expérience avant de demander une reformulation.');
+        return;
+      }
+      const proposalSourceValue = mode === 'cv_experience' ? (activeExperience?.description || '') :
+        mode === 'cv_summary' ? (cv?.summary || '') :
+        mode === 'cv_skills' ? JSON.stringify(cv?.skills || []) :
+        JSON.stringify(document.doc_data);
       const textByMode =
         mode === 'cv_summary' ? (cv?.summary || '') :
         mode === 'cv_experience' ? getActiveExperienceText() :
@@ -728,6 +750,9 @@ export default function CareerStudioEditor() {
         title: getAiTitle(mode, action),
         text: formatStructuredAiResult(action, result.result),
         mode,
+        targetId: activeExperience?.id,
+        sourceValue: proposalSourceValue,
+        sourceDocumentId: document.id,
         tokensConsumed: result.tokens_consumed,
         tokensRemaining: result.tokens_remaining,
         remote: result.remote,
@@ -755,19 +780,23 @@ export default function CareerStudioEditor() {
         language: (localStorage.getItem('omnia_platform_language') || localStorage.getItem('omnia_career_language') || 'fr') as any,
       });
       if (typeof result.tokens_remaining === 'number') setTokens(result.tokens_remaining);
-      if (document.doc_type === 'lm') {
-        updateLm(d => mergeLetterText(d, result.result));
-      } else {
-        const paragraphs = splitParagraphs(result.result);
-        updateCv(d => ({
-          ...d,
-          summary: paragraphs[0] || d.summary,
-          experiences: d.experiences?.length ? d.experiences.map((e, i) => i === 0 ? { ...e, description: paragraphs[1] || e.description } : e) : d.experiences,
-        }));
-      }
+      // Never apply a paid AI result silently: display the full proposal first.
+      setAiSuggestion({
+        title: 'Personnalisation IA à valider',
+        text: cleanAiText(result.result),
+        mode: document.doc_type === 'cv' ? 'cv_personalize' : 'lm_personalize',
+        sourceValue: JSON.stringify(document.doc_data),
+        sourceDocumentId: document.id,
+        tokensConsumed: result.tokens_consumed,
+        tokensRemaining: result.tokens_remaining,
+        remote: result.remote,
+      });
       setPersonalizeOpen(false);
       setPersonalizeText('');
-      showToast('Document personnalisé avec IA. Vérifiez et ajustez le contenu avant de l’enregistrer.');
+      setWorkspace('ai');
+      setToolPanelOpen(true);
+      setFocusMode(false);
+      showToast('Proposition IA disponible : acceptez-la ou refusez-la avant toute modification.');
     } catch (e) {
       showToast((e as Error).message || 'Le service IA n’est pas disponible.');
     } finally {
@@ -776,41 +805,84 @@ export default function CareerStudioEditor() {
   }
 
   function applyAiSuggestion() {
-    if (!aiSuggestion || !document) return;
-
-    if (document.doc_type === 'cv') {
-      if (aiSuggestion.mode === 'cv_summary') {
-        updateCv(d => ({ ...d, summary: cleanAiText(aiSuggestion.text) }));
-      } else if (aiSuggestion.mode === 'cv_experience') {
-        updateCv(d => ({
-          ...d,
-          experiences: d.experiences.map((exp, index) => index === 0 ? { ...exp, description: cleanAiText(aiSuggestion.text) } : exp),
-        }));
-      } else if (aiSuggestion.mode === 'cv_skills') {
-        const skills = parseAiLines(aiSuggestion.text).slice(0, 12);
-        updateCv(d => ({
-          ...d,
-          skills: skills.map((name, index) => ({ id: uid('skai'), name, level: Math.max(60, 92 - index * 3) })),
-        }));
-      }
-    } else {
-      if (aiSuggestion.mode === 'lm_full') {
-        updateLm(d => mergeLetterText(d, aiSuggestion.text));
-      } else if (aiSuggestion.mode === 'lm_section') {
-        const paragraphs = splitParagraphs(aiSuggestion.text);
-        updateLm(d => ({
-          ...d,
-          intro: paragraphs[0] || d.intro,
-          motivation: paragraphs[1] || d.motivation,
-          skills_paragraph: paragraphs[2] || d.skills_paragraph,
-          company_link: paragraphs[3] || d.company_link,
-          availability: paragraphs[4] || d.availability,
-        }));
-      }
+    const proposal = aiSuggestion;
+    const current = liveDocumentRef.current;
+    if (!proposal || !current || proposal.mode === 'analysis') return;
+    if (!isCareerAiProposalCurrent(proposal, current)) {
+      setAiSuggestion(null);
+      showToast('Le document a changé depuis la suggestion. Relancez l’IA pour éviter un écrasement.');
+      return;
     }
-
+    if (current.doc_type === 'cv') {
+      if (proposal.mode === 'cv_summary') {
+        updateCv(d => ({ ...d, summary: cleanAiText(proposal.text) }));
+      } else if (proposal.mode === 'cv_experience') {
+        updateCv(d => ({ ...d, experiences: d.experiences.map(exp =>
+          exp.id === proposal.targetId ? { ...exp, description: cleanAiText(proposal.text) } : exp),
+        }));
+      } else if (proposal.mode === 'cv_skills') {
+        // Suggestions are not proof of competence: preserve declared skills and
+        // let the learner confirm the proposed additions before accepting.
+        updateCv(d => ({ ...d, skills: appendVerifiedCareerSkills(d.skills, parseAiLines(proposal.text)) }));
+      } else if (proposal.mode === 'cv_personalize') {
+        const paragraphs = splitParagraphs(proposal.text);
+        updateCv(d => ({
+          ...d,
+          summary: paragraphs[0] || d.summary,
+          experiences: d.experiences?.length ? d.experiences.map((e, i) => i === 0 ? { ...e, description: paragraphs[1] || e.description } : e) : d.experiences,
+        }));
+      }
+    } else if (proposal.mode === 'lm_full' || proposal.mode === 'lm_personalize') {
+      updateLm(d => mergeLetterText(d, proposal.text));
+    } else if (proposal.mode === 'lm_section') {
+      const paragraphs = splitParagraphs(proposal.text);
+      updateLm(d => ({
+        ...d,
+        intro: paragraphs[0] || d.intro,
+        motivation: paragraphs[1] || d.motivation,
+        skills_paragraph: paragraphs[2] || d.skills_paragraph,
+        company_link: paragraphs[3] || d.company_link,
+        availability: paragraphs[4] || d.availability,
+      }));
+    }
     setAiSuggestion(null);
-    showToast('Suggestion appliquée au document');
+    showToast('Proposition appliquée. Vous pouvez l’annuler avec Annuler.');
+  }
+
+  function openSpecializeDialog() {
+    const current = liveDocumentRef.current;
+    if (!current || current.doc_type !== 'cv') return;
+    const meta = getCareerMeta(current.doc_data, 'cv');
+    setSpecializeJob(meta.target.job_title || current.target_job || '');
+    setSpecializeCompany(meta.target.company || '');
+    setSpecializeCountry(meta.target.country || current.target_country || '');
+    setSpecializeOpen(true);
+  }
+
+  async function createSpecializedCv() {
+    if (previewMode || !document || document.doc_type !== 'cv' || specializeSaving) return;
+    if (!specializeJob.trim()) { showToast('Indiquez le poste visé pour identifier cette copie.'); return; }
+    setSpecializeSaving(true);
+    try {
+      const source = liveDocumentRef.current || document;
+      const original = isDocumentNamed(source) ? source : { ...source, title: 'CV principal' };
+      const savedOriginal = await persistDocument(original);
+      if (savedOriginal.id.startsWith('local_') && remoteMode) {
+        showToast('La copie source n’est pas synchronisée. Vérifiez la connexion avant de créer une variante.');
+        return;
+      }
+      const specialized = buildSpecializedCareerCv(savedOriginal, {
+        job: specializeJob,
+        company: specializeCompany,
+        country: specializeCountry,
+      });
+      const saved = await saveCareerDocument(specialized);
+      setSpecializeOpen(false);
+      if (!saved.remote) showToast('Copie conservée localement, à synchroniser après reconnexion.');
+      navigate(`/dashboard/career-studio/editor/${saved.document.id}?type=cv&template=${encodeURIComponent(saved.document.template_key)}`);
+    } catch (error) {
+      showToast((error as Error).message || 'La copie spécialisée n’a pas pu être créée.');
+    } finally { setSpecializeSaving(false); }
   }
 
   async function createAtsVersion() {
@@ -952,8 +1024,8 @@ export default function CareerStudioEditor() {
       <MobileBuilderAdvice
         storageKey={isCv ? 'career-cv' : 'career-lm'}
         description={isCv
-          ? 'La création et la modification de votre CV fonctionnent sur mobile. Pour une mise en page très précise, de nombreux blocs ou l’édition manuelle avancée, un ordinateur reste plus confortable.'
-          : 'La création et la modification de votre lettre fonctionnent sur mobile. Pour une mise en page très précise ou une édition manuelle avancée, un ordinateur reste plus confortable.'}
+          ? 'La création et la modification de votre CV fonctionnent sur mobile. Pour des documents longs ou un ajustement précis des colonnes, un ordinateur reste plus confortable.'
+          : 'La création et la modification de votre lettre fonctionnent sur mobile. Pour une personnalisation typographique précise, un ordinateur reste plus confortable.'}
       />
       {toast && (
         <div className="fixed right-5 top-5 z-[160] rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-[#002050] shadow-lg">
@@ -1054,6 +1126,7 @@ export default function CareerStudioEditor() {
                 <div className="absolute right-0 top-12 z-50 w-72 overflow-hidden rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl">
                   <button type="button" onClick={() => { setFullPreviewOpen(true); setActionsOpen(false); }} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50"><Eye className="h-4 w-4 text-[#002050]" />Prévisualiser en plein écran</button>
                   <button type="button" onClick={() => { setPersonalizeOpen(true); setActionsOpen(false); }} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50"><Sparkles className="h-4 w-4 text-[#bf8813]" />Personnaliser à partir d’un texte</button>
+                  {isCv && <button type="button" onClick={() => { openSpecializeDialog(); setActionsOpen(false); }} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50"><Briefcase className="h-4 w-4 text-[#002050]" />Créer un CV pour un poste</button>}
                   <button type="button" onClick={() => { setWorkspace('ai'); setToolPanelOpen(true); setActionsOpen(false); }} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50"><Sparkles className="h-4 w-4 text-[#002050]" />Ouvrir l’assistant IA</button>
                   {isCv && <button type="button" onClick={() => { createLinkedLetter(); setActionsOpen(false); }} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50"><Mail className="h-4 w-4 text-[#bf8813]" />Créer la LM associée</button>}
                   <button type="button" onClick={openRenameDialog} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50"><Edit3 className="h-4 w-4 text-[#002050]" />Renommer le document</button>
@@ -1120,11 +1193,11 @@ export default function CareerStudioEditor() {
             <div className="min-h-0 flex-1 overflow-y-auto p-3">
               {workspace === 'content' && <EditorPanel isCv={isCv} cvData={cvData} lmData={lmData} activeCvSection={activeCvSection} activeLmSection={activeLmSection} onCvSectionChange={setActiveCvSection} onLmSectionChange={setActiveLmSection} updateCv={updateCv} updateLm={updateLm} score={score ?? 0} isExampleContent={isExampleContent} />}
               {workspace === 'source' && <CareerSourcePanel docType={document.doc_type} data={document.doc_data} source={sourceProfile} onChange={data => updateDocument(doc => ({ ...doc, doc_data: { ...(data as any), career_meta: { ...((data as any).career_meta || {}), example_content: false } } }))} />}
-              {workspace === 'target' && <CareerTargetPanel document={document} onChange={next => { setOfferText(getCareerMeta(next.doc_data, next.doc_type).target.job_description || ''); updateDocument(() => next); }} />}
+              {workspace === 'target' && <CareerTargetPanel document={document} onSpecialize={isCv ? openSpecializeDialog : undefined} onChange={next => { setOfferText(getCareerMeta(next.doc_data, next.doc_type).target.job_description || ''); updateDocument(() => next); }} />}
               {workspace === 'design' && <CareerDesignPanel docType={document.doc_type} design={document.design_options as AdvancedCareerDesign} onChange={design => updateDocument(doc => ({ ...doc, design_options: design }))} />}
               {workspace === 'quality' && <CareerQualityPanel report={qualityReport} started={qualityStarted} onCreateAtsVersion={qualityStarted ? createAtsVersion : undefined} />}
               {workspace === 'versions' && <CareerVersionPanel document={document} onRestore={restored => { updateDocument(() => normalizeCareerDocument(restored), { startQuality: false }); showToast('Version restaurée. Vérifiez-la puis enregistrez.'); }} />}
-              {workspace === 'ai' && <AiAssistantPanel isCv={isCv} loadingAction={aiLoadingAction} suggestion={aiSuggestion} offerText={offerText} onOfferTextChange={value => { setOfferText(value); const meta = getCareerMeta(document.doc_data, document.doc_type); updateDocument(doc => ({ ...doc, doc_data: { ...(doc.doc_data as any), career_meta: { ...meta, target: { ...meta.target, job_description: value } } } })); }} onRequest={requestAi} onApply={applyAiSuggestion} onDismiss={() => setAiSuggestion(null)} />}
+              {workspace === 'ai' && <AiAssistantPanel isCv={isCv} experiences={cvData?.experiences || []} selectedExperienceId={selectedExperienceId} onExperienceChange={setSelectedExperienceId} loadingAction={aiLoadingAction} suggestion={aiSuggestion} offerText={offerText} onOfferTextChange={value => { setOfferText(value); const meta = getCareerMeta(document.doc_data, document.doc_type); updateDocument(doc => ({ ...doc, doc_data: { ...(doc.doc_data as any), career_meta: { ...meta, target: { ...meta.target, job_description: value } } } })); }} onRequest={requestAi} onApply={applyAiSuggestion} onDismiss={() => setAiSuggestion(null)} />}
               {workspace === 'templates' && <TemplatePanel docType={document.doc_type} templates={templates.length ? templates : getCareerTemplates(document.doc_type)} selectedTemplate={selectedTemplate} selectedKey={document.template_key} data={document.doc_data} design={document.design_options} onSelect={changeTemplate} />}
             </div>
           </aside>
@@ -1170,12 +1243,30 @@ export default function CareerStudioEditor() {
       {fullPreviewOpen && document && (
         <div className="fixed inset-0 z-[130] flex flex-col bg-slate-950/90 p-4 backdrop-blur-sm">
           <div className="mb-3 flex items-center justify-between text-white">
-            <div><div className="text-lg font-semibold">Prévisualisation A4</div><div className="text-xs text-white/70">{document.title}</div></div>
+            <div><div className="text-lg font-semibold">Prévisualisation du document</div><div className="text-xs text-white/70">{document.title}</div></div>
             <button onClick={() => setFullPreviewOpen(false)} className="rounded-xl border border-white/20 p-2 hover:bg-white/10"><X className="h-5 w-5" /></button>
           </div>
           <div className="flex flex-1 items-start justify-center overflow-auto rounded-2xl bg-slate-200 p-6">
             <div style={{ width: previewMetrics.width, minHeight: previewMetrics.height }}>
               <CareerDocumentSurface design={document.design_options} title={document.title}>{isCv ? <CvPreview templateKey={document.template_key} data={cvData as DocData} design={getCvDesign(document)} layoutConfig={selectedTemplate?.layout_config} /> : <LmPreview templateKey={document.template_key} data={lmData as LmData} design={getLmDesign(document)} layoutConfig={selectedTemplate?.layout_config} />}</CareerDocumentSurface>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {specializeOpen && document?.doc_type === 'cv' && (
+        <div className="fixed inset-0 z-[135] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-2xl">
+            <h2 className="text-xl font-semibold text-[#002050]">Créer un CV spécialisé</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-600">Crée une copie autonome à partir de votre CV courant. Les expériences et compétences restent intactes ; adaptez ensuite cette copie au poste avec l’IA.</p>
+            <div className="mt-5 space-y-3">
+              <label className="block"><span className={labelClass()}>Poste ciblé *</span><input className={inputClass()} value={specializeJob} onChange={e => setSpecializeJob(e.target.value)} placeholder="Ex. Chargé QSE" /></label>
+              <label className="block"><span className={labelClass()}>Entreprise (facultatif)</span><input className={inputClass()} value={specializeCompany} onChange={e => setSpecializeCompany(e.target.value)} placeholder="Ex. entreprise visée" /></label>
+              <label className="block"><span className={labelClass()}>Pays (facultatif)</span><input className={inputClass()} value={specializeCountry} onChange={e => setSpecializeCountry(e.target.value)} placeholder="Ex. Luxembourg" /></label>
+            </div>
+            <div className="mt-5 flex justify-end gap-2">
+              <button type="button" onClick={() => setSpecializeOpen(false)} disabled={specializeSaving} className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold">Annuler</button>
+              <button type="button" onClick={() => void createSpecializedCv()} disabled={specializeSaving || !specializeJob.trim()} className="rounded-xl bg-[#002050] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">{specializeSaving ? 'Création...' : 'Créer une copie indépendante'}</button>
             </div>
           </div>
         </div>
@@ -1319,6 +1410,9 @@ function AiAssistantPanel({
   isCv,
   loadingAction,
   suggestion,
+  experiences,
+  selectedExperienceId,
+  onExperienceChange,
   offerText,
   onOfferTextChange,
   onRequest,
@@ -1326,6 +1420,9 @@ function AiAssistantPanel({
   onDismiss,
 }: {
   isCv: boolean;
+  experiences: Array<{ id: string; position: string; company: string }>;
+  selectedExperienceId: string;
+  onExperienceChange: (id: string) => void;
   loadingAction: string | null;
   suggestion: AiSuggestion | null;
   offerText: string;
@@ -1354,7 +1451,13 @@ function AiAssistantPanel({
           </label>
           <div className="grid grid-cols-1 gap-2">
             <AiButton loading={loadingAction === 'improve_summary'} disabled={Boolean(loadingAction)} label="Améliorer le résumé" onClick={() => onRequest('cv_summary', 'improve_summary')} />
-            <AiButton loading={loadingAction === 'rewrite_experience'} disabled={Boolean(loadingAction)} label="Reformuler l’expérience principale" onClick={() => onRequest('cv_experience', 'rewrite_experience')} />
+            <label className="block"><span className={labelClass()}>Expérience à reformuler</span>
+              <select className={inputClass()} value={experiences.some(e => e.id === selectedExperienceId) ? selectedExperienceId : (experiences[0]?.id || '')} onChange={e => onExperienceChange(e.target.value)}>
+                {experiences.length === 0 && <option value="">Ajoutez d'abord une expérience</option>}
+                {experiences.map(exp => <option key={exp.id} value={exp.id}>{exp.position || 'Poste sans intitulé'} — {exp.company || 'Entreprise'}</option>)}
+              </select>
+            </label>
+            <AiButton loading={loadingAction === 'rewrite_experience'} disabled={Boolean(loadingAction) || !experiences.length} label="Reformuler l’expérience sélectionnée" onClick={() => onRequest('cv_experience', 'rewrite_experience')} />
             <AiButton loading={loadingAction === 'suggest_skills'} disabled={Boolean(loadingAction)} label="Suggérer des compétences à vérifier" onClick={() => onRequest('cv_skills', 'suggest_skills')} />
             <AiButton loading={loadingAction === 'adapt_to_offer'} disabled={Boolean(loadingAction)} label="Comparer le CV à l’offre" onClick={() => onRequest('analysis', 'adapt_to_offer')} />
             <AiButton loading={loadingAction === 'ats_score'} disabled={Boolean(loadingAction)} label="Analyser ATS" onClick={() => onRequest('analysis', 'ats_score')} subtle />
@@ -1373,7 +1476,7 @@ function AiAssistantPanel({
           </label>
           <div className="grid grid-cols-1 gap-2">
             <AiButton loading={loadingAction === 'generate_lm'} disabled={Boolean(loadingAction)} label="Générer une lettre complète" onClick={() => onRequest('lm_full', 'generate_lm')} />
-            <AiButton loading={loadingAction === 'adapt_to_offer'} disabled={Boolean(loadingAction)} label="Adapter à l’offre" onClick={() => onRequest('lm_full', 'adapt_to_offer')} />
+            <AiButton loading={loadingAction === 'adapt_to_offer'} disabled={Boolean(loadingAction)} label="Analyser l’adaptation à l’offre" onClick={() => onRequest('analysis', 'adapt_to_offer')} />
             <AiButton loading={loadingAction === 'make_professional'} disabled={Boolean(loadingAction)} label="Rendre plus professionnel" onClick={() => onRequest('lm_section', 'make_professional')} subtle />
             <AiButton loading={loadingAction === 'fix_grammar'} disabled={Boolean(loadingAction)} label="Corriger la langue" onClick={() => onRequest('lm_section', 'fix_grammar')} subtle />
           </div>
@@ -1392,11 +1495,11 @@ function AiAssistantPanel({
           <div className="mt-3 flex items-center gap-2">
             {suggestion.mode !== 'analysis' && (
               <button type="button" onClick={onApply} className="rounded-xl bg-[#002050] px-3 py-2 text-sm font-semibold text-white hover:opacity-90">
-                Appliquer
+                Accepter et appliquer
               </button>
             )}
             <button type="button" onClick={onDismiss} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
-              Fermer
+              {suggestion.mode === 'analysis' ? 'Fermer' : 'Refuser'}
             </button>
           </div>
         </div>
