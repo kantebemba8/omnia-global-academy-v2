@@ -24,13 +24,15 @@ export default function CareerDocumentSurface({ design, title, children }: { des
   useEffect(() => {
     const el = contentRef.current;
     if (!el) return;
-    const update = () => setContentHeight(Math.max(1123, el.scrollHeight));
+    const update = () => setContentHeight(Math.max(1123, el.scrollHeight, el.getBoundingClientRect().height / Math.max(0.05, finalScale)));
     update();
     const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(update) : null;
     observer?.observe(el);
     return () => observer?.disconnect();
-  }, [children]);
-  const totalHeight = Math.max(page.height, Math.ceil((margins.top + contentHeight * finalScale + margins.bottom) / page.height) * page.height);
+  }, [children, finalScale]);
+  const measuredHeight = margins.top + contentHeight * finalScale + margins.bottom;
+  const totalPages = Math.max(1, Math.ceil((measuredHeight - 0.5) / page.height));
+  const totalHeight = totalPages * page.height;
   return (
     <div
       data-career-document-surface="true"
@@ -39,6 +41,7 @@ export default function CareerDocumentSurface({ design, title, children }: { des
       style={{
         width: page.width,
         minHeight: totalHeight,
+        height: totalHeight,
         background: advanced.colors?.background || '#ffffff',
         border: `${Number(advanced.border_width || 0)}px solid ${advanced.border_color || 'transparent'}`,
         boxSizing: 'border-box',
@@ -60,12 +63,23 @@ export default function CareerDocumentSurface({ design, title, children }: { des
       >
         {children}
       </div>
-      {(advanced.footer_text || advanced.page_numbers) && (
-        <div className="absolute bottom-2 left-5 right-5 flex items-center justify-between text-[9px] text-slate-500">
-          <span>{advanced.footer_text || ''}</span>
-          <span>{advanced.page_numbers ? `${Math.ceil(totalHeight / page.height)} page(s)` : ''}</span>
+      {Array.from({ length: totalPages }, (_, index) => (
+        <div
+          key={index}
+          data-career-page-marker="true"
+          data-no-print="true"
+          aria-hidden="true"
+          className="pointer-events-none absolute left-0 right-0"
+          style={{ top: (index + 1) * page.height - 1, height: 1, borderBottom: index < totalPages - 1 ? '1px dashed #cbd5e1' : undefined }}
+        >
+          {(advanced.footer_text || advanced.page_numbers) && (
+            <div className="absolute right-5 flex justify-between gap-8 text-[9px] text-slate-500" style={{ bottom: 9 }}>
+              <span>{advanced.footer_text || ''}</span>
+              <span>{advanced.page_numbers ? `${index + 1} / ${totalPages}` : ''}</span>
+            </div>
+          )}
         </div>
-      )}
+      ))}
     </div>
   );
 }

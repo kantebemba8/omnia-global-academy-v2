@@ -227,6 +227,7 @@ export default function CareerStudioEditor() {
   const [tokens, setTokens] = useState(0);
   const [remoteMode, setRemoteMode] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<SaveState>('idle');
   const [activeCvSection, setActiveCvSection] = useState<CvSectionKey>('profile');
   const [activeLmSection, setActiveLmSection] = useState<LmSectionKey>('letter');
@@ -283,6 +284,7 @@ export default function CareerStudioEditor() {
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       if ((docId === 'new' || !docId) && !requestedTemplate) {
         navigate(docType === 'cv' ? '/omnia-career/cv-builder' : '/omnia-career/lettres', { replace: true });
@@ -318,6 +320,8 @@ export default function CareerStudioEditor() {
         setPendingSaveAction(null);
         setNameDialogOpen(true);
       }
+    } catch (error) {
+      setLoadError((error as Error).message || 'Chargement du document impossible.');
     } finally {
       setLoading(false);
     }
@@ -478,7 +482,9 @@ export default function CareerStudioEditor() {
       return;
     }
 
+    let pdfPopup: Window | null = null;
     try {
+      if (action === 'pdf') pdfPopup = reserveCareerPrintWindow();
       const savedNamed = await persistDocument(named);
       if (action === 'word') {
         await exportCareerWord(savedNamed);
@@ -486,9 +492,14 @@ export default function CareerStudioEditor() {
       }
       else if (action === 'manual') showToast('Mise en page manuelle enregistrée');
       else if (action === 'save') showToast('Document enregistré. Vérifiez l’indicateur de synchronisation.');
-      else if (action === 'pdf') window.setTimeout(() => handlePdfDownload(true), 0);
-    } catch {
-      showToast('Impossible de sauvegarder le document.');
+      else if (action === 'pdf') {
+        await handlePdfDownload(true, savedNamed, pdfPopup);
+        pdfPopup = null;
+      }
+    } catch (error) {
+      showToast((error as Error).message || 'Impossible de sauvegarder le document.');
+    } finally {
+      if (pdfPopup && !pdfPopup.closed) pdfPopup.close();
     }
   }, [document, pendingDocumentName, pendingSaveAction, persistDocument]);
 
@@ -500,7 +511,7 @@ export default function CareerStudioEditor() {
     if (document.id.startsWith('local_')) return;
     if (saveTimer.current) window.clearTimeout(saveTimer.current);
     saveTimer.current = window.setTimeout(() => {
-      saveNow(false);
+      void saveNow(false).catch(() => setSaveState('error'));
     }, 900);
     return () => {
       if (saveTimer.current) window.clearTimeout(saveTimer.current);
@@ -872,19 +883,19 @@ export default function CareerStudioEditor() {
     }
   }
 
-  async function handlePdfDownload(alreadyNamed = false) {
+  async function handlePdfDownload(alreadyNamed = false, savedDocument?: CareerDocumentFull, popupAlreadyReserved?: Window | null) {
     if (previewMode) { showToast('Le téléchargement PDF est désactivé en prévisualisation afin de ne consommer aucun jeton.'); return; }
-    if (!document) return;
+    if (!document && !savedDocument) return;
     if (exportingPdf) return;
 
     // A popup must be opened synchronously within the user's click; browsers
     // otherwise block window.open after the asynchronous save/payment steps.
-    let reservedWindow: Window | null = null;
+    let reservedWindow: Window | null = popupAlreadyReserved || null;
     setExportingPdf(true);
     try {
       if (!printRef.current) throw new Error('Aucun aperçu disponible pour ce PDF.');
-      reservedWindow = reserveCareerPrintWindow();
-      let currentDocument = document;
+      if (!reservedWindow) reservedWindow = reserveCareerPrintWindow();
+      let currentDocument = savedDocument || document!;
       if (!alreadyNamed) {
         const saved = await saveNow(true, 'pdf');
         if (!saved) { setExportingPdf(false); return; }
@@ -907,10 +918,10 @@ export default function CareerStudioEditor() {
       const message = currentDocument.doc_type === 'cv'
         ? result.remote
           ? result.tokens_consumed > 0
-            ? `PDF prêt. ${result.tokens_consumed} jeton consommé. Solde : ${result.tokens_remaining ?? tokens}.`
-            : 'PDF prêt sans nouveau débit : le document est inchangé.'
-          : 'PDF prêt en mode test local : aucun jeton consommé.'
-        : 'PDF de la lettre prêt. Les lettres ne consomment pas de jeton pour cette étape.';
+            ? `Préparation PDF autorisée. ${result.tokens_consumed} jeton consommé. Solde : ${result.tokens_remaining ?? tokens}. Confirmez l'enregistrement.`
+            : 'Préparation PDF autorisée sans nouveau débit. Confirmez l’enregistrement dans votre navigateur.'
+          : 'Document préparé en mode local, sans jeton.'
+        : 'Lettre préparée pour l’export PDF. Confirmez l’enregistrement.';
       showToast(message);
     } catch (err) {
       const e = err as Error & { code?: string; status?: number };
@@ -925,6 +936,18 @@ export default function CareerStudioEditor() {
     }
   }
 
+  if (loadError && !loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#F8FAFC] p-6">
+        <div className="max-w-lg rounded-2xl border border-amber-200 bg-white p-8 shadow-sm">
+          <h1 className="text-lg font-bold text-[#002050]">Document temporairement indisponible</h1>
+          <p className="mt-3 text-sm text-slate-700">{loadError}</p>
+          <p className="mt-2 text-xs text-slate-500">Aucun document vide n'a été créé à sa place.</p>
+          <button onClick={() => void load()} className="mt-5 rounded-xl bg-[#002050] px-4 py-2 text-sm font-semibold text-white">Réessayer</button>
+        </div>
+      </div>
+    );
+  }
   if (loading || !document) {
     return (
       <div className="flex h-screen items-center justify-center bg-[#F8FAFC]">
@@ -983,7 +1006,7 @@ export default function CareerStudioEditor() {
             <div className="hidden items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 xl:flex">
               {saveState === 'saving' && <Loader2 className="h-3.5 w-3.5 animate-spin text-[#bf8813]" />}
               {saveState === 'saved' && <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />}
-              {saveState === 'saving' ? 'Enregistrement...' : saveState === 'saved' ? (remoteMode ? 'Enregistré dans Supabase' : 'Enregistré localement uniquement') : previewMode ? 'Mode aperçu administratif' : remoteMode ? 'Connecté Supabase' : 'Mode local sécurisé'}
+              {saveState === 'saving' ? 'Enregistrement...' : saveState === 'error' ? 'Échec de synchronisation : réessayez' : saveState === 'saved' ? (remoteMode ? 'Enregistré dans Supabase' : 'Enregistré localement uniquement') : previewMode ? 'Mode aperçu administratif' : remoteMode ? 'Connecté Supabase' : 'Mode local sécurisé'}
             </div>
             <div className="hidden rounded-full bg-[#bf8813]/10 px-3 py-2 text-xs font-bold text-[#9a6810] sm:block">{tokens} jeton(s)</div>
             <div className="flex items-center rounded-xl border border-slate-200 bg-white" aria-label="Historique des modifications">
@@ -1017,7 +1040,7 @@ export default function CareerStudioEditor() {
             </button>
             <button
               type="button"
-              onClick={handlePdfDownload}
+              onClick={() => void handlePdfDownload()}
               disabled={exportingPdf}
               className="inline-flex items-center gap-2 rounded-xl bg-[#002050] px-3 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
             >

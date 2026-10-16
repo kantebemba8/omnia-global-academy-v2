@@ -94,8 +94,11 @@ function printCareerElementInBrowser(element: HTMLElement, options: CareerPrintO
     .print-page > * { transform: none !important; transform-origin: initial !important; }
     .print-page { overflow: visible !important; }
     .print-page { break-inside: auto; }
-    /* Avoid cutting a resume entry in half when the print engine supports it. */
-    .print-page article, .print-page section section, .print-page li, .print-page tr { break-inside: avoid; page-break-inside: avoid; }
+    /* Keep short entries together while allowing long lists to flow across pages. */
+    [data-career-section] { break-inside: avoid-page; page-break-inside: avoid; }
+    article, li, tr, [data-career-entry] { break-inside: avoid-page; page-break-inside: avoid; }
+    /* Nested columns are not independent fixed-height pages. */
+    [data-career-document-surface], [data-career-surface-content] { overflow: visible; }
     @page { size: ${pageRule}; margin: 0; }
     @media print {
       html, body { background: white !important; }
@@ -105,7 +108,12 @@ function printCareerElementInBrowser(element: HTMLElement, options: CareerPrintO
       #omnia-career-print-root, #omnia-career-print-root > * { overflow: visible !important; height: auto !important; }
       /* The screen preview uses zoom transforms; printing must use real flowing text. */
       [data-career-document-surface="true"] { min-height: 0 !important; height: auto !important; overflow: visible !important; }
-      [data-career-surface-content="true"] { transform: none !important; position: static !important; left: auto !important; margin-top: 0 !important; width: auto !important; min-height: 0 !important; }
+      [data-career-surface-content="true"] { transform: none !important; position: static !important; left: auto !important; margin: 0 auto !important; width: 794px !important; min-height: 0 !important; }
+      /* The screen renderer may use overflow:hidden and a 1123px frame. In print,
+         the content must be allowed to flow, not disappear on page two. */
+      [data-career-surface-content="true"] > * { overflow: visible !important; height: auto !important; min-height: 0 !important; max-height: none !important; }
+      [data-career-section] { break-inside: avoid-page !important; page-break-inside: avoid !important; }
+      [data-career-section] [data-career-section] { break-inside: auto !important; }
       .print-page-wrap { overflow: visible !important; }
       .print-page * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
     }
@@ -115,7 +123,7 @@ function printCareerElementInBrowser(element: HTMLElement, options: CareerPrintO
   <div class="print-toolbar">
     <div>
       <h1>${escapedTitle}</h1>
-      <p>${options.docType === 'cv' ? 'CV Omnia Career' : 'Lettre de motivation Omnia Career'}${options.tokensConsumed ? ` · ${options.tokensConsumed} jeton consommé` : ''}</p>
+      <p>${options.docType === 'cv' ? 'CV Omnia Career' : 'Lettre de motivation Omnia Career'}${options.tokensConsumed ? ` · ${options.tokensConsumed} jeton consommé` : ''} · Confirmez l’enregistrement dans le dialogue de votre navigateur.</p>
     </div>
     <div style="display:flex;gap:10px;align-items:center">
       <button class="secondary" onclick="window.close()">Fermer</button>
@@ -145,6 +153,9 @@ export async function printCareerElementAsPdf(
 ): Promise<void> {
   if (!element) {
     throw new Error("Aucun aperçu imprimable n'est disponible.");
+  }
+  if (!element.querySelector('[data-career-document-surface="true"]')) {
+    throw new Error('Le moteur documentaire est indisponible : export PDF annulé avant tout débit.');
   }
 
   if (isNativeApp()) {

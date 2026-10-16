@@ -1,4 +1,5 @@
 import { getSessionToken } from './session';
+import { getCareerPdfRequestId } from './careerExportRequest';
 import {
   CareerDocType,
   CareerDocumentFull,
@@ -468,13 +469,21 @@ export async function getCareerDocument(docType: CareerDocType, documentId?: str
       });
       return { document: normalizeCareerDocument({ ...data.document, template_key: normalizeTemplateKey(data.document.doc_type, data.document.template_key) }), remote: true };
     } catch {
-      // fallback below
+      // If a remote document cannot be fetched, only an explicit local backup
+      // with the exact same ID may be reopened. Never substitute a blank CV.
+      const cached = readLocal(docType).find(item => item.id === documentId);
+      if (cached) return { document: normalizeCareerDocument(cached), remote: false };
+      throw new Error('Document distant indisponible. Réessayez après reconnexion : aucun document vierge ne sera créé à sa place.');
     }
   }
 
   let docs = readLocal(docType);
   const existing = documentId && documentId !== 'new' ? docs.find(d => d.id === documentId) : undefined;
   if (existing) return { document: normalizeCareerDocument({ ...existing, template_key: normalizeTemplateKey(existing.doc_type, existing.template_key) }), remote: false };
+
+  if (documentId && documentId !== 'new') {
+    throw new Error('Document introuvable dans les sauvegardes locales. Aucune copie vide créée.');
+  }
 
   // A new document exists only in memory until the learner explicitly saves it.
   const created = createLocalDocument(docType, templateKey || undefined);
@@ -599,6 +608,7 @@ export type CareerPdfExportResult = {
   tokens_consumed: number;
   tokens_remaining?: number;
   remote: boolean;
+  idempotent?: boolean;
   message?: string;
 };
 
@@ -625,6 +635,7 @@ export async function prepareCareerPdfExport(document: CareerDocumentFull): Prom
       export_id?: string;
       tokens_consumed?: number;
       tokens_remaining?: number;
+      idempotent?: boolean;
       message?: string;
     }>('career-studio-export', {
       action: 'prepare_pdf',
@@ -632,16 +643,18 @@ export async function prepareCareerPdfExport(document: CareerDocumentFull): Prom
       doc_type: document.doc_type,
       title: document.title,
       template_key: document.template_key,
-      request_id: crypto.randomUUID(),
+      request_id: getCareerPdfRequestId(document),
     });
 
     return {
       success: true,
       export_id: data.export_id,
-      tokens_consumed: data.tokens_consumed ?? 0,
+      idempotent: data.idempotent === true,
+      // A replay does not charge again, even if the original log was billed.
+      tokens_consumed: data.idempotent ? 0 : (data.tokens_consumed ?? 0),
       tokens_remaining: data.tokens_remaining,
       remote: true,
-      message: data.message,
+      message: data.idempotent ? 'Préparation précédente réutilisée : aucun nouveau débit.' : data.message,
     };
   } catch (err) {
     const e = err as Error & { code?: string; status?: number };
