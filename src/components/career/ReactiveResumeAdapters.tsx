@@ -26,7 +26,7 @@ function useColors(profile:ReactiveResumeProfile, design:DesignOptions|LmDesign)
 }
 const editor=(field:string,value:string,onEdit?:Edit,multiline=false)=><CareerInlineText field={field} value={value||''} onChange={onEdit} multiline={multiline}/>;
 
-function Section({id,title,children,color,profile}:{id:string;title:string;children:React.ReactNode;color:Colors;profile:ReactiveResumeProfile}){
+function Section({id,title,children,color,profile}:{id:string;title:React.ReactNode;children:React.ReactNode;color:Colors;profile:ReactiveResumeProfile}){
   const idf=profile.id;
   const boxed=['lapras','porygon','gengar'].includes(idf);
   const underline=['bronzor','onyx','kakuna','scizor','rhyhorn'].includes(idf);
@@ -45,27 +45,28 @@ function Picture({data,design,color,profile}:{data:DocData;design:DesignOptions;
   return <div style={{height:100,width:100,overflow:'hidden',borderRadius:radius,border:`3px solid ${color.accent}`,flexShrink:0}}><img alt="Photo du CV" src={data.photo_url} style={{width:'100%',height:'100%',objectFit:'cover',objectPosition:`${data.photo_position_x ?? 50}% ${data.photo_position_y ?? 50}%`,transform:`scale(${Math.max(1,data.photo_zoom||1)})`,transformOrigin:`${data.photo_position_x??50}% ${data.photo_position_y??50}%`}}/></div>;
 }
 
-function ContactInfo({data}:{data:DocData}){
-  const c=data.contact||{} as DocData['contact'];
-  return <div style={{fontSize:9,lineHeight:1.9,overflowWrap:'anywhere'}}>
-    {[c.email,c.phone,c.location,c.linkedin,c.portfolio].filter(Boolean).map((s,i)=><div key={i}>{s}</div>)}
+function ContactInfo({data,onEdit}:{data:DocData;onEdit?:Edit}){
+  const fields: Array<keyof DocData['contact']> = ['email','phone','location','linkedin','portfolio'];
+  return <div data-career-section="profile" style={{fontSize:9,lineHeight:1.9,overflowWrap:'anywhere'}}>
+    {fields.map(key => data.contact?.[key] ?
+      <div key={key}>{editor(`contact.${key}`,data.contact[key] || '',onEdit)}</div> : null)}
   </div>;
 }
 function CvSectionContent({data,colors,profile,onEdit}:{data:DocData;colors:Colors;profile:ReactiveResumeProfile;onEdit?:Edit}){
   const exp=<Section id="experiences" title="Expériences professionnelles" color={colors} profile={profile}>{(data.experiences||[]).map(e=><div key={e.id} style={{marginBottom:13,breakInside:'avoid'}}>
-    <div style={{display:'flex',gap:9,justifyContent:'space-between',alignItems:'baseline'}}><b style={{fontSize:11}}>{editor(`experience:${e.id}:position`,e.position,onEdit)}</b><span style={{fontSize:9,color:'#657083',whiteSpace:'nowrap'}}>{e.start_date}{e.end_date?` – ${e.end_date}`:e.current?' – Aujourd’hui':''}</span></div>
-    <div style={{fontSize:10,fontWeight:650,color:colors.primary}}>{editor(`experience:${e.id}:company`,e.company,onEdit)}{e.location?' · '+e.location:''}</div>
+    <div style={{display:'flex',gap:9,justifyContent:'space-between',alignItems:'baseline'}}><b style={{fontSize:11}}>{editor(`experience:${e.id}:position`,e.position,onEdit)}</b><span style={{fontSize:9,color:'#657083',whiteSpace:'nowrap'}}>{editor(`experience:${e.id}:start_date`,e.start_date,onEdit)}{e.end_date? <> – {editor(`experience:${e.id}:end_date`,e.end_date,onEdit)}</> : e.current?' – Aujourd’hui':''}</span></div>
+    <div style={{fontSize:10,fontWeight:650,color:colors.primary}}>{editor(`experience:${e.id}:company`,e.company,onEdit)}{e.location? <> · {editor(`experience:${e.id}:location`,e.location,onEdit)}</>:null}</div>
     {!!e.description&&<TextBlock>{editor(`experience:${e.id}:description`,e.description,onEdit,true)}</TextBlock>}</div>)}</Section>;
-  const edu=<Section id="education" title="Formation" color={colors} profile={profile}>{(data.education||[]).map(e=><div key={e.id} style={{marginBottom:12,breakInside:'avoid'}}><div style={{fontSize:10,fontWeight:800}}>{editor(`education:${e.id}:degree`,e.degree,onEdit)}</div><TextBlock muted>{editor(`education:${e.id}:school`,e.school,onEdit)} · {e.year}</TextBlock></div>)}</Section>;
+  const edu=<Section id="education" title="Formation" color={colors} profile={profile}>{(data.education||[]).map(e=><div key={e.id} style={{marginBottom:12,breakInside:'avoid'}}><div style={{fontSize:10,fontWeight:800}}>{editor(`education:${e.id}:degree`,e.degree,onEdit)}</div><TextBlock muted>{editor(`education:${e.id}:school`,e.school,onEdit)} · {editor(`education:${e.id}:year`,e.year,onEdit)}</TextBlock></div>)}</Section>;
   const skills=<Section id="skills" title="Compétences" color={colors} profile={profile}>{(data.skills||[]).map(item=><div key={item.id} style={{marginBottom:8,fontSize:10}}>{editor(`skill:${item.id}:name`,item.name,onEdit)}</div>)}</Section>;
-  const languages=<Section id="languages" title="Langues" color={colors} profile={profile}>{(data.languages||[]).map(item=><div key={item.id} style={{display:'flex',justifyContent:'space-between',gap:6,marginBottom:7,fontSize:10}}>{editor(`language:${item.id}:name`,item.name,onEdit)}<span>{item.level}</span></div>)}</Section>;
+  const languages=<Section id="languages" title="Langues" color={colors} profile={profile}>{(data.languages||[]).map(item=><div key={item.id} style={{display:'flex',justifyContent:'space-between',gap:6,marginBottom:7,fontSize:10}}>{editor(`language:${item.id}:name`,item.name,onEdit)}<span>{editor(`language:${item.id}:level`,item.level,onEdit)}</span></div>)}</Section>;
   const certificates=(data.certifications_external?.length||data.omnia_formations?.some(x=>x.show))?<Section id="certifications" title="Certifications" color={colors} profile={profile}>
-    {(data.certifications_external||[]).map(e=><div key={e.id} style={{fontSize:10,marginBottom:8}}><b>{e.name}</b> · {e.issuer} {e.year}</div>)}
+    {(data.certifications_external||[]).map(e=><div key={e.id} style={{fontSize:10,marginBottom:8}}><b>{editor(`certification:${e.id}:name`,e.name,onEdit)}</b> · {editor(`certification:${e.id}:issuer`,e.issuer,onEdit)} {editor(`certification:${e.id}:year`,e.year,onEdit)}</div>)}
     {(data.omnia_formations||[]).filter(x=>x.show).map(e=><div key={e.id} style={{fontSize:10,marginBottom:8}}>{e.title}{e.cpd_accredited?' · CPD':''}</div>)}
   </Section>:null;
-  const projects=data.projects?.length?<Section id="projects" title="Projets" color={colors} profile={profile}>{data.projects.map(e=><div key={e.id} style={{marginBottom:10}}><b style={{fontSize:10}}>{e.name}</b><TextBlock>{e.description}</TextBlock>{e.technologies&&<div style={{fontSize:9,color:colors.primary}}>{e.technologies}</div>}</div>)}</Section>:null;
-  const interests=data.interests?.length?<Section id="interests" title="Centres d’intérêt" color={colors} profile={profile}><TextBlock>{data.interests.join(' · ')}</TextBlock></Section>:null;
-  const custom=(data.custom_sections||[]).filter(x=>x.visible!==false).map(x=><Section key={x.id} id={`custom:${x.id}`} title={x.title} color={colors} profile={profile}><TextBlock>{x.content}</TextBlock></Section>);
+  const projects=data.projects?.length?<Section id="projects" title="Projets" color={colors} profile={profile}>{data.projects.map(e=><div key={e.id} style={{marginBottom:10}}><b style={{fontSize:10}}>{editor(`project:${e.id}:name`,e.name,onEdit)}</b><TextBlock>{editor(`project:${e.id}:description`,e.description,onEdit,true)}</TextBlock>{e.technologies&&<div style={{fontSize:9,color:colors.primary}}>{editor(`project:${e.id}:technologies`,e.technologies,onEdit)}</div>}</div>)}</Section>:null;
+  const interests=data.interests?.length?<Section id="interests" title="Centres d’intérêt" color={colors} profile={profile}><TextBlock>{editor('interests',data.interests.join(' · '),onEdit)}</TextBlock></Section>:null;
+  const custom=(data.custom_sections||[]).filter(x=>x.visible!==false).map(x=><Section key={x.id} id={`custom:${x.id}`} title={editor(`custom:${x.id}:title`,x.title,onEdit)} color={colors} profile={profile}><TextBlock>{editor(`custom:${x.id}:content`,x.content,onEdit,true)}</TextBlock></Section>);
   const summary=(data.summary||data.objective)?<Section id="summary" title="Profil professionnel" color={colors} profile={profile}><TextBlock>{editor('summary',data.summary||data.objective||'',onEdit,true)}</TextBlock></Section>:null;
   return {exp,edu,skills,languages,certificates,projects,interests,custom,summary};
 }
@@ -92,9 +93,9 @@ export function ReactiveResumeCv({data,design,profile,onFieldChange}:{data:DocDa
   const mainSections=<>{sections.summary}{sections.exp}{sections.edu}{sections.certificates}{sections.projects}{sections.custom}</>;
   const sidebarPalette = darkSide ? { ...colors, primary:'#ffffff' } : colors;
   const asideContents = darkSide ? CvSectionContent({data,colors:sidebarPalette,profile,onEdit:onFieldChange}) : sections;
-  const sideSections=<>{asideContents.skills}{asideContents.languages}{asideContents.interests}{data.references&&<Section id="references" title="Références" color={sidebarPalette} profile={profile}><TextBlock>{data.references}</TextBlock></Section>}</>;
+  const sideSections=<>{asideContents.skills}{asideContents.languages}{asideContents.interests}{data.references&&<Section id="references" title="Références" color={sidebarPalette} profile={profile}><TextBlock>{editor('references',data.references,onFieldChange,true)}</TextBlock></Section>}</>;
   const photo=<Picture data={data} design={design} color={colors} profile={profile}/>;
-  const contact=[data.contact?.email,data.contact?.phone,data.contact?.location].filter(Boolean).join(' · ');
+  const contact = <ContactInfo data={data} onEdit={onFieldChange}/>;
   const heading=(side=false)=> <header data-career-section="profile" style={{display:'flex',flexDirection:side?'column':profile.id==='azurill'?'column':'row',alignItems:profile.id==='azurill'?'center':'flex-start',gap:18,padding:side?'0 0 26px':'35px 48px 25px',borderBottom:side?undefined:`${profile.id==='bronzor'||profile.id==='onyx'?1:3}px solid ${colors.accent}`,background:side&&darkSide?colors.primary:!side&&['lapras','porygon'].includes(profile.id)?colors.sidebar:undefined,textAlign:profile.id==='azurill'?'center':'left'}}>
     {photo}
     <div style={{flex:1,minWidth:0}}><div style={{fontSize:['scizor','smeargle','meowth'].includes(profile.id)?36:30,fontWeight:800,lineHeight:1.13,color:side&&darkSide?'#fff':colors.primary}}>{editor('name',data.name,onFieldChange)}</div>
@@ -104,7 +105,7 @@ export function ReactiveResumeCv({data,design,profile,onFieldChange}:{data:DocDa
   </header>;
   const aside=<aside style={{padding:headerInSide?'30px 23px':'26px 24px',background:darkSide?colors.primary:colors.sidebar,color:darkSide?'#fff':colors.text,boxSizing:'border-box',alignSelf:'stretch',minHeight:headerInSide?1123:undefined}}>
     {headerInSide&&heading(true)}
-    {headerInSide&&<div style={{fontSize:9,marginBottom:20,lineHeight:1.7}}><ContactInfo data={data}/></div>}
+    {headerInSide&&<div style={{fontSize:9,marginBottom:20,lineHeight:1.7}}><ContactInfo data={data} onEdit={onFieldChange}/></div>}
     {sideSections}
   </aside>;
   return <div data-rr-template={profile.id} style={FrameStyle(profile,colors,design)}>
@@ -124,10 +125,10 @@ export function ReactiveResumeLetter({data,design,profile,onFieldChange}:{data:L
   const colors=useColors(profile,design);
   const sidebarHeader=profile.headerPlacement==='sidebar-only';
   const name=editor('sender.name',data.sender?.name,onFieldChange);
-  const senderDetails=[data.sender?.email,data.sender?.phone,data.sender?.address].filter(Boolean).join(' · ');
+  const senderDetails = <>{(['email','phone','address'] as const).map(key => data.sender?.[key] ? <div key={key}>{editor(`sender.${key}`,data.sender[key],onFieldChange)}</div> : null)}</>;
   const paragraphs=([['intro',data.intro],['motivation',data.motivation],['skills_paragraph',data.skills_paragraph],['company_link',data.company_link],['availability',data.availability]] as Array<[string,string]>).filter(([,value])=>!!value);
   const letter=<main data-career-section="letter" style={{padding:'36px 56px',flex:1,boxSizing:'border-box'}}>
-    <div style={{fontSize:10,lineHeight:1.7,display:'flex',justifyContent:'space-between',gap:24}}><div data-career-section="recipient"><b>{data.recipient?.name}</b><div>{data.recipient?.company}</div><div>{data.recipient?.address}</div></div><div style={{textAlign:'right',whiteSpace:'nowrap'}}>{data.sender?.city}{data.sender?.date?', le '+data.sender.date:''}</div></div>
+    <div style={{fontSize:10,lineHeight:1.7,display:'flex',justifyContent:'space-between',gap:24}}><div data-career-section="recipient"><b>{editor('recipient.name',data.recipient?.name,onFieldChange)}</b><div>{editor('recipient.company',data.recipient?.company,onFieldChange)}</div><div>{editor('recipient.address',data.recipient?.address,onFieldChange,true)}</div></div><div style={{textAlign:'right',whiteSpace:'nowrap'}}>{editor('sender.city',data.sender?.city,onFieldChange)}{data.sender?.date?', le ':''}{editor('sender.date',data.sender?.date,onFieldChange)}</div></div>
     <div style={{fontSize:13,fontWeight:800,color:colors.primary,marginTop:36,marginBottom:24,borderBottom:`1px solid ${colors.accent}`,paddingBottom:9}}>Objet : {editor('subject',data.subject,onFieldChange)}</div>
     <div style={{fontSize:11,lineHeight:1.8,whiteSpace:'pre-wrap'}}><p style={{marginBottom:21}}>{editor('salutation',data.salutation,onFieldChange)}</p>
       {paragraphs.map(([key,value])=><p key={key} style={{marginBottom:19}}>{editor(key,value,onFieldChange,true)}</p>)}

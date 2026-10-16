@@ -1,45 +1,19 @@
 import { useEffect, useRef, useState } from 'react';
 import { CvPreview, type DocData, type DesignOptions } from './CvTemplates';
 import { LmPreview, type LmData, type LmDesign } from './LmTemplates';
-import { BUILTIN_CV_LAYOUTS } from './EditableCareerTemplates';
 import CareerDocumentSurface from './CareerDocumentSurface';
-import type { CareerTemplateMeta, CareerDocType } from '../../lib/careerStudioData';
+import { DEFAULT_CV_DATA, DEFAULT_LM_DATA, DEFAULT_CV_DESIGN, DEFAULT_LM_DESIGN, type CareerTemplateMeta, type CareerDocType } from '../../lib/careerStudioData';
 
-const SAMPLE_CV: DocData = {
-  name: 'Alex Morgan', title: 'Responsable qualité et performance', objective: '',
-  summary: 'Professionnel rigoureux, orienté amélioration continue, conformité et résultats mesurables.',
-  photo_url: '',
-  contact: { email: 'alex@example.com', phone: '+00 000 000 000', location: 'Ville, Pays', linkedin: 'linkedin.com/in/alex' },
-  experiences: [
-    { id:'e1', position:'Responsable qualité', company:'Entreprise Exemple', location:'Ville, Pays', start_date:'2022-01-01', current:true, description:'Pilotage des audits, indicateurs et plans d’amélioration.' },
-    { id:'e2', position:'Assistant projet', company:'Organisation Exemple', location:'Ville, Pays', start_date:'2020-01-01', end_date:'2021-12-01', current:false, description:'Suivi opérationnel et reporting.' },
-  ],
-  education: [{ id:'ed1', degree:'Master Management', school:'Université Exemple', location:'Ville, Pays', year:'2022' }],
-  omnia_formations: [],
-  skills: [{ id:'s1', name:'Audit', level:88 },{ id:'s2', name:'Gestion de projet', level:82 },{ id:'s3', name:'Excel', level:78 }],
-  languages: [{ id:'l1', name:'Français', level:'Courant' },{ id:'l2', name:'Anglais', level:'Intermédiaire' }],
-  certifications_external: [{ id:'c1', name:'ISO 9001', issuer:'Organisme Exemple', year:'2024' }],
-  projects: [{ id:'p1', name:'Tableau de bord qualité', description:'Conception et déploiement d’un suivi mensuel.', technologies:'Excel • Power BI' }],
-  interests: ['Lecture','Innovation'], references:''
-};
-
-const SAMPLE_LM: LmData = {
-  sender: { name:'Alex Morgan', address:'Votre adresse', phone:'+00 000 000 000', email:'alex@example.com', city:'Ville, Pays', date:'13 juillet 2026' },
-  recipient: { name:'Madame, Monsieur', company:'Entreprise Exemple', address:'Ville, Pays' },
-  subject:'Candidature au poste de Responsable qualité', salutation:'Madame, Monsieur,',
-  intro:'Je vous adresse ma candidature pour rejoindre votre organisation.',
-  motivation:'Votre engagement en faveur de la qualité et de l’innovation correspond pleinement à mon projet professionnel.',
-  skills_paragraph:'Mon expérience en audit, amélioration continue et pilotage d’indicateurs me permet de contribuer rapidement à vos objectifs.',
-  company_link:'Je souhaite mettre ces compétences au service de vos équipes.', availability:'Je suis disponible pour un entretien à votre convenance.',
-  closing:'Je vous prie d’agréer, Madame, Monsieur, l’expression de mes salutations distinguées.', signature:'Alex Morgan'
-};
+// The catalogue previews the very same starter data used by the new-document
+// workflow. This removes the misleading sample-CV vs Builder mismatch.
+const SAMPLE_CV: DocData = DEFAULT_CV_DATA;
+const SAMPLE_LM: LmData = DEFAULT_LM_DATA;
 
 function designFrom(template: CareerTemplateMeta): DesignOptions {
   return {
+    ...DEFAULT_CV_DESIGN,
     colors: template.default_colors,
-    font:'inter', font_size_body:9, font_size_title:11, line_spacing:1.5,
-    photo_enabled: (template.layout_config?.photo ?? BUILTIN_CV_LAYOUTS[template.template_key]?.photo) !== false,
-    photo_shape:'round', pages:1,
+    photo_enabled: false, // No dummy image when the CV has no photo.
   };
 }
 
@@ -67,7 +41,7 @@ export default function TemplateLiveCard({ template, docType, selected=false, on
     colors: selected && documentDesign ? documentDesign.colors : template.default_colors,
   };
   const lmDesign: LmDesign = {
-    font:'inter', font_size_body:10, line_spacing:1.65,
+    ...DEFAULT_LM_DESIGN,
     ...(documentDesign && docType === 'lm' ? documentDesign as LmDesign : {}),
     colors: selected && documentDesign ? documentDesign.colors : template.default_colors,
   };

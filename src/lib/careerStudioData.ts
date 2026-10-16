@@ -511,9 +511,26 @@ export function mergeCareerTemplateCatalog(
     if (options.includeInactive || custom.is_active !== false) result.push(custom);
   }
 
-  const deduped = new Map<string, CareerTemplateMeta>();
-  for (const template of result) deduped.set(template.template_key, template);
-  return [...deduped.values()].sort(stableTemplateSort);
+  const byKey = new Map<string, CareerTemplateMeta>();
+  for (const template of result) byKey.set(template.template_key, template);
+  const sorted = [...byKey.values()].sort(stableTemplateSort);
+  const distinct: CareerTemplateMeta[] = [];
+  const seenVisualVariants = new Set<string>();
+  for (const template of sorted) {
+    // A bespoke Super-admin entry is only hidden when it is visually identical
+    // to an existing design. Different palettes, layout or photo modes remain.
+    const config = template.layout_config || {};
+    const palette = template.default_colors || DEFAULT_COLORS;
+    const identity = JSON.stringify([
+      template.template_type, config.variant || 'default', config.header || '',
+      config.photo ?? null, palette.primary, palette.accent, palette.sidebar,
+      palette.background, palette.text,
+    ]);
+    if (template.is_custom && seenVisualVariants.has(identity)) continue;
+    seenVisualVariants.add(identity);
+    distinct.push(template);
+  }
+  return distinct;
 }
 
 export function getCareerTemplates(docType: CareerDocType) {

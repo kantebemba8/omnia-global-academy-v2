@@ -47,7 +47,6 @@ const sectionKey = (title:string) => {
  return 'summary';
 };
 const Section = ({title, accent, children}:{title:string;accent:string;children:React.ReactNode}) => <section data-career-section={sectionKey(title)} style={{marginBottom:16,cursor:'pointer'}}><div style={{fontSize:10,fontWeight:800,letterSpacing:1.2,textTransform:'uppercase'}}>{title}</div>{line(accent)}{children}</section>;
-function contacts(d:DocData){ return [d.contact?.email,d.contact?.phone,d.contact?.location].filter(Boolean).join(' • '); }
 
 function Photo({data, accent, shape='50%', size=96}:{data:DocData;accent:string;shape?:string;size?:number}){
   if(!data.photo_url) return null;
@@ -70,7 +69,9 @@ export function ConfigurableCvTemplate({data, design, templateKey, layoutConfig,
   const accent = design?.colors?.accent || cfg.accent;
   const sidebarColor = design?.colors?.sidebar || cfg.sidebar || '#f4f6f8';
   const font = design?.font || cfg.font || (cfg.variant === 'academic' ? 'Georgia,serif' : 'Inter,Arial,sans-serif');
-  const contactText = contacts(data) || 'Vos coordonnées';
+  const contactText = <span data-career-section="profile">{(['email','phone','location','linkedin','portfolio'] as const)
+    .filter(key => Boolean(data.contact?.[key]))
+    .map((key,index) => <React.Fragment key={key}>{index>0?' · ':''}<CareerInlineText field={`contact.${key}`} value={data.contact[key]} onChange={onFieldChange}/></React.Fragment>)}</span>;
   const {exp,edu,skills,langs}=cvParts(data,primary,accent,onFieldChange);
   const photoShape = design.photo_shape === 'rectangle' ? '16px' : design.photo_shape === 'square' ? '8px' : cfg.variant === 'creative' ? '20px' : '50%';
   const photo = Boolean(data.photo_url && design.photo_enabled) ? <Photo data={data} accent={accent} shape={photoShape} /> : null;
@@ -124,7 +125,7 @@ export function ConfigurableCvTemplate({data, design, templateKey, layoutConfig,
 
 function letterBody(data:LmData, primary:string, onEdit?: (field:string,value:string)=>void){
   const paragraphs=([['intro',data.intro],['motivation',data.motivation],['skills_paragraph',data.skills_paragraph],['company_link',data.company_link],['availability',data.availability]] as Array<[string,string]>).filter(([,value])=>Boolean(value));
-  return <><div style={{display:'flex',justifyContent:'space-between',gap:30,fontSize:10,lineHeight:1.5}}><div>{data.recipient?.name}<br/><b>{data.recipient?.company}</b><br/>{data.recipient?.address}</div><div style={{textAlign:'right'}}>{data.sender?.city}{data.sender?.date?`, le ${data.sender.date}`:''}</div></div><div style={{marginTop:34,fontSize:12,fontWeight:800,color:primary}}>Objet : <CareerInlineText field="subject" value={data.subject} fallback="Objet de votre candidature" onChange={onEdit}/></div><div style={{marginTop:28,fontSize:11,lineHeight:1.78,textAlign:'justify'}}><p><CareerInlineText field="salutation" value={data.salutation} fallback="Madame, Monsieur," onChange={onEdit}/></p>{paragraphs.map(([key,value])=><p key={key}><CareerInlineText field={key} value={value} onChange={onEdit} multiline/></p>)}<p><CareerInlineText field="closing" value={data.closing} onChange={onEdit} multiline/></p></div><div style={{marginTop:38,textAlign:'right',fontSize:14,fontWeight:800,color:primary}}><CareerInlineText field="signature" value={data.signature||data.sender?.name||''} onChange={onEdit}/></div></>;
+  return <><div style={{display:'flex',justifyContent:'space-between',gap:30,fontSize:10,lineHeight:1.5}}><div><CareerInlineText field="recipient.name" value={data.recipient?.name} onChange={onEdit}/><br/><b><CareerInlineText field="recipient.company" value={data.recipient?.company} onChange={onEdit}/></b><br/><CareerInlineText field="recipient.address" value={data.recipient?.address} onChange={onEdit}/></div><div style={{textAlign:'right'}}><CareerInlineText field="sender.city" value={data.sender?.city} onChange={onEdit}/>{data.sender?.date?', le ':''}<CareerInlineText field="sender.date" value={data.sender?.date} onChange={onEdit}/></div></div><div style={{marginTop:34,fontSize:12,fontWeight:800,color:primary}}>Objet : <CareerInlineText field="subject" value={data.subject} fallback="Objet de votre candidature" onChange={onEdit}/></div><div style={{marginTop:28,fontSize:11,lineHeight:1.78,textAlign:'justify'}}><p><CareerInlineText field="salutation" value={data.salutation} fallback="Madame, Monsieur," onChange={onEdit}/></p>{paragraphs.map(([key,value])=><p key={key}><CareerInlineText field={key} value={value} onChange={onEdit} multiline/></p>)}<p><CareerInlineText field="closing" value={data.closing} onChange={onEdit} multiline/></p></div><div style={{marginTop:38,textAlign:'right',fontSize:14,fontWeight:800,color:primary}}><CareerInlineText field="signature" value={data.signature||data.sender?.name||''} onChange={onEdit}/></div></>;
 }
 
 export function ConfigurableLmTemplate({data,design,templateKey,layoutConfig,onFieldChange}:{data:LmData;design:LmDesign;templateKey:string;layoutConfig?:unknown;onFieldChange?:(field:string,value:string)=>void}){
@@ -132,7 +133,9 @@ export function ConfigurableLmTemplate({data,design,templateKey,layoutConfig,onF
   const reactiveProfile = reactiveResumeProfile(templateKey,cfg.variant) || legacyOgaProfile(templateKey);
   if (reactiveProfile) return <ReactiveResumeLetter data={data} design={design} profile={reactiveProfile} onFieldChange={onFieldChange}/>;
   const primary=design?.colors?.primary||cfg.primary, accent=design?.colors?.accent||cfg.accent;
-  const sender=[data.sender?.email,data.sender?.phone,data.sender?.address].filter(Boolean).join(' • ');
+  const sender = <span data-career-section="sender">{(['email','phone','address'] as const)
+    .filter(key => Boolean(data.sender?.[key]))
+    .map((key,index) => <React.Fragment key={key}>{index>0?' · ':''}<CareerInlineText field={`sender.${key}`} value={data.sender[key]} onChange={onFieldChange}/></React.Fragment>)}</span>;
   const body=letterBody(data,primary,onFieldChange);
 
   if(cfg.variant==='editorial'||cfg.variant==='serif'||cfg.variant==='modern-sidebar') return <div style={{width:794,minHeight:1123,background:'#fff',fontFamily:cfg.variant==='serif'?'Georgia,serif':'Inter,Arial,sans-serif',color:'#1e293b'}}>
