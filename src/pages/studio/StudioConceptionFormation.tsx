@@ -367,10 +367,16 @@ export default function StudioConceptionFormation() {
   }
 
   async function flushBlockUpdates() {
-    const pending = Object.values(blockSaveQueues.current);
-    if (!pending.length) return;
-    const outcomes = await Promise.allSettled(pending);
-    if (outcomes.some(result => result.status === 'rejected')) throw new Error('BLOCK_SAVE_FAILED');
+    // Attendre Ã©galement les Ã©critures ajoutÃ©es pendant les opÃ©rations prÃ©cÃ©dentes.
+    // Refuser la suite du parcours si une sauvegarde Ã©choue.
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      const pending = Object.values(blockSaveQueues.current);
+      if (!pending.length) return;
+      const outcomes = await Promise.allSettled(pending);
+      if (outcomes.some(result => result.status === 'rejected')) throw new Error('BLOCK_SAVE_FAILED');
+      if (Object.values(blockSaveQueues.current).every(next => pending.includes(next))) return;
+    }
+    throw new Error('BLOCK_SAVE_QUEUE_NOT_STABLE');
   }
 
   async function runQualityCheck() {
@@ -652,10 +658,13 @@ export default function StudioConceptionFormation() {
   }
 
   const dragIdx = useRef<number | null>(null);
-  function onDragStart(idx: number) { dragIdx.current = idx; }
-  function onDragOver(e: React.DragEvent, idx: number) { e.preventDefault(); setDragOverIdx(idx); }
+  // Conserver le déplacement clavier et empêcher le dépôt de fichier de réordonner les blocs.
+  const isBlockDrag = (e: React.DragEvent) => e.dataTransfer.types.includes('application/x-omnia-existing-block');
+  function onDragStart(idx: number, e: React.DragEvent) { dragIdx.current = idx; e.dataTransfer.setData('application/x-omnia-existing-block', String(idx)); e.dataTransfer.effectAllowed='move'; }
+  function onDragOver(e: React.DragEvent, idx: number) { if (!isBlockDrag(e)) return; e.preventDefault(); setDragOverIdx(idx); }
   async function onDrop(e: React.DragEvent, targetIdx: number) {
-    e.preventDefault();
+    if (!isBlockDrag(e)) return;
+    e.preventDefault();e.stopPropagation();
     if (dragIdx.current === null || dragIdx.current === targetIdx) { setDragOverIdx(null); return; }
     const next = [...blocks];
     const [moved] = next.splice(dragIdx.current, 1);
@@ -1136,7 +1145,7 @@ export default function StudioConceptionFormation() {
                 {['structure', 'pedagogique', 'media', 'evaluation', 'langues', 'avance'].map(group => {
                   const groupBlocks = visibleBlocks.filter(b => b.group === group);
                   if (groupBlocks.length === 0) return null;
-                  const groupLabels: Record<string, string> = { structure: 'Structure', pedagogique: 'Pédagogie', media: 'Médias & Fichiers', evaluation: 'Évaluation', avance: 'Avancés', langues: 'Langues' };
+                  const groupLabels: Record<string, string> = { structure: 'Structure & texte', pedagogique: 'Pédagogie', media: 'Médias & documents', evaluation: 'Activités & évaluations', avance: 'Interactions avancées', langues: 'Apprentissage des langues' };
                   return (
                     <div key={group} className="mb-4">
                       <p className="text-xs font-bold uppercase tracking-wider mb-2" style={{ color: '#9CA3AF' }}>
@@ -1632,12 +1641,13 @@ export default function StudioConceptionFormation() {
                     return (
                       <div key={block.id}
                         draggable={!locked && typeof window !== 'undefined' && window.innerWidth >= 768}
-                        onDragStart={() => onDragStart(idx)}
+                        onDragStart={e => onDragStart(idx, e)}
+                        onDragEnd={() => {dragIdx.current=null;setDragOverIdx(null);}}
                         onDragOver={e => onDragOver(e, idx)}
                         onDrop={e => onDrop(e, idx)}
                         className="relative group"
                         style={{ opacity: dragOverIdx === idx ? 0.5 : 1 }}>
-                        <div className="absolute left-0 top-0 bottom-0 flex items-center -translate-x-6 opacity-0 group-hover:opacity-100 transition-opacity cursor-grab">
+                        <div aria-hidden="true" className="absolute left-0 top-0 bottom-0 flex items-center -translate-x-6 opacity-0 group-hover:opacity-100 transition-opacity cursor-grab">
                           <GripVertical size={14} style={{ color: '#9CA3AF' }} />
                         </div>
                         <div className={`bg-white rounded-xl border transition-all ${isSelected ? 'ring-2' : ''}`}
@@ -1660,10 +1670,10 @@ export default function StudioConceptionFormation() {
                               <button title="Réglages du bloc" onClick={e => { e.stopPropagation(); setSelectedBlock(block); setSelectedBlockDef(def || null); setShowPreview(false); setShowAI(false); }} className="p-1 rounded hover:bg-gray-100">
                                 <Settings size={13} style={{ color: '#002050' }} />
                               </button>
-                              <button title="Déplacer vers le haut" onClick={e => { e.stopPropagation(); moveBlock(idx, -1); }} className="p-1 rounded hover:bg-gray-100" disabled={locked || idx === 0}>
+                              <button type="button" aria-label={`Déplacer ${def?.label||block.block_type} vers le haut`} title="Déplacer vers le haut" onClick={e => { e.stopPropagation(); moveBlock(idx, -1); }} className="p-1 rounded hover:bg-gray-100" disabled={locked || idx === 0}>
                                 <ChevronUp size={12} style={{ color: '#6B7280' }} />
                               </button>
-                              <button title="Déplacer vers le bas" onClick={e => { e.stopPropagation(); moveBlock(idx, 1); }} className="p-1 rounded hover:bg-gray-100" disabled={locked || idx === blocks.length - 1}>
+                              <button type="button" aria-label={`Déplacer ${def?.label||block.block_type} vers le bas`} title="Déplacer vers le bas" onClick={e => { e.stopPropagation(); moveBlock(idx, 1); }} className="p-1 rounded hover:bg-gray-100" disabled={locked || idx === blocks.length - 1}>
                                 <ChevronDown size={12} style={{ color: '#6B7280' }} />
                               </button>
                               <button onClick={e => { e.stopPropagation(); duplicateBlock(block); }} className="p-1 rounded hover:bg-gray-100" disabled={locked}>
@@ -2046,8 +2056,8 @@ function RichTextEditor({ value, onChange, locked, placeholder, headingLevel, la
 }) {
   const ref = useRef<HTMLDivElement | null>(null);
   const [selectionToolbar, setSelectionToolbar] = useState<{ left: number; top: number } | null>(null);
-  useEffect(() => { if (ref.current && ref.current.innerHTML !== value) ref.current.innerHTML = value || ''; }, [value]);
-  function emit() { if (ref.current) onChange(ref.current.innerHTML); }
+  useEffect(() => { if (ref.current && document.activeElement !== ref.current && ref.current.innerHTML !== (value || '')) ref.current.innerHTML = value || ''; }, [value]);
+  function emit() { if (ref.current) onChange(sanitizePastedHtml(ref.current.innerHTML, ref.current.textContent || '')); }
   function command(cmd: string, arg?: string) {
     ref.current?.focus();
     document.execCommand(cmd, false, arg);
@@ -2090,6 +2100,9 @@ function RichTextEditor({ value, onChange, locked, placeholder, headingLevel, la
         <div className="flex flex-wrap items-center gap-1 border-b px-2 py-2" style={{ borderColor: '#EEF1F5', background: '#FBFCFE' }}>
           <button type="button" className={toolBtn} onMouseDown={e=>e.preventDefault()} onClick={()=>command('bold')} title="Gras"><strong>B</strong></button>
           <button type="button" className={toolBtn} onMouseDown={e=>e.preventDefault()} onClick={()=>command('italic')} title="Italique"><em>I</em></button>
+          <button type="button" className={toolBtn} onMouseDown={e=>e.preventDefault()} onClick={()=>command('underline')} title="Souligné"><u>U</u></button>
+          <button type="button" className={toolBtn} onMouseDown={e=>e.preventDefault()} onClick={()=>command('undo')} title="Annuler">↶</button>
+          <button type="button" className={toolBtn} onMouseDown={e=>e.preventDefault()} onClick={()=>command('redo')} title="Rétablir">↷</button>
           <button type="button" className={toolBtn} onMouseDown={e=>e.preventDefault()} onClick={()=>command('insertUnorderedList')} title="Liste à puces">• Puces</button>
           <button type="button" className={toolBtn} onMouseDown={e=>e.preventDefault()} onClick={()=>command('insertOrderedList')} title="Liste numérotée">1. Liste</button>
           <button type="button" className={toolBtn} onMouseDown={e=>e.preventDefault()} onClick={addLink} title="Ajouter un lien">Lien</button>
@@ -2106,6 +2119,7 @@ function RichTextEditor({ value, onChange, locked, placeholder, headingLevel, la
         </div>
       )}
       <div ref={ref} contentEditable={!locked} suppressContentEditableWarning spellCheck lang={language} data-placeholder={placeholder}
+        role="textbox" aria-multiline={headingLevel ? false : true} aria-label={placeholder || "Éditeur de contenu"}
         onInput={emit}
         onPaste={handlePaste}
         onMouseUp={updateSelectionToolbar} onKeyUp={updateSelectionToolbar} onBlur={() => window.setTimeout(() => setSelectionToolbar(null), 120)}
@@ -2508,13 +2522,35 @@ function BlockSettings({ block, locked, onUpdate, onAI, onRemoveResource, course
   const style = { borderColor: '#E4E7EC' };
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadError, setUploadError] = useState('');
+  const [fileDragActive, setFileDragActive] = useState(false);
   const showOptionalBlockTitle = !['heading','subheading','separator','callout','remember','objective','example','summary','important','definition','correction','quote'].includes(block.block_type);
   const resourceRagCapable = ['pdf','word','excel','download'].includes(block.block_type);
   const previewProtectedResource = ['image','gallery','video','audio','pdf','word','excel','download','embed'].includes(block.block_type);
 
   // ── Upload fichier vers Supabase Storage ──────────────────
+  const mediaFileExtensions:Record<string,string[]> = {
+    image:['jpg','jpeg','png','gif','webp'], video:['mp4','mov','avi','mkv','webm'],
+    audio:['mp3','wav','ogg','m4a'],pdf:['pdf'],word:['doc','docx'],
+    excel:['xls','xlsx','csv'],scorm:['zip'],
+  };
+  function acceptMediaFile(file:File,kind:string){
+    if(file.size<=0)throw new Error('Ce fichier est vide.');
+    const ext=file.name.split('.').pop()?.toLowerCase()||'';
+    if(mediaFileExtensions[kind]&&!mediaFileExtensions[kind].includes(ext))
+      throw new Error(`Format ${ext||'inconnu'} incompatible avec le bloc ${kind}.`);
+  }
+  function handleMediaDrop(e:React.DragEvent<HTMLElement>,kind:string){
+    e.preventDefault();e.stopPropagation();setFileDragActive(false);
+    if(locked||uploading)return;
+    const file=e.dataTransfer.files?.[0];
+    if(file)void handleFileUpload(file,kind);
+  }
   async function handleFileUpload(file: File, blockType: string) {
-    if (!file) return;
+    if (!file || locked || uploading) return;
+    setUploadError('');
+    try { acceptMediaFile(file,blockType); }
+    catch(err){setUploadError(err instanceof Error?err.message:'Fichier invalide');return;}
     setUploading(true);
     setUploadProgress(10);
     try {
@@ -2643,6 +2679,7 @@ function BlockSettings({ block, locked, onUpdate, onAI, onRemoveResource, course
       }
     } catch (err) {
       console.error('Upload error:', err);
+      setUploadError(err instanceof Error ? err.message : 'Téléversement impossible. Réessayez.');
     } finally {
       setTimeout(() => { setUploading(false); setUploadProgress(0); }, 800);
     }
@@ -2651,6 +2688,7 @@ function BlockSettings({ block, locked, onUpdate, onAI, onRemoveResource, course
 
   return (
     <div className="space-y-4">
+      {uploadError && <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{uploadError}</div>}
       {showOptionalBlockTitle && <div>
         <label className="block text-xs font-semibold mb-1.5" style={{ color: '#002050' }}>Nom affiché (facultatif)</label>
         <input className={inputCls} style={style} value={block.title || ''}
@@ -2839,7 +2877,7 @@ function BlockSettings({ block, locked, onUpdate, onAI, onRemoveResource, course
                 )}
               </div>
             ) : (
-              <label className={`flex flex-col items-center justify-center p-6 rounded-xl border-2 border-dashed cursor-pointer transition-all ${locked ? 'opacity-50 cursor-not-allowed' : 'hover:border-[#002050]'}`}
+              <label onDragEnter={e=>{e.preventDefault();if(!locked)setFileDragActive(true);}} onDragOver={e=>{e.preventDefault();e.dataTransfer.dropEffect=locked?'none':'copy';}} onDragLeave={e=>{e.preventDefault();setFileDragActive(false);}} onDrop={e=>handleMediaDrop(e,block.block_type)} className={`flex flex-col items-center justify-center p-6 rounded-xl border-2 border-dashed cursor-pointer transition-all ${fileDragActive?'border-[#BF8813] bg-amber-50':''} ${locked ? 'opacity-50 cursor-not-allowed' : 'hover:border-[#002050]'}`}
                 style={{ borderColor: '#E4E7EC', background: '#F8F9FA' }}>
                 <input type="file" className="hidden" disabled={locked}
                   accept={
@@ -2851,7 +2889,7 @@ function BlockSettings({ block, locked, onUpdate, onAI, onRemoveResource, course
                     block.block_type === 'scorm' ? '.zip' :
                     '*'
                   }
-                  onChange={e => { const f = e.target.files?.[0]; if (f) handleFileUpload(f, block.block_type); }} />
+                  onChange={e => { const f = e.target.files?.[0]; if (f) void handleFileUpload(f, block.block_type); e.currentTarget.value=''; }} />
                 {uploading ? (
                   <div className="text-center">
                     <div className="w-full bg-gray-200 rounded-full h-1.5 mb-2" style={{ width: '120px' }}>
@@ -2951,16 +2989,16 @@ function BlockSettings({ block, locked, onUpdate, onAI, onRemoveResource, course
       {block.block_type === 'image' && (
         <div className="space-y-3">
           {!block.file_name ? (
-            <label className={`flex flex-col items-center justify-center p-6 rounded-xl border-2 border-dashed cursor-pointer transition-all ${locked ? 'opacity-50 cursor-not-allowed' : 'hover:border-[#002050]'}`}
+            <label onDragEnter={e=>{e.preventDefault();if(!locked)setFileDragActive(true);}} onDragOver={e=>{e.preventDefault();e.dataTransfer.dropEffect=locked?'none':'copy';}} onDragLeave={e=>{e.preventDefault();setFileDragActive(false);}} onDrop={e=>handleMediaDrop(e,'image')} className={`flex flex-col items-center justify-center p-6 rounded-xl border-2 border-dashed cursor-pointer transition-all ${fileDragActive?'border-[#BF8813] bg-amber-50':''} ${locked ? 'opacity-50 cursor-not-allowed' : 'hover:border-[#002050]'}`}
               style={{ borderColor: '#E4E7EC', background: '#F8F9FA' }}>
               <input type="file" className="hidden" accept=".jpg,.jpeg,.png,.gif,.webp" disabled={locked}
-                onChange={e => { const f = e.target.files?.[0]; if (f) handleFileUpload(f, 'image'); }} />
+                onChange={e => { const f = e.target.files?.[0]; if (f) void handleFileUpload(f, 'image'); e.currentTarget.value=''; }} />
               {uploading ? (
                 <p className="text-xs" style={{ color: '#6B7280' }}>Envoi... {uploadProgress}%</p>
               ) : (
                 <>
                   <Image size={20} className="mb-2" style={{ color: '#9CA3AF' }} />
-                  <p className="text-xs font-semibold" style={{ color: '#374151' }}>Téléverser une image</p>
+                  <p className="text-xs font-semibold" style={{ color: '#374151' }}>Glissez une image ou cliquez pour sélectionner</p>
                   <p className="text-xs mt-1" style={{ color: '#9CA3AF' }}>JPG, PNG, GIF, WebP</p>
                 </>
               )}

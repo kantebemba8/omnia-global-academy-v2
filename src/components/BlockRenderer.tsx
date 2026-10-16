@@ -53,10 +53,44 @@ function escapeHtml(value: string) {
   return String(value || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
 }
 
+// V4: sanitize stored rich HTML before injecting it into the learner view.
+// Whitelist matches the Builder editor; no scripts, handlers, inline styles or unsafe URLs.
+function safeCourseHtml(value: string): string {
+  if (typeof document === 'undefined') return escapeHtml(value);
+  const parsed = new DOMParser().parseFromString(value, 'text/html');
+  const allowed = new Set(['p','div','br','strong','b','em','i','u','ul','ol','li','a','blockquote','span','h1','h2','h3','h4','h5','h6']);
+  const clean = (node: Node): Node | null => {
+    if (node.nodeType === Node.TEXT_NODE) return document.createTextNode(node.textContent || '');
+    if (node.nodeType !== Node.ELEMENT_NODE) return null;
+    const el = node as HTMLElement;
+    const tag = el.tagName.toLowerCase();
+    if (['script','style','iframe','object','embed','svg','math','form','input','button','textarea','template'].includes(tag)) return null;
+    const output = document.createElement(allowed.has(tag) ? tag : 'span');
+    if (tag === 'a') {
+      const href = (el.getAttribute('href') || '').trim();
+      if (/^https?:\/\//i.test(href)) {
+        (output as HTMLAnchorElement).href = href;
+        (output as HTMLAnchorElement).rel = 'noopener noreferrer';
+      }
+    }
+    for (const child of Array.from(el.childNodes)) {
+      const result = clean(child);
+      if (result) output.appendChild(result);
+    }
+    return output;
+  };
+  const root = document.createElement('div');
+  for (const child of Array.from(parsed.body.childNodes)) {
+    const result = clean(child);
+    if (result) root.appendChild(result);
+  }
+  return root.innerHTML;
+}
+
 function richHtml(value: any) {
   const raw = String(value ?? '').trim();
   if (!raw) return '';
-  if (/<\/?(?:p|div|strong|b|em|i|u|ul|ol|li|a|br|span|blockquote)\b/i.test(raw)) return raw;
+  if (/<\/?(?:p|div|strong|b|em|i|u|ul|ol|li|a|br|span|blockquote)\b/i.test(raw)) return safeCourseHtml(raw);
   return raw
     .split(/\n{2,}/)
     .map(paragraph => `<p>${escapeHtml(paragraph).replace(/\n/g, '<br />')}</p>`)
@@ -121,14 +155,14 @@ export function BlockRenderer({ block, onQuizAnswer, onTrainingResult, onFileTra
     // ── STRUCTURE ──────────────────────────────────────────────
     case 'heading':
       return c.html ? (
-        <div className="text-2xl font-bold mt-6 mb-3 leading-tight" style={{ color: '#002050' }} dangerouslySetInnerHTML={{ __html: c.html }} />
+        <div className="text-2xl font-bold mt-6 mb-3 leading-tight" style={{ color: '#002050' }} dangerouslySetInnerHTML={{ __html: safeCourseHtml(String(c.html || '')) }} />
       ) : (
         <h2 className="text-2xl font-bold mt-6 mb-3 leading-tight" style={{ color: '#002050' }}>{c.text || ''}</h2>
       );
 
     case 'subheading':
       return c.html ? (
-        <div className="text-lg font-semibold mt-5 mb-2" style={{ color: '#374151' }} dangerouslySetInnerHTML={{ __html: c.html }} />
+        <div className="text-lg font-semibold mt-5 mb-2" style={{ color: '#374151' }} dangerouslySetInnerHTML={{ __html: safeCourseHtml(String(c.html || '')) }} />
       ) : (
         <h3 className="text-lg font-semibold mt-5 mb-2" style={{ color: '#374151' }}>{c.text || ''}</h3>
       );
