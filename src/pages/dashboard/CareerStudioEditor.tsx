@@ -28,6 +28,10 @@ import {
   Target,
   ShieldCheck,
   History,
+  Undo2,
+  Redo2,
+  ArrowUp,
+  ArrowDown,
 } from 'lucide-react';
 import { CvPreview, type DesignOptions, type DocData } from '../../components/career/CvTemplates';
 import { LmPreview, type LmData, type LmDesign } from '../../components/career/LmTemplates';
@@ -68,6 +72,7 @@ import {
 } from '../../lib/careerBuilderV2';
 import { isLearnerPreviewMode, withLearnerPreview } from '../../lib/learnerPreview';
 import MobileBuilderAdvice from '../../components/MobileBuilderAdvice';
+import { createCareerHistory, recordCareerEdit, undoCareerEdit, redoCareerEdit, moveCareerEntry, type CareerHistory } from '../../lib/careerEditingHistory';
 
 const BLUE = '#002050';
 const GOLD = '#bf8813';
@@ -109,6 +114,15 @@ const WORKSPACE_ITEMS: Array<{ key: Workspace; label: string; icon: any }> = [
   { key: 'ai', label: 'IA', icon: Sparkles },
   { key: 'templates', label: 'Modèles', icon: Settings },
 ];
+
+type BuilderMode = 'write' | 'design' | 'check';
+const BUILDER_MODES: Array<{ key: BuilderMode; label: string; icon: any; start: Workspace; items: Workspace[] }> = [
+  { key: 'write', label: 'Rédiger', icon: FileText, start: 'content', items: ['content', 'source', 'target', 'ai'] },
+  { key: 'design', label: 'Design', icon: Palette, start: 'design', items: ['design', 'templates'] },
+  { key: 'check', label: 'Vérifier', icon: ShieldCheck, start: 'quality', items: ['quality', 'versions'] },
+];
+const getBuilderMode = (item: Workspace): BuilderMode =>
+  BUILDER_MODES.find(mode => mode.items.includes(item))?.key || 'write';
 
 const WORKSPACE_TITLES: Record<Workspace, { title: string; description: string }> = {
   content: { title: 'Contenu', description: 'Modifiez les informations affichées dans le document.' },
@@ -392,6 +406,12 @@ export default function CareerStudioEditor() {
   const previewMode = isLearnerPreviewMode();
 
   const [document, setDocument] = useState<CareerDocumentFull | null>(null);
+  // A single in-memory document is shared by the writing panel and page.
+  // History is local to the open document; it is not a second persisted store.
+  const liveDocumentRef = useRef<CareerDocumentFull | null>(null);
+  const historyRef = useRef<CareerHistory<CareerDocumentFull>>(createCareerHistory());
+  const [historyRevision, setHistoryRevision] = useState(0);
+
   const [templates, setTemplates] = useState<CareerTemplateMeta[]>([]);
   const [tokens, setTokens] = useState(0);
   const [remoteMode, setRemoteMode] = useState(false);
@@ -473,6 +493,7 @@ export default function CareerStudioEditor() {
         setSourceProfile({});
         const loaded = await getCareerDocument(docType, 'new', requestedTemplate);
         const normalized = normalizeCareerDocument(loaded.document);
+        liveDocumentRef.current = normalized;
         setDocument(normalized);
         setOfferText('');
         return;
@@ -486,6 +507,7 @@ export default function CareerStudioEditor() {
       const loaded = await getCareerDocument(docType, docId, requestedTemplate);
       const normalized = normalizeCareerDocument(loaded.document);
       setRemoteMode(loaded.remote);
+      liveDocumentRef.current = normalized;
       setDocument(normalized);
       setOfferText(getCareerMeta(normalized.doc_data, normalized.doc_type).target.job_description || '');
       if ((docId === 'new' || !docId) && normalized.id.startsWith('local_')) {
@@ -502,30 +524,68 @@ export default function CareerStudioEditor() {
     load();
   }, [load]);
 
+  useEffect(() => {
+    liveDocumentRef.current = document;
+  }, [document]);
+
+  useEffect(() => {
+    historyRef.current = createCareerHistory();
+    setHistoryRevision(value => value + 1);
+  }, [document?.id]);
+
+
   const updateDocument = useCallback((
     updater: (current: CareerDocumentFull) => CareerDocumentFull,
     options: { startQuality?: boolean } = {},
   ) => {
-    setDocument(prev => {
-      if (!prev) return prev;
-      const next = updater(prev);
-      const startQuality = options.startQuality !== false;
-      const nextData = startQuality
-        ? markCareerDocumentModified(next.doc_data, next.doc_type)
-        : next.doc_data;
-      const qualityIsActive = hasCareerQualityStarted(nextData, next.doc_type);
-      return {
-        ...next,
-        doc_data: nextData,
-        ats_score: qualityIsActive
-          ? analyzeCareerDocument(next.doc_type, nextData, next.design_options).ats
-          : 0,
-        updated_at: new Date().toISOString(),
-      };
-    });
+    const prev = liveDocumentRef.current;
+    if (!prev) return;
+    const next = updater(prev);
+    const startQuality = options.startQuality !== false;
+    const nextData = startQuality ? markCareerDocumentModified(next.doc_data, next.doc_type) : next.doc_data;
+    const qualityIsActive = hasCareerQualityStarted(nextData, next.doc_type);
+    const normalized: CareerDocumentFull = {
+      ...next,
+      doc_data: nextData,
+      ats_score: qualityIsActive ? analyzeCareerDocument(next.doc_type, nextData, next.design_options).ats : 0,
+      updated_at: new Date().toISOString(),
+    };
+    const activeElement = typeof window !== 'undefined' ? window.document.activeElement : null;
+    const coalesceTarget = activeElement instanceof HTMLInputElement || activeElement instanceof HTMLTextAreaElement || activeElement instanceof HTMLSelectElement
+      ? activeElement : null;
+    historyRef.current = recordCareerEdit(historyRef.current, prev, coalesceTarget, Date.now());
+    liveDocumentRef.current = normalized;
+    setDocument(normalized);
+    setHistoryRevision(value => value + 1);
     setSaveState('idle');
     setDirty(true);
   }, []);
+
+  const restoreHistoryDocument = useCallback((restored: CareerDocumentFull) => {
+    // Recalculate quality without dropping persisted metadata or the chosen template.
+    const clean = normalizeCareerDocument({ ...restored, updated_at: new Date().toISOString() });
+    liveDocumentRef.current = clean;
+    setDocument(clean);
+    setSaveState('idle');
+    setDirty(true);
+    setHistoryRevision(value => value + 1);
+  }, []);
+
+  const undoEdit = useCallback(() => {
+    if (previewMode || isManualMode) return;
+    const result = undoCareerEdit(historyRef.current, liveDocumentRef.current);
+    if (!result.document) return;
+    historyRef.current = result.history;
+    restoreHistoryDocument(result.document);
+  }, [previewMode, isManualMode, restoreHistoryDocument]);
+
+  const redoEdit = useCallback(() => {
+    if (previewMode || isManualMode) return;
+    const result = redoCareerEdit(historyRef.current, liveDocumentRef.current);
+    if (!result.document) return;
+    historyRef.current = result.history;
+    restoreHistoryDocument(result.document);
+  }, [previewMode, isManualMode, restoreHistoryDocument]);
 
   const isDocumentNamed = useCallback((doc: CareerDocumentFull) => {
     const currentTitle = String(doc.title || '').trim();
@@ -537,6 +597,7 @@ export default function CareerStudioEditor() {
     setSaveState('saving');
     if (previewMode) {
       const previewDocument = normalizeCareerDocument({ ...docToSave, updated_at: new Date().toISOString() });
+      liveDocumentRef.current = previewDocument;
       setDocument(previewDocument);
       setRemoteMode(false);
       setSaveState('saved');
@@ -545,10 +606,25 @@ export default function CareerStudioEditor() {
     }
     try {
       const saved = await saveCareerDocument(docToSave);
-      setDocument(saved.document);
+      // Avoid replacing newer typing with an older async save response.
+      const hasNewerChanges = liveDocumentRef.current !== docToSave;
+      if (!hasNewerChanges) {
+        liveDocumentRef.current = saved.document;
+        setDocument(saved.document);
+        setSaveState('saved');
+        setDirty(false);
+      } else {
+        // The server may assign an id on the first save while the user keeps editing.
+        const latest = liveDocumentRef.current;
+        if (latest && latest.id === docToSave.id && saved.document.id !== docToSave.id) {
+          const withRemoteId = { ...latest, id: saved.document.id };
+          liveDocumentRef.current = withRemoteId;
+          setDocument(withRemoteId);
+        }
+        setSaveState('idle');
+        setDirty(true);
+      }
       setRemoteMode(saved.remote);
-      setSaveState('saved');
-      setDirty(false);
       return saved.document;
     } catch {
       setSaveState('error');
@@ -574,6 +650,7 @@ export default function CareerStudioEditor() {
     const cleanTitle = pendingDocumentName.trim();
     const named = { ...document, title: cleanTitle, updated_at: new Date().toISOString() };
     const action = pendingSaveAction;
+    liveDocumentRef.current = named;
     setDocument(named);
     setNameDialogOpen(false);
     setPendingSaveAction(null);
@@ -1026,6 +1103,7 @@ export default function CareerStudioEditor() {
   const lmData = !isCv ? getLmData(document) : null;
   const isExampleContent = Boolean((document.doc_data as any)?.career_meta?.example_content) || containsExampleContent(document.doc_data);
   const workspaceMeta = WORKSPACE_TITLES[workspace];
+  const editCount = historyRevision >= 0 ? historyRef.current.past.length : 0;
 
   return (
     <div className="flex h-[100dvh] flex-col overflow-hidden bg-[#F8FAFC] text-slate-900">
@@ -1073,6 +1151,12 @@ export default function CareerStudioEditor() {
               {saveState === 'saving' ? 'Enregistrement...' : saveState === 'saved' ? 'Enregistré automatiquement' : previewMode ? 'Mode aperçu administratif' : remoteMode ? 'Connecté Supabase' : 'Mode local sécurisé'}
             </div>
             <div className="hidden rounded-full bg-[#bf8813]/10 px-3 py-2 text-xs font-bold text-[#9a6810] sm:block">{tokens} jeton(s)</div>
+            <div className="flex items-center rounded-xl border border-slate-200 bg-white" aria-label="Historique des modifications">
+              <button type="button" onClick={undoEdit} disabled={previewMode || isManualMode || editCount === 0}
+                className="rounded-l-xl p-2.5 text-[#002050] hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-30" aria-label="Annuler" title="Annuler la dernière modification"><Undo2 className="h-4 w-4" /></button>
+              <button type="button" onClick={redoEdit} disabled={previewMode || isManualMode || historyRef.current.future.length === 0}
+                className="rounded-r-xl p-2.5 text-[#002050] hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-30" aria-label="Rétablir" title="Rétablir la modification"><Redo2 className="h-4 w-4" /></button>
+            </div>
             <button
               type="button"
               onClick={() => setFullPreviewOpen(true)}
@@ -1144,20 +1228,20 @@ export default function CareerStudioEditor() {
 
       <div className="relative flex min-h-0 flex-1 overflow-hidden">
         {!focusMode && <nav className="absolute inset-x-0 bottom-0 z-40 flex h-[68px] shrink-0 flex-row items-center gap-1 overflow-x-auto border-t border-slate-200 bg-white px-2 py-2 shadow-[0_-8px_24px_rgba(15,23,42,0.08)] md:static md:h-auto md:w-[76px] md:flex-col md:overflow-y-auto md:border-r md:border-t-0 md:py-3 md:shadow-none" aria-label="Outils du Career Studio">
-          {WORKSPACE_ITEMS.map(item => {
-            const Icon = item.icon;
-            const active = workspace === item.key;
+          {BUILDER_MODES.map(mode => {
+            const Icon = mode.icon;
+            const active = getBuilderMode(workspace) === mode.key;
             return (
               <button
-                key={item.key}
+                key={mode.key}
                 type="button"
-                onClick={() => { setWorkspace(item.key); setToolPanelOpen(true); }}
-                className={`flex min-w-[64px] flex-col items-center gap-1 rounded-xl px-2 py-2 text-[10px] font-bold transition md:min-w-0 md:w-full md:px-1 ${active ? 'bg-[#002050] text-white' : 'text-slate-500 hover:bg-slate-100 hover:text-[#002050]'}`}
+                onClick={() => { if (!active) setWorkspace(mode.start); setToolPanelOpen(true); }}
+                className={`flex min-w-[72px] flex-col items-center gap-1 rounded-xl px-2 py-2 text-[10px] font-bold transition md:min-w-0 md:w-full md:px-1 ${active ? 'bg-[#002050] text-white' : 'text-slate-500 hover:bg-slate-100 hover:text-[#002050]'}`}
                 aria-pressed={active}
-                title={item.label}
+                title={mode.label}
               >
                 <Icon className="h-4 w-4" />
-                <span>{item.label}</span>
+                <span>{mode.label}</span>
               </button>
             );
           })}
@@ -1179,13 +1263,22 @@ export default function CareerStudioEditor() {
               </div>
               <button type="button" onClick={() => setToolPanelOpen(false)} className="rounded-xl border border-slate-200 p-2 text-slate-500 hover:bg-slate-50" aria-label="Fermer le panneau"><X className="h-4 w-4" /></button>
             </div>
+            <div className="flex flex-wrap gap-1 border-b border-slate-200 bg-white p-2" aria-label="Outils du mode sélectionné">
+              {WORKSPACE_ITEMS.filter(item => BUILDER_MODES.find(mode => mode.key === getBuilderMode(workspace))?.items.includes(item.key)).map(item => {
+                const Icon = item.icon;
+                return <button key={item.key} type="button" onClick={() => setWorkspace(item.key)} aria-pressed={workspace === item.key}
+                  className={`inline-flex items-center gap-1.5 rounded-lg px-2 py-2 text-xs font-semibold ${workspace === item.key ? 'bg-[#002050] text-white' : 'text-slate-600 hover:bg-slate-100'}`}>
+                  <Icon className="h-3.5 w-3.5" />{item.label}
+                </button>;
+              })}
+            </div>
             <div className="min-h-0 flex-1 overflow-y-auto p-3">
               {workspace === 'content' && <EditorPanel isCv={isCv} cvData={cvData} lmData={lmData} activeCvSection={activeCvSection} activeLmSection={activeLmSection} onCvSectionChange={setActiveCvSection} onLmSectionChange={setActiveLmSection} updateCv={updateCv} updateLm={updateLm} score={score ?? 0} isExampleContent={isExampleContent} />}
               {workspace === 'source' && <CareerSourcePanel docType={document.doc_type} data={document.doc_data} source={sourceProfile} onChange={data => updateDocument(doc => ({ ...doc, doc_data: { ...(data as any), career_meta: { ...((data as any).career_meta || {}), example_content: false } } }))} />}
               {workspace === 'target' && <CareerTargetPanel document={document} onChange={next => { setOfferText(getCareerMeta(next.doc_data, next.doc_type).target.job_description || ''); updateDocument(() => next); }} />}
               {workspace === 'design' && <CareerDesignPanel docType={document.doc_type} design={document.design_options as AdvancedCareerDesign} onChange={design => updateDocument(doc => ({ ...doc, design_options: design }))} />}
               {workspace === 'quality' && <CareerQualityPanel report={qualityReport} started={qualityStarted} onCreateAtsVersion={qualityStarted ? createAtsVersion : undefined} />}
-              {workspace === 'versions' && <CareerVersionPanel document={document} onRestore={restored => { setDocument(normalizeCareerDocument(restored)); setDirty(true); setSaveState('idle'); showToast('Version restaurée. Vérifiez-la puis enregistrez.'); }} />}
+              {workspace === 'versions' && <CareerVersionPanel document={document} onRestore={restored => { updateDocument(() => normalizeCareerDocument(restored), { startQuality: false }); showToast('Version restaurée. Vérifiez-la puis enregistrez.'); }} />}
               {workspace === 'ai' && <AiAssistantPanel isCv={isCv} loadingAction={aiLoadingAction} suggestion={aiSuggestion} offerText={offerText} onOfferTextChange={value => { setOfferText(value); const meta = getCareerMeta(document.doc_data, document.doc_type); updateDocument(doc => ({ ...doc, doc_data: { ...(doc.doc_data as any), career_meta: { ...meta, target: { ...meta.target, job_description: value } } } })); }} onRequest={requestAi} onApply={applyAiSuggestion} onDismiss={() => setAiSuggestion(null)} />}
               {workspace === 'templates' && <TemplatePanel docType={document.doc_type} templates={templates.length ? templates : getCareerTemplates(document.doc_type)} selectedTemplate={selectedTemplate} selectedKey={document.template_key} data={document.doc_data} design={document.design_options} onSelect={changeTemplate} />}
             </div>
@@ -1685,6 +1778,7 @@ function CvSectionEditor({ active, data, update }: { active: CvSectionKey; data:
         )}
         onAdd={() => update(d => ({ ...d, skills: [...d.skills, { id: uid('sk'), name: 'Nouvelle compétence', level: 70 }] }))}
         onRemove={id => update(d => ({ ...d, skills: d.skills.filter(s => s.id !== id) }))}
+        onMove={(id, direction) => update(d => ({ ...d, skills: moveCareerEntry(d.skills, id, direction) }))}
       />
     );
   }
@@ -1710,24 +1804,25 @@ function CvSectionEditor({ active, data, update }: { active: CvSectionKey; data:
         )}
         onAdd={() => update(d => ({ ...d, experiences: [...d.experiences, { id: uid('exp'), position: 'Nouveau poste', company: 'Entreprise', start_date: '2025-01', current: false, description: '' }] }))}
         onRemove={id => update(d => ({ ...d, experiences: d.experiences.filter(x => x.id !== id) }))}
+        onMove={(id, direction) => update(d => ({ ...d, experiences: moveCareerEntry(d.experiences, id, direction) }))}
       />
     );
   }
 
   if (active === 'education') {
-    return <SimpleRows title="Formation" items={data.education} fields={[['degree', 'Diplôme'], ['school', 'École'], ['year', 'Année']]} onAdd={() => update(d => ({ ...d, education: [...d.education, { id: uid('edu'), degree: 'Nouveau diplôme', school: 'École', year: '2025' }] }))} onRemove={id => update(d => ({ ...d, education: d.education.filter(x => x.id !== id) }))} onChange={(id, field, value) => update(d => ({ ...d, education: d.education.map(x => x.id === id ? { ...x, [field]: value } : x) }))} />;
+    return <SimpleRows title="Formation" items={data.education} fields={[['degree', 'Diplôme'], ['school', 'École'], ['year', 'Année']]} onAdd={() => update(d => ({ ...d, education: [...d.education, { id: uid('edu'), degree: 'Nouveau diplôme', school: 'École', year: '2025' }] }))} onRemove={id => update(d => ({ ...d, education: d.education.filter(x => x.id !== id) }))} onMove={(id, direction) => update(d => ({ ...d, education: moveCareerEntry(d.education, id, direction) }))} onChange={(id, field, value) => update(d => ({ ...d, education: d.education.map(x => x.id === id ? { ...x, [field]: value } : x) }))} />;
   }
 
   if (active === 'certifications') {
-    return <SimpleRows title="Certifications" items={data.certifications_external} fields={[['name', 'Certification'], ['issuer', 'Organisme'], ['year', 'Année']]} onAdd={() => update(d => ({ ...d, certifications_external: [...d.certifications_external, { id: uid('cert'), name: 'Nouvelle certification', issuer: 'Organisme', year: '2025' }] }))} onRemove={id => update(d => ({ ...d, certifications_external: d.certifications_external.filter(x => x.id !== id) }))} onChange={(id, field, value) => update(d => ({ ...d, certifications_external: d.certifications_external.map(x => x.id === id ? { ...x, [field]: value } : x) }))} />;
+    return <SimpleRows title="Certifications" items={data.certifications_external} fields={[['name', 'Certification'], ['issuer', 'Organisme'], ['year', 'Année']]} onAdd={() => update(d => ({ ...d, certifications_external: [...d.certifications_external, { id: uid('cert'), name: 'Nouvelle certification', issuer: 'Organisme', year: '2025' }] }))} onRemove={id => update(d => ({ ...d, certifications_external: d.certifications_external.filter(x => x.id !== id) }))} onMove={(id, direction) => update(d => ({ ...d, certifications_external: moveCareerEntry(d.certifications_external, id, direction) }))} onChange={(id, field, value) => update(d => ({ ...d, certifications_external: d.certifications_external.map(x => x.id === id ? { ...x, [field]: value } : x) }))} />;
   }
 
   if (active === 'languages') {
-    return <SimpleRows title="Langues" items={data.languages} fields={[['name', 'Langue'], ['level', 'Niveau']]} onAdd={() => update(d => ({ ...d, languages: [...d.languages, { id: uid('lang'), name: 'Anglais', level: 'Intermédiaire' }] }))} onRemove={id => update(d => ({ ...d, languages: d.languages.filter(x => x.id !== id) }))} onChange={(id, field, value) => update(d => ({ ...d, languages: d.languages.map(x => x.id === id ? { ...x, [field]: value } : x) }))} />;
+    return <SimpleRows title="Langues" items={data.languages} fields={[['name', 'Langue'], ['level', 'Niveau']]} onAdd={() => update(d => ({ ...d, languages: [...d.languages, { id: uid('lang'), name: 'Anglais', level: 'Intermédiaire' }] }))} onRemove={id => update(d => ({ ...d, languages: d.languages.filter(x => x.id !== id) }))} onMove={(id, direction) => update(d => ({ ...d, languages: moveCareerEntry(d.languages, id, direction) }))} onChange={(id, field, value) => update(d => ({ ...d, languages: d.languages.map(x => x.id === id ? { ...x, [field]: value } : x) }))} />;
   }
 
   if (active === 'projects') {
-    return <SimpleRows title="Projets" items={data.projects} fields={[['name', 'Nom'], ['description', 'Description'], ['technologies', 'Technologies']]} onAdd={() => update(d => ({ ...d, projects: [...d.projects, { id: uid('proj'), name: 'Nouveau projet', description: '', technologies: '' }] }))} onRemove={id => update(d => ({ ...d, projects: d.projects.filter(x => x.id !== id) }))} onChange={(id, field, value) => update(d => ({ ...d, projects: d.projects.map(x => x.id === id ? { ...x, [field]: value } : x) }))} />;
+    return <SimpleRows title="Projets" items={data.projects} fields={[['name', 'Nom'], ['description', 'Description'], ['technologies', 'Technologies']]} onAdd={() => update(d => ({ ...d, projects: [...d.projects, { id: uid('proj'), name: 'Nouveau projet', description: '', technologies: '' }] }))} onRemove={id => update(d => ({ ...d, projects: d.projects.filter(x => x.id !== id) }))} onMove={(id, direction) => update(d => ({ ...d, projects: moveCareerEntry(d.projects, id, direction) }))} onChange={(id, field, value) => update(d => ({ ...d, projects: d.projects.map(x => x.id === id ? { ...x, [field]: value } : x) }))} />;
   }
 
   return <TextArea label="Centres d’intérêt" rows={5} value={(data.interests || []).join(', ')} onChange={v => update(d => ({ ...d, interests: v.split(',').map(x => x.trim()).filter(Boolean) }))} />;
@@ -1799,7 +1894,7 @@ function TextArea({ label, value, rows, onChange }: { label: string; value: stri
   );
 }
 
-function ListEditor<T extends { id: string }>({ title, addLabel, items, render, onAdd, onRemove }: { title: string; addLabel: string; items: T[]; render: (item: T, remove: React.ReactNode) => React.ReactNode; onAdd: () => void; onRemove: (id: string) => void }) {
+function ListEditor<T extends { id: string }>({ title, addLabel, items, render, onAdd, onRemove, onMove }: { title: string; addLabel: string; items: T[]; render: (item: T, actions: React.ReactNode) => React.ReactNode; onAdd: () => void; onRemove: (id: string) => void; onMove?: (id: string, direction: -1 | 1) => void }) {
   return (
     <div>
       <div className="mb-3 flex items-center justify-between">
@@ -1809,15 +1904,21 @@ function ListEditor<T extends { id: string }>({ title, addLabel, items, render, 
         </button>
       </div>
       <div className="space-y-3">
-        {items.map(item => (
-          <div key={item.id}>{render(item, <button onClick={() => onRemove(item.id)} className="rounded-lg p-2 text-red-600 hover:bg-red-50"><Trash2 className="h-4 w-4" /></button>)}</div>
+        {items.map((item, index) => (
+          <div key={item.id}>{render(item, <div className="flex items-center gap-1" aria-label="Actions de la rubrique">
+            {onMove && <>
+              <button type="button" onClick={() => onMove(item.id, -1)} disabled={index === 0} title="Monter" aria-label="Monter cette entrée" className="rounded-lg p-2 text-[#002050] hover:bg-slate-50 disabled:opacity-25"><ArrowUp className="h-4 w-4" /></button>
+              <button type="button" onClick={() => onMove(item.id, 1)} disabled={index === items.length - 1} title="Descendre" aria-label="Descendre cette entrée" className="rounded-lg p-2 text-[#002050] hover:bg-slate-50 disabled:opacity-25"><ArrowDown className="h-4 w-4" /></button>
+            </>}
+            <button type="button" onClick={() => onRemove(item.id)} title="Supprimer" aria-label="Supprimer cette entrée" className="rounded-lg p-2 text-red-600 hover:bg-red-50"><Trash2 className="h-4 w-4" /></button>
+          </div>)}</div>
         ))}
       </div>
     </div>
   );
 }
 
-function SimpleRows<T extends { id: string }>({ title, items, fields, onAdd, onRemove, onChange }: { title: string; items: T[]; fields: Array<[keyof T & string, string]>; onAdd: () => void; onRemove: (id: string) => void; onChange: (id: string, field: keyof T & string, value: string) => void }) {
+function SimpleRows<T extends { id: string }>({ title, items, fields, onAdd, onRemove, onChange, onMove }: { title: string; items: T[]; fields: Array<[keyof T & string, string]>; onAdd: () => void; onRemove: (id: string) => void; onChange: (id: string, field: keyof T & string, value: string) => void; onMove?: (id: string, direction: -1 | 1) => void }) {
   return (
     <ListEditor
       title={title}
@@ -1825,6 +1926,7 @@ function SimpleRows<T extends { id: string }>({ title, items, fields, onAdd, onR
       items={items}
       onAdd={onAdd}
       onRemove={onRemove}
+      onMove={onMove}
       render={(item, remove) => (
         <div className="space-y-2 rounded-xl border border-slate-200 p-3">
           <div className="flex justify-end">{remove}</div>
@@ -2008,8 +2110,8 @@ function getTemplateMockup(template: CareerTemplateMeta, _docType: CareerDocType
 function TemplatePreviewCard({
   template,
   docType,
-  data: _data,
-  design: _design,
+  data,
+  design,
   selected,
   onSelect,
   compact = false,
