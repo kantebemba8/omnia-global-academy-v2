@@ -8,7 +8,7 @@ export interface NativePdfOptions {
 }
 
 /**
- * Native PDF: pixel-faithful visual page with an invisible, searchable text layer.
+ * Browser and native PDF: pixel-faithful visual page with an invisible, searchable text layer.
  * This is not a fully vector-rendered PDF. The selectable layer is rebuilt from
  * actual DOM text nodes, and must stay aligned with the captured content.
  */
@@ -78,10 +78,43 @@ export function calculatePdfPageSlices(contentHeight: number, pageHeight: number
   return slices;
 }
 
-export async function exportElementAsNativePdf(
+/** Build the PDF before authorizing paid downloads so a rendering failure cannot spend a credit. */
+export async function renderCareerPdfBlob(
   element: HTMLElement,
   options: NativePdfOptions,
-): Promise<void> {
+): Promise<Blob> {
+  const page = element.matches('[data-career-document-surface="true"]')
+    ? element
+    : element.querySelector<HTMLElement>('[data-career-document-surface="true"]');
+  if (!page) throw new Error('Aperçu du document introuvable : export PDF annulé.');
+
+  // Capture the exact rendered page in an isolated host: Builder zoom, sidebars,
+  // tooltips, selection controls and print dialogs must never affect the PDF.
+  const host = document.createElement('div');
+  host.setAttribute('data-omnia-pdf-capture', 'true');
+  host.style.cssText = 'position:fixed;left:0;top:0;z-index:-2147483647;pointer-events:none;overflow:visible;background:#fff;';
+  const source = page.cloneNode(true) as HTMLElement;
+  source.querySelectorAll('[data-no-print="true"],[data-career-page-marker="true"]')
+    .forEach(node => node.remove());
+  source.querySelectorAll('[contenteditable="true"]').forEach(node => node.setAttribute('contenteditable', 'false'));
+  host.appendChild(source);
+  document.body.appendChild(host);
+  try {
+    await (document.fonts?.ready ?? Promise.resolve());
+    await Promise.all(Array.from(source.querySelectorAll('img')).map(img => img.complete
+      ? Promise.resolve()
+      : new Promise<void>(resolve => { img.addEventListener('load', () => resolve(), { once: true }); img.addEventListener('error', () => resolve(), { once: true }); })
+    ));
+    return await renderCloneToPdf(source, options);
+  } finally {
+    host.remove();
+  }
+}
+
+async function renderCloneToPdf(
+  element: HTMLElement,
+  options: NativePdfOptions,
+): Promise<Blob> {
   const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
     import('html2canvas'),
     import('jspdf'),
@@ -143,10 +176,20 @@ export async function exportElementAsNativePdf(
     }
   }
 
-  await saveOrShareBlob(pdf.output('blob'), {
+  return pdf.output('blob');
+}
+
+export async function saveCareerPdfBlob(blob: Blob, options: NativePdfOptions): Promise<void> {
+  await saveOrShareBlob(blob, {
     fileName: options.fileName,
     mimeType: 'application/pdf',
     title: options.title,
     text: 'Document généré par Omnia Global Academy',
   });
 }
+
+export async function exportElementAsNativePdf(element: HTMLElement, options: NativePdfOptions): Promise<void> {
+  const blob = await renderCareerPdfBlob(element, options);
+  await saveCareerPdfBlob(blob, options);
+}
+

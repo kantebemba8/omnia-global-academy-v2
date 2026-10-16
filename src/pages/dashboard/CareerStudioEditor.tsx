@@ -50,7 +50,7 @@ import {
   normalizeTemplateKey,
 } from '../../lib/careerStudioData';
 import { consumeCareerTokenAction, deleteCareerDocument, fetchCareerTemplateCatalog, getCareerDocument, listCareerDocuments, prepareCareerPdfExport, renameCareerDocument, runCareerAiAction, saveCareerDocument } from '../../lib/careerStudioApi';
-import { printCareerElementAsPdf, reserveCareerPrintWindow } from '../../lib/careerPdfExport';
+import { downloadPreparedCareerPdf, renderCareerPdfBeforeAuthorization } from '../../lib/careerPdfExport';
 import { exportCareerWord } from '../../lib/careerWordExport';
 import { approximateDataUrlBytes, isNativeApp, pickNativeImageAsDataUrl } from '../../lib/mobile';
 import TemplateLiveCard from '../../components/career/TemplateLiveCard';
@@ -482,9 +482,7 @@ export default function CareerStudioEditor() {
       return;
     }
 
-    let pdfPopup: Window | null = null;
     try {
-      if (action === 'pdf') pdfPopup = reserveCareerPrintWindow();
       const savedNamed = await persistDocument(named);
       if (action === 'word') {
         await exportCareerWord(savedNamed);
@@ -493,13 +491,10 @@ export default function CareerStudioEditor() {
       else if (action === 'manual') showToast('Mise en page manuelle enregistrée');
       else if (action === 'save') showToast('Document enregistré. Vérifiez l’indicateur de synchronisation.');
       else if (action === 'pdf') {
-        await handlePdfDownload(true, savedNamed, pdfPopup);
-        pdfPopup = null;
+        await handlePdfDownload(true, savedNamed);
       }
     } catch (error) {
       showToast((error as Error).message || 'Impossible de sauvegarder le document.');
-    } finally {
-      if (pdfPopup && !pdfPopup.closed) pdfPopup.close();
     }
   }, [document, pendingDocumentName, pendingSaveAction, persistDocument]);
 
@@ -883,45 +878,35 @@ export default function CareerStudioEditor() {
     }
   }
 
-  async function handlePdfDownload(alreadyNamed = false, savedDocument?: CareerDocumentFull, popupAlreadyReserved?: Window | null) {
+  async function handlePdfDownload(alreadyNamed = false, savedDocument?: CareerDocumentFull) {
     if (previewMode) { showToast('Le téléchargement PDF est désactivé en prévisualisation afin de ne consommer aucun jeton.'); return; }
     if (!document && !savedDocument) return;
     if (exportingPdf) return;
 
-    // A popup must be opened synchronously within the user's click; browsers
-    // otherwise block window.open after the asynchronous save/payment steps.
-    let reservedWindow: Window | null = popupAlreadyReserved || null;
     setExportingPdf(true);
     try {
       if (!printRef.current) throw new Error('Aucun aperçu disponible pour ce PDF.');
-      if (!reservedWindow) reservedWindow = reserveCareerPrintWindow();
       let currentDocument = savedDocument || document!;
       if (!alreadyNamed) {
         const saved = await saveNow(true, 'pdf');
         if (!saved) { setExportingPdf(false); return; }
         currentDocument = saved;
       }
-      const result = await prepareCareerPdfExport(currentDocument);
-      if (typeof result.tokens_remaining === 'number') {
-        setTokens(result.tokens_remaining);
-      }
-
-      await printCareerElementAsPdf(printRef.current, {
+      const pdfOptions = {
         title: currentDocument.title || (currentDocument.doc_type === 'cv' ? 'CV Omnia Career' : 'Lettre Omnia Career'),
         docType: currentDocument.doc_type,
-        tokensConsumed: result.tokens_consumed,
-        reservedWindow,
         design: currentDocument.design_options,
-      });
-      reservedWindow = null;
+      };
+      // Render the finished PDF before requesting authorization. A failed canvas,
+      // font or image capture must not consume a paid export credit.
+      const pdfBlob = await renderCareerPdfBeforeAuthorization(printRef.current, pdfOptions);
+      const result = await prepareCareerPdfExport(currentDocument);
+      if (typeof result.tokens_remaining === 'number') setTokens(result.tokens_remaining);
+      await downloadPreparedCareerPdf(pdfBlob, pdfOptions);
 
-      const message = currentDocument.doc_type === 'cv'
-        ? result.remote
-          ? result.tokens_consumed > 0
-            ? `Préparation PDF autorisée. ${result.tokens_consumed} jeton consommé. Solde : ${result.tokens_remaining ?? tokens}. Confirmez l'enregistrement.`
-            : 'Préparation PDF autorisée sans nouveau débit. Confirmez l’enregistrement dans votre navigateur.'
-          : 'Document préparé en mode local, sans jeton.'
-        : 'Lettre préparée pour l’export PDF. Confirmez l’enregistrement.';
+      const message = currentDocument.doc_type === 'cv' && result.remote && result.tokens_consumed > 0
+        ? `PDF téléchargé. ${result.tokens_consumed} jeton consommé. Solde : ${result.tokens_remaining ?? tokens}.`
+        : 'Fichier PDF téléchargé. Retrouvez-le dans vos téléchargements.';
       showToast(message);
     } catch (err) {
       const e = err as Error & { code?: string; status?: number };
@@ -931,7 +916,6 @@ export default function CareerStudioEditor() {
         showToast(e.message || 'Impossible de préparer le PDF.');
       }
     } finally {
-      if (reservedWindow && !reservedWindow.closed) reservedWindow.close();
       setExportingPdf(false);
     }
   }
@@ -1051,7 +1035,7 @@ export default function CareerStudioEditor() {
               onClick={handleWordDownload}
               disabled={exportingWord || exportingPdf || previewMode}
               className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-[#002050] hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-              title="Télécharger un document Word modifiable (.docx), avec une mise en page professionnelle simplifiée"
+              title="Télécharger le document Word modifiable (.docx) avec les couleurs et la structure de son modèle"
             >
               <FileText className="h-4 w-4"/><span className="hidden sm:inline">{exportingWord ? 'Word...' : 'Word'}</span>
             </button>
