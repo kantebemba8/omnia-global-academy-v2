@@ -1,3 +1,4 @@
+import { reactiveResumeCatalogRows, REACTIVE_RESUME_PROFILES } from './reactiveResumeCatalog';
 import type { DocData, DesignOptions } from '../components/career/CvTemplates';
 import type { LmData, LmDesign } from '../components/career/LmTemplates';
 
@@ -215,6 +216,9 @@ export const LM_TEMPLATES_META: CareerTemplateMeta[] = [
   { template_key:'lm_executive', template_type:'lm', name_fr:'Executive Noir & Or', description_fr:'Lettre premium pour profils expérimentés.', category:'classic_lm', is_free:true, is_ats_compatible:true, display_order:6, default_colors:{...DEFAULT_COLORS,primary:'#111827',accent:'#b88746'} },
 ];
 
+CV_TEMPLATES_META.push(...reactiveResumeCatalogRows('cv'));
+LM_TEMPLATES_META.push(...reactiveResumeCatalogRows('lm'));
+
 export const CAREER_TEMPLATES_META = [...CV_TEMPLATES_META, ...LM_TEMPLATES_META];
 export const OFFICIAL_CAREER_TEMPLATE_KEYS = new Set(CAREER_TEMPLATES_META.map(template => template.template_key));
 
@@ -302,6 +306,7 @@ export const LEGACY_CAREER_TEMPLATE_KEYS = new Set(
 );
 
 const CV_TO_LM_TEMPLATE: Record<string, string> = {
+  ...Object.fromEntries(REACTIVE_RESUME_PROFILES.map(p=>[`cv_rr_${p.id}`,`lm_rr_${p.id}`])),
   cv_horizon: 'lm_horizon',
   cv_sahara: 'lm_sahara',
   cv_atlas: 'lm_atlas',

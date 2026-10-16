@@ -1,6 +1,8 @@
+import { REACTIVE_RESUME_PROFILES } from './reactiveResumeCatalog';
+
 /** Career V3 layout registry. Data comes from Supabase's existing career_template_manager.
  * Future renderers (including licensed Reactive Resume adapters) register here; never eval code from the DB. */
-export type CareerLayoutVariant = 'split'|'band'|'minimal'|'timeline'|'cards'|'executive'|'creative'|'tech'|'academic'|'hospitality'|'qhse'|'compact'|'editorial'|'modern-sidebar'|'serif';
+export type CareerLayoutVariant = 'split'|'band'|'minimal'|'timeline'|'cards'|'executive'|'creative'|'tech'|'academic'|'hospitality'|'qhse'|'compact'|'editorial'|'modern-sidebar'|'serif' | `rr-${import('./reactiveResumeCatalog').ReactiveResumeName}`;
 export type CareerLayoutConfig = {
   variant: CareerLayoutVariant; primary: string; accent: string; sidebar?: string;
   header?: 'solid'|'line'|'split'|'minimal'; photo?: boolean; font?: string;
@@ -15,6 +17,7 @@ export const CAREER_LAYOUT_VARIANTS: ReadonlyArray<{id:CareerLayoutVariant; labe
   {id:'editorial',label:'Éditorial V3',kind:'both'},
   {id:'modern-sidebar',label:'Sidebar V3',kind:'both'},
   {id:'serif',label:'Classique V3',kind:'both'},
+  ...REACTIVE_RESUME_PROFILES.map(p=>({id:`rr-${p.id}` as CareerLayoutVariant,label:`Reactive Resume · ${p.id}`,kind:'both' as const})),
 ];
 const allowed = new Set(CAREER_LAYOUT_VARIANTS.map(v=>v.id));
 function color(input:unknown, fallback:string):string {

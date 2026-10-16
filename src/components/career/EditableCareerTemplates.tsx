@@ -3,6 +3,8 @@ import type { DocData, DesignOptions } from './CvTemplates';
 import type { LmData, LmDesign } from './LmTemplates';
 import { resolveCareerLayout, type CareerLayoutConfig } from '../../lib/careerTemplateRegistry';
 import CareerInlineText from './CareerInlineText';
+import { ReactiveResumeCv, ReactiveResumeLetter } from './ReactiveResumeAdapters';
+import { reactiveResumeProfile, legacyOgaProfile } from '../../lib/reactiveResumeCatalog';
 
 export type LayoutVariant = CareerLayoutConfig['variant'];
 export type TemplateLayoutConfig = CareerLayoutConfig;
@@ -62,6 +64,8 @@ function cvParts(data:DocData, primary:string, accent:string, onEdit?: (field:st
 
 export function ConfigurableCvTemplate({data, design, templateKey, layoutConfig, onFieldChange}:{data:DocData;design:DesignOptions;templateKey:string;layoutConfig?:unknown;onFieldChange?:(field:string,value:string)=>void}){
   const cfg = resolveCareerLayout(templateKey, BUILTIN_CV_LAYOUTS, layoutConfig);
+  const reactiveProfile = reactiveResumeProfile(templateKey,cfg.variant) || legacyOgaProfile(templateKey);
+  if (reactiveProfile) return <ReactiveResumeCv data={data} design={design} profile={reactiveProfile} onFieldChange={onFieldChange}/>;
   const primary = design?.colors?.primary || cfg.primary;
   const accent = design?.colors?.accent || cfg.accent;
   const sidebarColor = design?.colors?.sidebar || cfg.sidebar || '#f4f6f8';
@@ -125,6 +129,8 @@ function letterBody(data:LmData, primary:string, onEdit?: (field:string,value:st
 
 export function ConfigurableLmTemplate({data,design,templateKey,layoutConfig,onFieldChange}:{data:LmData;design:LmDesign;templateKey:string;layoutConfig?:unknown;onFieldChange?:(field:string,value:string)=>void}){
   const cfg=resolveCareerLayout(templateKey, BUILTIN_LM_LAYOUTS, layoutConfig);
+  const reactiveProfile = reactiveResumeProfile(templateKey,cfg.variant) || legacyOgaProfile(templateKey);
+  if (reactiveProfile) return <ReactiveResumeLetter data={data} design={design} profile={reactiveProfile} onFieldChange={onFieldChange}/>;
   const primary=design?.colors?.primary||cfg.primary, accent=design?.colors?.accent||cfg.accent;
   const sender=[data.sender?.email,data.sender?.phone,data.sender?.address].filter(Boolean).join(' • ');
   const body=letterBody(data,primary,onFieldChange);
