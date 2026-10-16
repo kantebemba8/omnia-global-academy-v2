@@ -646,6 +646,47 @@ export default function CareerStudioEditor() {
     } satisfies Partial<DesignOptions>;
   }
 
+  function editCvField(field:string, value:string) {
+    if(previewMode)return;
+    const parts=field.split(':');
+    if(parts.length===1 && ['name','title','summary'].includes(field)) {
+      updateCv(data=>({...data,[field]:value}));
+      return;
+    }
+    if(parts.length!==3)return;
+    const [kind,id,key]=parts;
+    if(kind==='experience' && ['position','company','description'].includes(key)) {
+      updateCv(data=>({...data,experiences:data.experiences.map(x=>x.id===id?{...x,[key]:value}:x)}));
+    } else if(kind==='education' && ['degree','school'].includes(key)) {
+      updateCv(data=>({...data,education:data.education.map(x=>x.id===id?{...x,[key]:value}:x)}));
+    } else if(kind==='skill' && key==='name') {
+      updateCv(data=>({...data,skills:data.skills.map(x=>x.id===id?{...x,name:value}:x)}));
+    } else if(kind==='language' && key==='name') {
+      updateCv(data=>({...data,languages:data.languages.map(x=>x.id===id?{...x,name:value}:x)}));
+    }
+  }
+
+  function editLmField(field:string,value:string) {
+    if(previewMode)return;
+    if(field==='sender.name') {updateLm(data=>({...data,sender:{...data.sender,name:value}}));return;}
+    if(['subject','salutation','intro','motivation','skills_paragraph','company_link','availability','closing','signature'].includes(field)) {
+      updateLm(data=>({...data,[field]:value}));
+    }
+  }
+
+  function selectPreviewSection(event:import('react').MouseEvent<HTMLDivElement>){
+    if(previewMode||isManualMode)return;
+    const target=event.target;
+    if(!(target instanceof HTMLElement))return;
+    const field=target.closest<HTMLElement>('[data-career-field]')?.dataset.careerField;
+    const section=target.closest<HTMLElement>('[data-career-section]')?.dataset.careerSection;
+    const chosen=field?.startsWith('experience:')?'experiences':field?.startsWith('education:')?'education':field?.startsWith('skill:')?'skills':field?.startsWith('language:')?'languages':field==='summary'?'summary':field==='name'||field==='title'||field==='sender.name'?'profile':section;
+    if(!chosen)return;
+    if(isCv){if(CV_SECTIONS.some(x=>x.key===chosen))setActiveCvSection(chosen as CvSectionKey);}
+    else {setActiveLmSection((chosen==='sender'?'sender':chosen==='recipient'?'recipient':'letter') as LmSectionKey);}
+    setWorkspace('content');setToolPanelOpen(true);
+  }
+
   async function changeTemplate(templateKey: string) {
     const normalizedTemplateKey = normalizeTemplateKey(docType, templateKey);
     const meta = templates.find(template => template.template_key === normalizedTemplateKey)
@@ -1154,7 +1195,7 @@ export default function CareerStudioEditor() {
                   <span className="rounded-full bg-white px-3 py-1.5 shadow-sm">{selectedTemplate?.name_fr || 'Modèle sélectionné'}</span>
                   <span className="rounded-full bg-white px-3 py-1.5 shadow-sm">{score === null ? 'Qualité —' : `Qualité ${score}%`}</span>
                 </div>
-                <h1 className="mt-2 text-lg font-semibold text-[#002050] sm:text-xl">Aperçu du document</h1>
+                <h1 className="mt-2 text-lg font-semibold text-[#002050] sm:text-xl">Aperçu du document</h1>{!previewMode&&!isManualMode&&<p className="text-xs text-slate-500">Cliquez sur une rubrique pour ouvrir son édition, ou directement sur un texte pour le modifier.</p>}
               </div>
               {!toolPanelOpen && <button type="button" onClick={() => setToolPanelOpen(true)} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-[#002050] shadow-sm"><Settings className="h-4 w-4" />Ouvrir les outils</button>}
             </div>
@@ -1167,15 +1208,15 @@ export default function CareerStudioEditor() {
 
             <div className={cardClass('p-3 sm:p-4')}>
               <PreviewFrame zoom={previewZoom} onZoomChange={setPreviewZoom} width={previewMetrics.width} height={previewMetrics.height}>
-                <div ref={printRef} data-career-print-source="true">
+                <div ref={printRef} data-career-print-source="true" onClick={selectPreviewSection}>
                   {isManualMode && manualLayout ? (
                     <ManualDocumentCanvas layout={manualLayout} />
                   ) : (
                     <CareerDocumentSurface design={document.design_options} title={document.title}>
                       {isCv ? (
-                        <CvPreview templateKey={document.template_key} data={cvData as DocData} design={getCvDesign(document)} />
+                        <CvPreview templateKey={document.template_key} data={cvData as DocData} design={getCvDesign(document)} layoutConfig={selectedTemplate?.layout_config} onFieldChange={!previewMode?editCvField:undefined} />
                       ) : (
-                        <LmPreview templateKey={document.template_key} data={lmData as LmData} design={getLmDesign(document)} />
+                        <LmPreview templateKey={document.template_key} data={lmData as LmData} design={getLmDesign(document)} layoutConfig={selectedTemplate?.layout_config} onFieldChange={!previewMode?editLmField:undefined} />
                       )}
                     </CareerDocumentSurface>
                   )}
@@ -1209,7 +1250,7 @@ export default function CareerStudioEditor() {
           </div>
           <div className="flex flex-1 items-start justify-center overflow-auto rounded-2xl bg-slate-200 p-6">
             <div style={{ width: previewMetrics.width, minHeight: previewMetrics.height }}>
-              {isManualMode && manualLayout ? <ManualDocumentCanvas layout={manualLayout} /> : <CareerDocumentSurface design={document.design_options} title={document.title}>{isCv ? <CvPreview templateKey={document.template_key} data={cvData as DocData} design={getCvDesign(document)} /> : <LmPreview templateKey={document.template_key} data={lmData as LmData} design={getLmDesign(document)} />}</CareerDocumentSurface>}
+              {isManualMode && manualLayout ? <ManualDocumentCanvas layout={manualLayout} /> : <CareerDocumentSurface design={document.design_options} title={document.title}>{isCv ? <CvPreview templateKey={document.template_key} data={cvData as DocData} design={getCvDesign(document)} layoutConfig={selectedTemplate?.layout_config} /> : <LmPreview templateKey={document.template_key} data={lmData as LmData} design={getLmDesign(document)} layoutConfig={selectedTemplate?.layout_config} />}</CareerDocumentSurface>}
             </div>
           </div>
         </div>

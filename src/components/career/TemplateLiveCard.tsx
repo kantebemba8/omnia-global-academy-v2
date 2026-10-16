@@ -37,7 +37,7 @@ function designFrom(template: CareerTemplateMeta): DesignOptions {
   return {
     colors: template.default_colors,
     font:'inter', font_size_body:9, font_size_title:11, line_spacing:1.5,
-    photo_enabled: BUILTIN_CV_LAYOUTS[template.template_key]?.photo !== false,
+    photo_enabled: (template.layout_config?.photo ?? BUILTIN_CV_LAYOUTS[template.template_key]?.photo) !== false,
     photo_shape:'round', pages:1,
   };
 }
@@ -65,8 +65,8 @@ export default function TemplateLiveCard({ template, docType, selected=false, on
         <div ref={frameRef} className="absolute inset-0 flex items-start justify-center overflow-hidden bg-white">
           <div style={{ transform:`scale(${previewScale})`, transformOrigin:'top center', width:794, minHeight:1123 }}>
             {docType==='cv'
-              ? <CvPreview templateKey={template.template_key} data={SAMPLE_CV} design={design} />
-              : <LmPreview templateKey={template.template_key} data={SAMPLE_LM} design={lmDesign} />}
+              ? <CvPreview templateKey={template.template_key} data={SAMPLE_CV} design={design} layoutConfig={template.layout_config} />
+              : <LmPreview templateKey={template.template_key} data={SAMPLE_LM} design={lmDesign} layoutConfig={template.layout_config} />}
           </div>
         </div>
         {selected && <span className="absolute right-2 top-2 rounded-full bg-[#002050] px-2.5 py-1 text-[10px] font-bold text-white">Sélectionné</span>}

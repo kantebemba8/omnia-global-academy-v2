@@ -1,6 +1,7 @@
+import { CAREER_LAYOUT_VARIANTS } from '../../lib/careerTemplateRegistry';
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { mergeCareerTemplateCatalog } from '../../lib/careerStudioData';
+import { mergeCareerTemplateCatalog, DEFAULT_COLORS } from '../../lib/careerStudioData';
 import { edgeAuthHeaders } from '../../lib/edgeAuth';
 import CareerTokenGovernancePanel, { type CareerTokenGlobalRule, type CareerTokenRuleConfig } from '../../components/career/CareerTokenGovernancePanel';
 import { AdminLayout } from '../../components/AdminLayout';
@@ -411,6 +412,7 @@ export default function AdminCareerStudio() {
         is_ats_compatible: customTemplate.is_ats_compatible,
         display_order: (type === 'cv' ? cvTemplates : lmTemplates).length + 1,
         thumbnail_url: customTemplate.thumbnail_url || null,
+        default_colors: { ...DEFAULT_COLORS, primary: customTemplate.primary, accent: customTemplate.accent, sidebar: customTemplate.sidebar },
         layout_config: {
           variant: customTemplate.variant,
           primary: customTemplate.primary,
@@ -719,7 +721,7 @@ export default function AdminCareerStudio() {
                     </label>
                     <label className="text-xs font-semibold" style={{ color: MUTED }}>Mise en page
                       <select value={customTemplate.variant} onChange={e=>setCustomTemplate(v=>({...v,variant:e.target.value}))} className="mt-1 w-full rounded-xl border px-3 py-2 text-sm" style={{borderColor:BORDER}}>
-                        <option value="split">Deux colonnes</option><option value="band">Bandeau supérieur</option><option value="minimal">Minimal ATS</option><option value="timeline">Chronologie</option><option value="cards">Blocs</option><option value="executive">Executive</option><option value="creative">Créatif</option><option value="tech">Tech sombre</option><option value="academic">Académique</option><option value="hospitality">Hospitality</option><option value="qhse">QHSE</option><option value="compact">Compact</option>
+                        {CAREER_LAYOUT_VARIANTS.filter(layout => subTab==='cv_templates'||layout.kind==='both').map(layout=><option key={layout.id} value={layout.id}>{layout.label}</option>)}
                       </select>
                     </label>
                     <div>

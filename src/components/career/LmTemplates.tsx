@@ -39,7 +39,7 @@ export interface LmDesign {
   editor_mode?: 'template' | 'manual';
 }
 
-type LmTemplateComponent = React.ComponentType<{ data: LmData; design: LmDesign }>;
+type LmTemplateComponent = React.ComponentType<{ data: LmData; design: LmDesign; layoutConfig?:unknown; onFieldChange?: (field:string,value:string)=>void }>;
 
 export const LM_TEMPLATE_MAP: Record<string, LmTemplateComponent> = Object.fromEntries(
   Object.keys(BUILTIN_LM_LAYOUTS).map(templateKey => [
@@ -54,14 +54,18 @@ export function LmPreview({
   templateKey,
   data,
   design,
+  layoutConfig,
+  onFieldChange,
 }: {
   templateKey: string;
   data: LmData;
   design: LmDesign;
+  layoutConfig?: unknown;
+  onFieldChange?: (field:string,value:string)=>void;
 }) {
   const Component = LM_TEMPLATE_MAP[templateKey];
   const normalizedData = normalizeCareerContent('lm', data);
   return Component
-    ? <Component data={normalizedData} design={design} />
-    : <ConfigurableLmTemplate data={normalizedData} design={design} templateKey={templateKey} />;
+    ? <Component data={normalizedData} design={design} layoutConfig={layoutConfig} onFieldChange={onFieldChange} />
+    : <ConfigurableLmTemplate data={normalizedData} design={design} templateKey={templateKey} layoutConfig={layoutConfig} onFieldChange={onFieldChange} />;
 }

@@ -264,12 +264,11 @@ export default function DashboardCareerStudio() {
       setDocuments(loadedDocs);
       const rawCvTemplates = ((((cvPayload?.templates || []) as Template[]).length ? cvPayload.templates : publicCv) || []) as Template[];
       const rawLmTemplates = ((((lmPayload?.templates || []) as Template[]).length ? lmPayload.templates : publicLm) || []) as Template[];
-      // The user-facing catalog exposes only the canonical 12 CV / 6 LM templates.
-      // Legacy aliases remain supported when old documents are opened, but never create duplicate cards.
-      const loadedCvTemplates = mergeCareerTemplateCatalog('cv', rawCvTemplates, { authoritative: true })
-        .filter(template => /^cv_(horizon|sahara|atlas|kora|nile|executive|baobab|digital|academia|hospitality|qhse|impact)$/.test(template.template_key)) as Template[];
-      const loadedLmTemplates = mergeCareerTemplateCatalog('lm', rawLmTemplates, { authoritative: true })
-        .filter(template => /^lm_(horizon|sahara|atlas|kora|digital|executive)$/.test(template.template_key)) as Template[];
+      // Supabase remains authoritative: include every active, validated custom model
+      // published by the existing Super-admin manager. Legacy aliases stay hidden
+      // in mergeCareerTemplateCatalog, without blocking future layout registrations.
+      const loadedCvTemplates = mergeCareerTemplateCatalog('cv', rawCvTemplates, { authoritative: true }) as Template[];
+      const loadedLmTemplates = mergeCareerTemplateCatalog('lm', rawLmTemplates, { authoritative: true }) as Template[];
       setCvTemplates(loadedCvTemplates);
       setLmTemplates(loadedLmTemplates);
       cacheCareerTemplates([...(loadedCvTemplates as any), ...(loadedLmTemplates as any)]);
@@ -503,7 +502,7 @@ function DashboardView({
         <Card className="p-5"><SectionTitle title="Actions principales"/><div className="grid grid-cols-2 gap-3">{quickActions.map(action => { const Icon=action.icon; return <button key={action.label} onClick={action.action} className="rounded-2xl border p-4 text-left hover:bg-slate-50" style={{ borderColor:BORDER }}><div className="flex h-10 w-10 items-center justify-center rounded-xl" style={{ background:'rgba(0,32,80,.08)' }}><Icon size={18} color={OMNIA_BLUE}/></div><div className="mt-3 text-sm font-semibold" style={{ color:OMNIA_BLUE }}>{action.label}</div></button>})}</div></Card>
         <Card className="p-5"><SectionTitle title="Activité récente"/>{recent.length ? <div className="space-y-3">{recent.map(doc => <button key={doc.id} onClick={() => openDoc(doc.id,doc.doc_type)} className="flex w-full items-center gap-3 rounded-xl border p-3 text-left hover:bg-slate-50" style={{ borderColor:BORDER }}><div className="flex h-9 w-9 items-center justify-center rounded-xl" style={{ background:'rgba(0,32,80,.08)' }}>{doc.doc_type==='cv'?<FileText size={16} color={OMNIA_BLUE}/>:<Mail size={16} color={OMNIA_BLUE}/>}</div><div className="min-w-0 flex-1"><div className="truncate text-sm font-semibold" style={{ color:OMNIA_BLUE }}>{doc.title}</div><div className="text-xs" style={{ color:MUTED }}>{doc.status==='completed'?'Terminé':'Brouillon'} · {formatDate(doc.updated_at)}</div></div><ChevronRight size={15} color={MUTED}/></button>)}</div> : <EmptyState text="Aucune activité enregistrée."/>}</Card>
       </div>
-      <Card className="p-5"><div className="mb-4 flex items-center justify-between"><SectionTitle title="Modèles CV officiels"/><button onClick={() => setActiveView('cv')} className="text-sm font-semibold" style={{ color:OMNIA_BLUE }}>Voir les 12 modèles</button></div><div className="grid grid-cols-2 gap-4 md:grid-cols-4">{(templates.length?templates:fallbackCvTemplates).slice(0,4).map(t => <TemplateLiveCard key={t.template_key} template={t as CareerTemplateMeta} docType="cv" onClick={() => createDoc('cv',t.template_key)} compact />)}</div></Card>
+      <Card className="p-5"><div className="mb-4 flex items-center justify-between"><SectionTitle title="Modèles de CV"/><button onClick={() => setActiveView('cv')} className="text-sm font-semibold" style={{ color:OMNIA_BLUE }}>Voir tous les modèles</button></div><div className="grid grid-cols-2 gap-4 md:grid-cols-4">{(templates.length?templates:fallbackCvTemplates).slice(0,4).map(t => <TemplateLiveCard key={t.template_key} template={t as CareerTemplateMeta} docType="cv" onClick={() => createDoc('cv',t.template_key)} compact />)}</div></Card>
     </div>
   );
 }
@@ -555,7 +554,7 @@ function CvBuilderView({ documents, templates, createDoc, openDoc, deleteDoc, re
   return (
     <div className="space-y-5">
       <PageHeader title="CV Builder" subtitle="Choisissez un vrai modèle puis remplissez-le dans l’éditeur." actionLabel="Nouveau CV" onAction={() => createDoc('cv')} />
-      <Card className="p-5"><div className="mb-4 flex items-center justify-between"><div><h2 className="text-base font-semibold" style={{ color:OMNIA_BLUE }}>Modèles CV officiels</h2><p className="mt-1 text-sm" style={{ color:MUTED }}>La maquette choisie sera utilisée dans le Builder, l’aperçu et le PDF.</p></div><SmallBadge tone="gold">{list.length} modèles</SmallBadge></div><div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-4">{list.map(t => <TemplateLiveCard key={t.template_key} template={t as CareerTemplateMeta} docType="cv" onClick={() => createDoc('cv',t.template_key)} />)}</div></Card>
+      <Card className="p-5"><div className="mb-4 flex items-center justify-between"><div><h2 className="text-base font-semibold" style={{ color:OMNIA_BLUE }}>Modèles de CV</h2><p className="mt-1 text-sm" style={{ color:MUTED }}>La maquette choisie sera utilisée dans le Builder, l’aperçu et le PDF.</p></div><SmallBadge tone="gold">{list.length} modèles</SmallBadge></div><div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-4">{list.map(t => <TemplateLiveCard key={t.template_key} template={t as CareerTemplateMeta} docType="cv" onClick={() => createDoc('cv',t.template_key)} />)}</div></Card>
       <DocumentsList title="Mes CV" documents={documents} empty="Aucun CV enregistré pour le moment." createLabel="Créer un CV" onCreate={() => createDoc('cv')} onOpen={(id) => openDoc(id, 'cv')} onDelete={deleteDoc} onRename={renameDoc} />
     </div>
   );
@@ -566,7 +565,7 @@ function LettersView({ documents, templates, createDoc, openDoc, deleteDoc, rena
   return (
     <div className="space-y-5">
       <PageHeader title="Lettres de motivation" subtitle="Choisissez un modèle assorti à votre CV ou un modèle spécialisé." actionLabel="Nouvelle lettre" onAction={() => createDoc('lm')} />
-      <Card className="p-5"><div className="mb-4 flex items-center justify-between"><div><h2 className="text-base font-semibold" style={{ color:OMNIA_BLUE }}>Modèles LM officiels</h2><p className="mt-1 text-sm" style={{ color:MUTED }}>Les 6 modèles officiels sont visibles et sélectionnables.</p></div><SmallBadge tone="gold">{list.length} modèles</SmallBadge></div><div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-4">{list.map(t => <TemplateLiveCard key={t.template_key} template={t as CareerTemplateMeta} docType="lm" onClick={() => createDoc('lm',t.template_key)} />)}</div></Card>
+      <Card className="p-5"><div className="mb-4 flex items-center justify-between"><div><h2 className="text-base font-semibold" style={{ color:OMNIA_BLUE }}>Modèles de lettres</h2><p className="mt-1 text-sm" style={{ color:MUTED }}>Modèles officiels et créations publiées par OGA.</p></div><SmallBadge tone="gold">{list.length} modèles</SmallBadge></div><div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-4">{list.map(t => <TemplateLiveCard key={t.template_key} template={t as CareerTemplateMeta} docType="lm" onClick={() => createDoc('lm',t.template_key)} />)}</div></Card>
       <DocumentsList title="Mes lettres enregistrées" documents={documents} empty="Aucune lettre enregistrée pour le moment." createLabel="Créer une lettre" onCreate={() => createDoc('lm')} onOpen={(id) => openDoc(id, 'lm')} onDelete={deleteDoc} onRename={renameDoc} />
     </div>
   );

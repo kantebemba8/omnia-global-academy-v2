@@ -51,7 +51,7 @@ export interface DesignOptions {
   editor_mode?: 'template' | 'manual';
 }
 
-type CvTemplateComponent = React.ComponentType<{ data: DocData; design: DesignOptions }>;
+type CvTemplateComponent = React.ComponentType<{ data: DocData; design: DesignOptions; layoutConfig?:unknown; onFieldChange?: (field:string,value:string)=>void }>;
 
 export const CV_TEMPLATE_MAP: Record<string, CvTemplateComponent> = Object.fromEntries(
   Object.keys(BUILTIN_CV_LAYOUTS).map(templateKey => [
@@ -66,14 +66,18 @@ export function CvPreview({
   templateKey,
   data,
   design,
+  layoutConfig,
+  onFieldChange,
 }: {
   templateKey: string;
   data: DocData;
   design: DesignOptions;
+  layoutConfig?: unknown;
+  onFieldChange?: (field:string,value:string)=>void;
 }) {
   const Component = CV_TEMPLATE_MAP[templateKey];
   const normalizedData = normalizeCareerContent('cv', data);
   return Component
-    ? <Component data={normalizedData} design={design} />
-    : <ConfigurableCvTemplate data={normalizedData} design={design} templateKey={templateKey} />;
+    ? <Component data={normalizedData} design={design} layoutConfig={layoutConfig} onFieldChange={onFieldChange} />
+    : <ConfigurableCvTemplate data={normalizedData} design={design} templateKey={templateKey} layoutConfig={layoutConfig} onFieldChange={onFieldChange} />;
 }

@@ -491,9 +491,17 @@ export function mergeCareerTemplateCatalog(
       is_active: remote.is_active !== false,
       is_free: remote.is_free ?? true,
       display_order: Number(remote.display_order || 999),
-      default_colors: remote.default_colors && Object.keys(remote.default_colors).length
-        ? remote.default_colors
-        : DEFAULT_COLORS,
+      // Older Super-admin templates sometimes have an empty default_colors JSON.
+      // Their layout_config must still color the gallery, Builder and exports identically.
+      default_colors: {
+        ...DEFAULT_COLORS,
+        ...((remote.layout_config && typeof remote.layout_config === 'object') ? {
+          primary: typeof remote.layout_config.primary === 'string' && /^#[0-9a-f]{6}$/i.test(remote.layout_config.primary) ? remote.layout_config.primary : DEFAULT_COLORS.primary,
+          accent: typeof remote.layout_config.accent === 'string' && /^#[0-9a-f]{6}$/i.test(remote.layout_config.accent) ? remote.layout_config.accent : DEFAULT_COLORS.accent,
+          sidebar: typeof remote.layout_config.sidebar === 'string' && /^#[0-9a-f]{6}$/i.test(remote.layout_config.sidebar) ? remote.layout_config.sidebar : DEFAULT_COLORS.sidebar,
+        } : {}),
+        ...(remote.default_colors || {}),
+      },
     };
     if (options.includeInactive || custom.is_active !== false) result.push(custom);
   }
