@@ -253,6 +253,7 @@ export default function StudioConceptionFormation() {
   const [toast, setToast] = useState('');
   const [toastType, setToastType] = useState<'success' | 'error' | 'info'>('success');
   const [lastSave, setLastSave] = useState('');
+  const [courseSaveStatus, setCourseSaveStatus] = useState<'idle'|'pending'|'saving'|'saved'|'error'>('idle');
   const [wordCount, setWordCount] = useState(0);
 
   // Qualité
@@ -279,6 +280,8 @@ export default function StudioConceptionFormation() {
 
   // Autosave ref
   const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const courseSaveQueue = useRef<Promise<any>>(Promise.resolve());
+  const courseEditRevision = useRef(0);
   const courseRef = useRef<Course>(EMPTY_COURSE);
   courseRef.current = course;
 
@@ -366,12 +369,13 @@ export default function StudioConceptionFormation() {
   async function flushBlockUpdates() {
     const pending = Object.values(blockSaveQueues.current);
     if (!pending.length) return;
-    await Promise.allSettled(pending);
+    const outcomes = await Promise.allSettled(pending);
+    if (outcomes.some(result => result.status === 'rejected')) throw new Error('BLOCK_SAVE_FAILED');
   }
 
   async function runQualityCheck() {
     if (!course?.id) return;
-    await flushBlockUpdates();
+    try { await flushBlockUpdates(); } catch { showToast('Enregistrement des blocs incomplet : contrôle qualité interrompu.', 'error'); return; }
     setShowChecklist(true);
     const data = await api('validate_checklist', { course_id: course.id, phase: 'quality' });
     setChecklist(data);
@@ -390,32 +394,69 @@ export default function StudioConceptionFormation() {
     return true;
   }
 
-  // ─── Autosave ──────────────────────────────────────────────
+  // ─── Sauvegarde sérialisée : un seul moteur pour autosave et bouton manuel ───
+  function courseDraftPayload(c: Course) {
+    return {
+      course_id: c.id, course_code: normalizeCourseCode(c.course_code || ''),
+      title: c.title, short_description: c.short_description,
+      long_description: c.long_description, category: c.category, level: c.level,
+      language: c.language, course_type: c.course_type,
+      instruction_language: c.instruction_language || c.language,
+      target_language: c.target_language, cefr_start_level: c.cefr_start_level,
+      cefr_target_level: c.cefr_target_level, language_framework: c.language_framework,
+      prerequisites: c.prerequisites, objectives: c.objectives,
+      target_audience: c.target_audience, learning_outcomes: c.learning_outcomes,
+      cover_image_url: c.cover_image_url, cover_image_prompt: c.cover_image_prompt,
+      course_intro_title: c.course_intro_title, course_intro_summary: c.course_intro_summary,
+      studio_mode: c.studio_mode || 'simple', word_count: wordCount,
+      free_preview_mode: c.free_preview_mode || 'introduction',
+    };
+  }
+
+  function persistCourseDraft(action: 'autosave'|'update_course' = 'autosave', snapshot?: Course) {
+    const c = snapshot || courseRef.current;
+    if (!c?.id) return Promise.resolve({ success: false, error: 'COURSE_NOT_CREATED' });
+    const payload = courseDraftPayload(c);
+    const revision = courseEditRevision.current;
+    setCourseSaveStatus('saving');
+    const operation = courseSaveQueue.current.catch(() => undefined).then(async () => {
+      const result = await api(action, payload);
+      if (!result.success) {
+        if (revision === courseEditRevision.current) setCourseSaveStatus('error');
+        return result;
+      }
+      if (revision === courseEditRevision.current) {
+        setLastSave(new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }));
+        setCourseSaveStatus('saved');
+      } else {
+        setCourseSaveStatus('pending');
+      }
+      return result;
+    }).catch((error: unknown) => {
+      if (revision === courseEditRevision.current) setCourseSaveStatus('error');
+      return { success: false, error: error instanceof Error ? error.message : 'AUTOSAVE_FAILED' };
+    });
+    courseSaveQueue.current = operation;
+    return operation;
+  }
+
+  useEffect(() => () => { if (autosaveTimer.current) clearTimeout(autosaveTimer.current); }, []);
+
   const scheduleAutosave = useCallback(() => {
     if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
-    autosaveTimer.current = setTimeout(async () => {
-      const c = courseRef.current;
-      if (!c?.id) return;
-      const data = await api('autosave', { course_id: c.id, title: c.title, short_description: c.short_description, word_count: wordCount, studio_mode: c.studio_mode || 'simple' });
-      if (data.success) setLastSave(new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }));
-    }, 30000);
+    autosaveTimer.current = setTimeout(() => { void persistCourseDraft(); }, 30000);
   }, [wordCount]);
 
   useEffect(() => {
     const interval = window.setInterval(() => {
-      const c = courseRef.current;
-      if (c?.id) api('autosave', { course_id: c.id, title: c.title, short_description: c.short_description, word_count: wordCount, studio_mode: c.studio_mode || 'simple' }).then(d => { if (d.success) setLastSave(new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })); });
+      if (courseRef.current?.id && courseSaveStatus === 'pending') void persistCourseDraft();
     }, 30000);
-    const onBeforeUnload = () => {
-      const c = courseRef.current;
-      if (!c?.id) return;
-      fetch(API, { method: 'POST', keepalive: true, headers: edgeAuthHeaders(), body: JSON.stringify({ action: 'autosave', course_id: c.id, title: c.title, short_description: c.short_description, word_count: wordCount, studio_mode: c.studio_mode || 'simple' }) }).catch(() => undefined);
-    };
-    window.addEventListener('beforeunload', onBeforeUnload);
-    return () => { window.clearInterval(interval); window.removeEventListener('beforeunload', onBeforeUnload); };
-  }, [wordCount]);
+    return () => { window.clearInterval(interval); };
+  }, [courseSaveStatus, wordCount]);
 
   function updateCourse(field: keyof Course, value: any) {
+    courseEditRevision.current += 1;
+    setCourseSaveStatus('pending');
     setCourse(c => ({ ...c, [field]: value }));
     scheduleAutosave();
   }
@@ -644,9 +685,10 @@ export default function StudioConceptionFormation() {
   }
 
   async function saveCurrentPage(goNext = false) {
-    if (!course.id) { const created = await ensureCourseCreated(); if (!created) return; }
-    await api('autosave', { course_id: courseRef.current.id, title: courseRef.current.title, short_description: courseRef.current.short_description, word_count: wordCount, studio_mode: courseRef.current.studio_mode || 'simple' });
-    setLastSave(new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }));
+    if (!course.id) { const created = await ensureCourseCreated(); if (!created) return; courseRef.current = created; }
+    try { await flushBlockUpdates(); } catch { showToast('Un bloc n’a pas été enregistré. Corrigez l’erreur avant de changer de page.', 'error'); return; }
+    const result = await persistCourseDraft();
+    if (!result.success) { showToast(result.message || result.error || 'Échec de sauvegarde. La page n’a pas été changée.', 'error'); return; }
     if (!goNext || !currentModule || !currentLesson) return;
     const modIndex = modules.findIndex(m => m.id === currentModule.id);
     const lessonIndex = (currentModule.lessons || []).findIndex(l => l.id === currentLesson.id);
@@ -746,34 +788,11 @@ export default function StudioConceptionFormation() {
     try {
       const savedCourse = course.id ? course : await ensureCourseCreated();
       if (!savedCourse?.id) return;
-      const data = await api('update_course', {
-        course_id: savedCourse.id, client_draft_key: localStorage.getItem('omnia_studio_draft_key') || (()=>{const k=crypto.randomUUID();localStorage.setItem('omnia_studio_draft_key',k);return k;})(),
-        course_code: normalizeCourseCode(course.course_code || ''),
-        title: course.title,
-        short_description: course.short_description,
-        long_description: course.long_description,
-        category: course.category, level: course.level,
-        language: course.language,
-        course_type: course.course_type,
-        instruction_language: course.instruction_language || course.language,
-        target_language: course.target_language,
-        cefr_start_level: course.cefr_start_level,
-        cefr_target_level: course.cefr_target_level,
-        language_framework: course.language_framework,
-        prerequisites: course.prerequisites,
-        objectives: course.objectives, target_audience: course.target_audience,
-        learning_outcomes: course.learning_outcomes,
-        cover_image_url: course.cover_image_url,
-        cover_image_prompt: course.cover_image_prompt,
-        course_intro_title: course.course_intro_title,
-        course_intro_summary: course.course_intro_summary,
-        studio_mode: advancedMode ? 'advanced' : 'simple',
-        word_count: wordCount, free_preview_mode: 'introduction', builder_version: 'v3', preview_first_lesson_enabled: true,
-      });
+      await flushBlockUpdates();
+      const data = await persistCourseDraft('update_course', { ...courseRef.current, id: savedCourse.id });
       if (data.success) {
-        setCourse(data.course);
-        await api('ensure_assessments', { course_id: savedCourse.id });
-        setLastSave(new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }));
+        // Ne pas écraser les champs édités pendant l'appel avec une réponse devenue ancienne.
+        // Les champs restent contrôlés par l'état React ; ne pas réinjecter une réponse serveur périmée.
       } else showToast(data.message || data.error || 'Erreur de sauvegarde', 'error');
     } catch { showToast('Erreur de sauvegarde', 'error'); }
     finally { setSaving(false); }
@@ -1749,9 +1768,12 @@ export default function StudioConceptionFormation() {
                 style={{ borderColor: '#E4E7EC', color: '#6B7280' }}>
                 <CheckCircle size={12} /> Qualité
               </button>
-              {lastSave && (
+              {courseSaveStatus === 'error' && <span role="alert" className="text-xs font-medium" style={{color:'#B91C1C'}}>Échec de sauvegarde des informations générales — réessayez avec Enregistrer.</span>}
+              {courseSaveStatus === 'pending' && <span className="text-xs" style={{color:'#92400E'}}>Modifications des informations générales non enregistrées</span>}
+              {courseSaveStatus === 'saving' && <span className="text-xs" style={{color:'#6B7280'}}>Sauvegarde des informations générales…</span>}
+              {lastSave && courseSaveStatus === 'saved' && (
                 <span className="flex items-center gap-1" style={{ color: '#1E7A52' }}>
-                  <Check size={11} /> Toutes les modifications sont enregistrées ({lastSave})
+                  <Check size={11} /> Informations générales enregistrées ({lastSave})
                 </span>
               )}
             </div>

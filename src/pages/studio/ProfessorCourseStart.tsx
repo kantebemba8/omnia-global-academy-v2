@@ -281,7 +281,7 @@ export default function ProfessorCourseStart() {
         long_description: '',
         language: 'fr',
         create_introduction: true,
-        free_preview_mode: 'introduction_first_lesson',
+        free_preview_mode: 'introduction',
         is_assisted: true,
       });
       const courseId = created.course.id;
