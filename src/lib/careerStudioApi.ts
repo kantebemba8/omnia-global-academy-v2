@@ -8,6 +8,7 @@ import {
   getDefaultDocTitle,
   getDefaultTemplateKey,
   getCareerTemplates,
+  getTemplateMeta,
   normalizeTemplateKey,
   cacheCareerTemplates,
   mergeCareerTemplateCatalog,
@@ -63,7 +64,10 @@ function createLocalDocument(docType: CareerDocType, templateKey?: string): Care
     created_at: nowIso(),
     updated_at: nowIso(),
     doc_data: data,
-    design_options: createDefaultDesign(docType),
+    design_options: {
+      ...createDefaultDesign(docType),
+      colors: { ...getTemplateMeta(docType, explicitTemplate).default_colors },
+    },
   };
 }
 

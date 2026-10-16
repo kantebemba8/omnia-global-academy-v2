@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { CvPreview, type DocData, type DesignOptions } from './CvTemplates';
 import { LmPreview, type LmData, type LmDesign } from './LmTemplates';
 import { BUILTIN_CV_LAYOUTS } from './EditableCareerTemplates';
+import CareerDocumentSurface from './CareerDocumentSurface';
 import type { CareerTemplateMeta, CareerDocType } from '../../lib/careerStudioData';
 
 const SAMPLE_CV: DocData = {
@@ -42,8 +43,9 @@ function designFrom(template: CareerTemplateMeta): DesignOptions {
   };
 }
 
-export default function TemplateLiveCard({ template, docType, selected=false, onClick, compact=false }:{
+export default function TemplateLiveCard({ template, docType, selected=false, onClick, compact=false, data, documentDesign }:{
   template: CareerTemplateMeta; docType: CareerDocType; selected?: boolean; onClick?:()=>void; compact?:boolean;
+  data?: DocData | LmData; documentDesign?: DesignOptions | LmDesign;
 }) {
   const frameRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
@@ -57,16 +59,28 @@ export default function TemplateLiveCard({ template, docType, selected=false, on
     return () => observer?.disconnect();
   }, []);
   const previewScale = Math.max(0.05, Math.min(1, (width || (compact ? 160 : 220)) / 794));
-  const design = designFrom(template);
-  const lmDesign: LmDesign = { colors: template.default_colors, font:'inter', font_size_body:10, line_spacing:1.65 };
+  // Same content, page surface and template configuration as the Builder.
+  // Unselected cards preview the result of applying that template's color preset.
+  const design: DesignOptions = {
+    ...designFrom(template),
+    ...(documentDesign && docType === 'cv' ? documentDesign as DesignOptions : {}),
+    colors: selected && documentDesign ? documentDesign.colors : template.default_colors,
+  };
+  const lmDesign: LmDesign = {
+    font:'inter', font_size_body:10, line_spacing:1.65,
+    ...(documentDesign && docType === 'lm' ? documentDesign as LmDesign : {}),
+    colors: selected && documentDesign ? documentDesign.colors : template.default_colors,
+  };
+  const cvData = data && docType === 'cv' ? data as DocData : SAMPLE_CV;
+  const lmData = data && docType === 'lm' ? data as LmData : SAMPLE_LM;
   return (
     <button type="button" onClick={onClick} className={`group w-full overflow-hidden rounded-2xl border bg-white text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg ${selected?'border-[#002050] ring-4 ring-[#002050]/10':'border-slate-200'}`}>
-      <div className={`relative w-full overflow-hidden bg-slate-100 ${compact?'aspect-[9/11]':'aspect-[9/12]'}`}>
+      <div className="relative aspect-[794/1123] w-full overflow-hidden bg-slate-100">
         <div ref={frameRef} className="absolute inset-0 flex items-start justify-center overflow-hidden bg-white">
           <div style={{ transform:`scale(${previewScale})`, transformOrigin:'top center', width:794, minHeight:1123 }}>
             {docType==='cv'
-              ? <CvPreview templateKey={template.template_key} data={SAMPLE_CV} design={design} layoutConfig={template.layout_config} />
-              : <LmPreview templateKey={template.template_key} data={SAMPLE_LM} design={lmDesign} layoutConfig={template.layout_config} />}
+              ? <CareerDocumentSurface design={design} title={template.name_fr}><CvPreview templateKey={template.template_key} data={cvData} design={design} layoutConfig={template.layout_config} /></CareerDocumentSurface>
+              : <CareerDocumentSurface design={lmDesign} title={template.name_fr}><LmPreview templateKey={template.template_key} data={lmData} design={lmDesign} layoutConfig={template.layout_config} /></CareerDocumentSurface>}
           </div>
         </div>
         {selected && <span className="absolute right-2 top-2 rounded-full bg-[#002050] px-2.5 py-1 text-[10px] font-bold text-white">Sélectionné</span>}

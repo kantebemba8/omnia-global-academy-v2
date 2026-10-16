@@ -418,6 +418,7 @@ export default function CareerStudioEditor() {
   const [personalizeLoading, setPersonalizeLoading] = useState(false);
   const [workspace, setWorkspace] = useState<Workspace>('content');
   const [toolPanelOpen, setToolPanelOpen] = useState(true);
+  const [focusMode, setFocusMode] = useState(false);
   const [actionsOpen, setActionsOpen] = useState(false);
   const [sourceProfile, setSourceProfile] = useState<CareerSourceProfile>({});
 
@@ -624,8 +625,13 @@ export default function CareerStudioEditor() {
 
   function updateCv(mutator: (data: DocData) => DocData) {
     updateDocument(doc => {
-      const next = mutator(getCvData(doc));
-      return { ...doc, doc_data: next };
+      const previous = getCvData(doc);
+      const next = mutator(previous);
+      const photoAdded = !previous.photo_url && Boolean(next.photo_url);
+      return {
+        ...doc, doc_data: next,
+        design_options: photoAdded ? { ...doc.design_options, photo_enabled: true } : doc.design_options,
+      };
     });
   }
 
@@ -639,10 +645,9 @@ export default function CareerStudioEditor() {
 
   function templatePreset(key: string) {
     const meta = getTemplateMeta('cv', key);
-    const photoDisabled = new Set(['cv_atlas', 'cv_academia', 'cv_qhse', 'cv_impact', 'cv_executive']);
     return {
       colors: meta.default_colors || DEFAULT_COLORS,
-      photo_enabled: !photoDisabled.has(meta.template_key),
+      photo_enabled: Boolean((document?.design_options as DesignOptions | undefined)?.photo_enabled),
     } satisfies Partial<DesignOptions>;
   }
 
@@ -684,7 +689,7 @@ export default function CareerStudioEditor() {
     if(!chosen)return;
     if(isCv){if(CV_SECTIONS.some(x=>x.key===chosen))setActiveCvSection(chosen as CvSectionKey);}
     else {setActiveLmSection((chosen==='sender'?'sender':chosen==='recipient'?'recipient':'letter') as LmSectionKey);}
-    setWorkspace('content');setToolPanelOpen(true);
+    setWorkspace('content');setFocusMode(false);setToolPanelOpen(true);
   }
 
   async function changeTemplate(templateKey: string) {
@@ -1138,7 +1143,7 @@ export default function CareerStudioEditor() {
       )}
 
       <div className="relative flex min-h-0 flex-1 overflow-hidden">
-        <nav className="absolute inset-x-0 bottom-0 z-40 flex h-[68px] shrink-0 flex-row items-center gap-1 overflow-x-auto border-t border-slate-200 bg-white px-2 py-2 shadow-[0_-8px_24px_rgba(15,23,42,0.08)] md:static md:h-auto md:w-[76px] md:flex-col md:overflow-y-auto md:border-r md:border-t-0 md:py-3 md:shadow-none" aria-label="Outils du Career Studio">
+        {!focusMode && <nav className="absolute inset-x-0 bottom-0 z-40 flex h-[68px] shrink-0 flex-row items-center gap-1 overflow-x-auto border-t border-slate-200 bg-white px-2 py-2 shadow-[0_-8px_24px_rgba(15,23,42,0.08)] md:static md:h-auto md:w-[76px] md:flex-col md:overflow-y-auto md:border-r md:border-t-0 md:py-3 md:shadow-none" aria-label="Outils du Career Studio">
           {WORKSPACE_ITEMS.map(item => {
             const Icon = item.icon;
             const active = workspace === item.key;
@@ -1161,11 +1166,11 @@ export default function CareerStudioEditor() {
               <ChevronRight className="h-4 w-4" /><span>Panneau</span>
             </button>
           )}
-        </nav>
+        </nav>}
 
-        {toolPanelOpen && <button type="button" aria-label="Fermer le panneau" onClick={() => setToolPanelOpen(false)} className="absolute inset-x-0 bottom-[68px] top-0 z-20 bg-slate-950/20 md:inset-0 md:left-[76px] md:hidden" />}
+        {!focusMode && toolPanelOpen && <button type="button" aria-label="Fermer le panneau" onClick={() => setToolPanelOpen(false)} className="absolute inset-x-0 bottom-[68px] top-0 z-20 bg-slate-950/20 md:inset-0 md:left-[76px] md:hidden" />}
 
-        {toolPanelOpen && (
+        {!focusMode && toolPanelOpen && (
           <aside className="absolute inset-x-0 bottom-[68px] top-0 z-30 flex w-full flex-col border-r border-slate-200 bg-[#F8FAFC] shadow-xl md:static md:z-auto md:w-[380px] md:shadow-none">
             <div className="flex shrink-0 items-start justify-between gap-3 border-b border-slate-200 bg-white px-4 py-4">
               <div>
@@ -1197,7 +1202,8 @@ export default function CareerStudioEditor() {
                 </div>
                 <h1 className="mt-2 text-lg font-semibold text-[#002050] sm:text-xl">Aperçu du document</h1>{!previewMode&&!isManualMode&&<p className="text-xs text-slate-500">Cliquez sur une rubrique pour ouvrir son édition, ou directement sur un texte pour le modifier.</p>}
               </div>
-              {!toolPanelOpen && <button type="button" onClick={() => setToolPanelOpen(true)} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-[#002050] shadow-sm"><Settings className="h-4 w-4" />Ouvrir les outils</button>}
+              <button type="button" onClick={() => { setFocusMode(value => !value); }} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-[#002050] shadow-sm" aria-pressed={focusMode}>{focusMode ? 'Afficher les colonnes de travail' : 'Masquer les colonnes de travail'}</button>
+              {!focusMode && !toolPanelOpen && <button type="button" onClick={() => setToolPanelOpen(true)} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-[#002050] shadow-sm"><Settings className="h-4 w-4" />Ouvrir les outils</button>}
             </div>
 
             {isExampleContent && (
@@ -1585,7 +1591,7 @@ function CvSectionEditor({ active, data, update }: { active: CvSectionKey; data:
             </div>
             <div className="min-w-0 flex-1">
               <div className="text-sm font-semibold text-[#002050]">Photo du CV</div>
-              <div className="mt-1 text-xs leading-5 text-slate-500">Ajoutez, remplacez ou supprimez votre photo. Les modèles sans photo l’ignorent automatiquement.</div>
+              <div className="mt-1 text-xs leading-5 text-slate-500">Photo facultative : après ajout, elle apparaît sur le CV. Vous pouvez aussi la masquer dans Personnalisation, sans perdre l’image.</div>
               <div className="mt-3 flex flex-wrap gap-2">
                 <label className="cursor-pointer rounded-xl bg-[#002050] px-3 py-2 text-xs font-semibold text-white">
                   {data.photo_url ? 'Remplacer' : 'Ajouter une photo'}
@@ -2016,5 +2022,5 @@ function TemplatePreviewCard({
   onSelect: () => void;
   compact?: boolean;
 }) {
-  return <TemplateLiveCard template={template} docType={docType} selected={selected} onClick={onSelect} compact={compact} />;
+  return <TemplateLiveCard template={template} docType={docType} selected={selected} onClick={onSelect} compact={compact} data={data} documentDesign={design} />;
 }
