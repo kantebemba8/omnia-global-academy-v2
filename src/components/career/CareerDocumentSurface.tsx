@@ -33,6 +33,7 @@ export default function CareerDocumentSurface({ design, title, children }: { des
   const totalHeight = Math.max(page.height, Math.ceil((margins.top + contentHeight * finalScale + margins.bottom) / page.height) * page.height);
   return (
     <div
+      data-career-document-surface="true"
       className="relative bg-white"
       aria-label={title}
       style={{
@@ -44,6 +45,7 @@ export default function CareerDocumentSurface({ design, title, children }: { des
       }}
     >
       <div
+        data-career-surface-content="true"
         ref={contentRef}
         style={{
           position: 'relative',

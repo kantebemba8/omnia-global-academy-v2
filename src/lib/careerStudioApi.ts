@@ -429,7 +429,11 @@ export async function listCareerDocuments(docType: CareerDocType): Promise<{
     );
     cacheCareerTemplates(templates, docType);
     return {
-      documents: data.documents || [],
+      // Unsynced local drafts remain discoverable even when Supabase reconnects.
+      documents: [
+        ...readLocal(docType).filter(doc => doc.id.startsWith('local_')).map(({ doc_data, design_options, ...summary }) => summary),
+        ...(data.documents || []),
+      ],
       templates,
       tokens: data.user?.cv_tokens ?? 0,
       remote: true,
@@ -509,11 +513,20 @@ export async function saveCareerDocument(document: CareerDocumentFull): Promise<
       ats_score: score,
       updated_at: nowIso(),
     };
+    // A recovered local draft can now be removed from device cache.
+    if (document.id.startsWith('local_')) {
+      writeLocal(normalizedDocument.doc_type, readLocal(normalizedDocument.doc_type).filter(doc => doc.id !== document.id));
+    }
     return { document: saved, remote: true };
-  } catch {
+  } catch (error) {
+    const status = (error as { status?: number }).status;
+    // Validation/auth failures must be visible; do not falsely claim a save.
+    if (status && status >= 400 && status < 500) throw error;
     const docType = normalizedDocument.doc_type;
     const docs = readLocal(docType);
-    const id = document.id || `local_${Date.now()}`;
+    // Do not use a remote ID for an unsynced copy: a future remote GET would
+    // otherwise hide locally edited content under the same identifier.
+    const id = document.id.startsWith('local_') ? document.id : `local_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     const saved: CareerDocumentFull = {
       ...normalizedDocument,
       id,
@@ -597,6 +610,15 @@ export async function prepareCareerPdfExport(document: CareerDocumentFull): Prom
     message: 'Mode local : aucun jeton consommé pendant le test.',
   };
 
+  // A strictly local draft is an unbilled test document. Never charge a
+  // second token because the export RPC timed out after it might have debited.
+  if (!document.id || document.id.startsWith('local_')) {
+    if (document.doc_type === 'cv') {
+      throw new Error('Synchronisez et enregistrez votre CV dans Supabase avant un export PDF soumis aux règles de jetons.');
+    }
+    return localResult; // Free local cover-letter test, not a paid CV export.
+  }
+
   try {
     const data = await functionPost<{
       success: boolean;
@@ -623,25 +645,10 @@ export async function prepareCareerPdfExport(document: CareerDocumentFull): Prom
     };
   } catch (err) {
     const e = err as Error & { code?: string; status?: number };
-    if (e.code === 'INSUFFICIENT_TOKENS' || e.status === 402) {
-      throw err;
-    }
-
-    const ruleKey = document.doc_type === 'cv' ? 'spend_pdf_cv' : 'spend_pdf_lm';
-    const charge = await consumeCareerTokenAction(
-      ruleKey,
-      `${document.id || 'local'}:${document.template_key}`,
-      { doc_type: document.doc_type, template_key: document.template_key, local_export: true },
-    );
-
-    return {
-      ...localResult,
-      tokens_consumed: Number(charge.amount || 0),
-      tokens_remaining: charge.tokens_remaining,
-      message: Number(charge.amount || 0) > 0
-        ? `Export local préparé. ${charge.amount} jeton(s) consommé(s).`
-        : localResult.message,
-    };
+    if (e.code === 'INSUFFICIENT_TOKENS' || e.status === 402) throw err;
+    // The server request may already have succeeded/charged, despite a lost
+    // network response. No fallback transaction or second debit is safe here.
+    throw new Error('Préparation PDF non confirmée par Supabase. Aucun nouveau débit de secours n’a été lancé. Vérifiez votre historique de jetons avant de réessayer.');
   }
 }
 

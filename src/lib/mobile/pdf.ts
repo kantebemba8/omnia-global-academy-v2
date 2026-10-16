@@ -4,6 +4,7 @@ export interface NativePdfOptions {
   fileName: string;
   title: string;
   orientation?: 'portrait' | 'landscape';
+  pageFormat?: 'a4' | 'letter';
 }
 
 export async function exportElementAsNativePdf(
@@ -31,7 +32,8 @@ export async function exportElementAsNativePdf(
   });
 
   const orientation = options.orientation ?? 'portrait';
-  const pdf = new jsPDF({ orientation, unit: 'mm', format: 'a4', compress: true });
+  const format = options.pageFormat === 'letter' ? 'letter' : 'a4';
+  const pdf = new jsPDF({ orientation, unit: 'mm', format, compress: true });
   const pageWidth = pdf.internal.pageSize.getWidth();
   const pageHeight = pdf.internal.pageSize.getHeight();
   const renderedHeight = (canvas.height * pageWidth) / canvas.width;
@@ -44,7 +46,7 @@ export async function exportElementAsNativePdf(
 
   while (remaining > 0.5) {
     position -= pageHeight;
-    pdf.addPage('a4', orientation);
+    pdf.addPage(format, orientation);
     pdf.addImage(image, 'JPEG', 0, position, pageWidth, renderedHeight, undefined, 'FAST');
     remaining -= pageHeight;
   }

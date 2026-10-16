@@ -51,6 +51,7 @@ import {
 } from '../../lib/careerStudioData';
 import { consumeCareerTokenAction, deleteCareerDocument, fetchCareerTemplateCatalog, getCareerDocument, listCareerDocuments, prepareCareerPdfExport, renameCareerDocument, runCareerAiAction, saveCareerDocument } from '../../lib/careerStudioApi';
 import { printCareerElementAsPdf, reserveCareerPrintWindow } from '../../lib/careerPdfExport';
+import { exportCareerWord } from '../../lib/careerWordExport';
 import { approximateDataUrlBytes, isNativeApp, pickNativeImageAsDataUrl } from '../../lib/mobile';
 import TemplateLiveCard from '../../components/career/TemplateLiveCard';
 import CareerSourcePanel from '../../components/career/CareerSourcePanel';
@@ -231,6 +232,7 @@ export default function CareerStudioEditor() {
   const [activeLmSection, setActiveLmSection] = useState<LmSectionKey>('letter');
   const [toast, setToast] = useState('');
   const [exportingPdf, setExportingPdf] = useState(false);
+  const [exportingWord, setExportingWord] = useState(false);
   const [aiLoadingAction, setAiLoadingAction] = useState<string | null>(null);
   const [aiSuggestion, setAiSuggestion] = useState<AiSuggestion | null>(null);
   const [offerText, setOfferText] = useState('');
@@ -240,7 +242,7 @@ export default function CareerStudioEditor() {
   const [previewZoom, setPreviewZoom] = useState(() => typeof window !== 'undefined' && window.innerWidth < 640 ? 0.38 : 0.62);
   const [nameDialogOpen, setNameDialogOpen] = useState(false);
   const [pendingDocumentName, setPendingDocumentName] = useState('');
-  const [pendingSaveAction, setPendingSaveAction] = useState<'save' | 'pdf' | 'manual' | 'rename' | null>(null);
+  const [pendingSaveAction, setPendingSaveAction] = useState<'save' | 'pdf' | 'word' | 'manual' | 'rename' | null>(null);
   const [fullPreviewOpen, setFullPreviewOpen] = useState(false);
   const [personalizeOpen, setPersonalizeOpen] = useState(false);
   const [personalizeText, setPersonalizeText] = useState('');
@@ -433,7 +435,7 @@ export default function CareerStudioEditor() {
     }
   }, [previewMode]);
 
-  const saveNow = useCallback(async (interactive = true, action: 'save' | 'pdf' | 'manual' = 'save') => {
+  const saveNow = useCallback(async (interactive = true, action: 'save' | 'pdf' | 'word' | 'manual' = 'save') => {
     if (!document) return null;
     if (!isDocumentNamed(document)) {
       if (!interactive) return null;
@@ -477,9 +479,13 @@ export default function CareerStudioEditor() {
     }
 
     try {
-      await persistDocument(named);
-      if (action === 'manual') showToast('Mise en page manuelle enregistrée');
-      else if (action === 'save') showToast('Document sauvegardé');
+      const savedNamed = await persistDocument(named);
+      if (action === 'word') {
+        await exportCareerWord(savedNamed);
+        showToast('Document Word modifiable créé.');
+      }
+      else if (action === 'manual') showToast('Mise en page manuelle enregistrée');
+      else if (action === 'save') showToast('Document enregistré. Vérifiez l’indicateur de synchronisation.');
       else if (action === 'pdf') window.setTimeout(() => handlePdfDownload(true), 0);
     } catch {
       showToast('Impossible de sauvegarder le document.');
@@ -649,7 +655,7 @@ export default function CareerStudioEditor() {
 
   async function manualSave() {
     const saved = await saveNow(true, 'save');
-    if (saved) showToast('Document sauvegardé');
+    if (saved) showToast('Enregistrement effectué. Vérifiez l’indicateur Supabase/local.');
   }
 
   function openRenameDialog() {
@@ -850,6 +856,22 @@ export default function CareerStudioEditor() {
     }
   }
 
+  async function handleWordDownload() {
+    if (previewMode) { showToast('Export Word désactivé en prévisualisation.'); return; }
+    if (!document || exportingWord) return;
+    setExportingWord(true);
+    try {
+      const saved = await saveNow(true, 'word');
+      if (!saved) return; // Name dialog will continue export on confirmation.
+      await exportCareerWord(saved);
+      showToast('Document Word modifiable créé.');
+    } catch (error) {
+      showToast((error as Error).message || 'Impossible de créer le document Word.');
+    } finally {
+      setExportingWord(false);
+    }
+  }
+
   async function handlePdfDownload(alreadyNamed = false) {
     if (previewMode) { showToast('Le téléchargement PDF est désactivé en prévisualisation afin de ne consommer aucun jeton.'); return; }
     if (!document) return;
@@ -878,6 +900,7 @@ export default function CareerStudioEditor() {
         docType: currentDocument.doc_type,
         tokensConsumed: result.tokens_consumed,
         reservedWindow,
+        design: currentDocument.design_options,
       });
       reservedWindow = null;
 
@@ -960,7 +983,7 @@ export default function CareerStudioEditor() {
             <div className="hidden items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 xl:flex">
               {saveState === 'saving' && <Loader2 className="h-3.5 w-3.5 animate-spin text-[#bf8813]" />}
               {saveState === 'saved' && <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />}
-              {saveState === 'saving' ? 'Enregistrement...' : saveState === 'saved' ? 'Enregistré automatiquement' : previewMode ? 'Mode aperçu administratif' : remoteMode ? 'Connecté Supabase' : 'Mode local sécurisé'}
+              {saveState === 'saving' ? 'Enregistrement...' : saveState === 'saved' ? (remoteMode ? 'Enregistré dans Supabase' : 'Enregistré localement uniquement') : previewMode ? 'Mode aperçu administratif' : remoteMode ? 'Connecté Supabase' : 'Mode local sécurisé'}
             </div>
             <div className="hidden rounded-full bg-[#bf8813]/10 px-3 py-2 text-xs font-bold text-[#9a6810] sm:block">{tokens} jeton(s)</div>
             <div className="flex items-center rounded-xl border border-slate-200 bg-white" aria-label="Historique des modifications">
@@ -999,6 +1022,15 @@ export default function CareerStudioEditor() {
               className="inline-flex items-center gap-2 rounded-xl bg-[#002050] px-3 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
             >
               <Download className="h-4 w-4" /><span className="hidden sm:inline">{exportingPdf ? 'Préparation...' : 'PDF'}</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleWordDownload}
+              disabled={exportingWord || exportingPdf || previewMode}
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-[#002050] hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+              title="Télécharger un document Word modifiable (.docx), avec une mise en page professionnelle simplifiée"
+            >
+              <FileText className="h-4 w-4"/><span className="hidden sm:inline">{exportingWord ? 'Word...' : 'Word'}</span>
             </button>
             <div className="relative">
               <button

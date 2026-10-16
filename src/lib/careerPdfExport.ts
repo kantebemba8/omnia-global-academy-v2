@@ -1,4 +1,6 @@
 import type { CareerDocType } from './careerStudioData';
+import type { DesignOptions } from '../components/career/CvTemplates';
+import type { LmDesign } from '../components/career/LmTemplates';
 import { exportElementAsNativePdf } from './mobile/pdf';
 import { isNativeApp } from './mobile/platform';
 
@@ -7,6 +9,7 @@ export type CareerPrintOptions = {
   docType: CareerDocType;
   tokensConsumed?: number;
   reservedWindow?: Window | null;
+  design?: DesignOptions | LmDesign;
 };
 
 function escapeHtml(value: string): string {
@@ -47,6 +50,11 @@ function printCareerElementInBrowser(element: HTMLElement, options: CareerPrintO
   const title = options.title || 'Document Omnia Career';
   const escapedTitle = escapeHtml(title);
   const fileName = safeFileName(title);
+  const pageFormat = options.design?.page_format === 'letter' ? 'letter' : 'a4';
+  const landscape = options.design?.orientation === 'landscape';
+  const pageWidth = pageFormat === 'letter' ? '8.5in' : '210mm';
+  const pageHeight = pageFormat === 'letter' ? '11in' : '297mm';
+  const pageRule = `${pageFormat === 'letter' ? 'letter' : 'A4'} ${landscape ? 'landscape' : 'portrait'}`;
   const styles = collectStyles();
   const popup = options.reservedWindow || reserveCareerPrintWindow();
 
@@ -86,13 +94,18 @@ function printCareerElementInBrowser(element: HTMLElement, options: CareerPrintO
     .print-page > * { transform: none !important; transform-origin: initial !important; }
     .print-page { overflow: visible !important; }
     .print-page { break-inside: auto; }
-    @page { size: A4; margin: 0; }
+    /* Avoid cutting a resume entry in half when the print engine supports it. */
+    .print-page article, .print-page section section, .print-page li, .print-page tr { break-inside: avoid; page-break-inside: avoid; }
+    @page { size: ${pageRule}; margin: 0; }
     @media print {
       html, body { background: white !important; }
       .print-toolbar { display: none !important; }
       .print-page-wrap { padding: 0 !important; display: block !important; }
-      .print-page { box-shadow: none !important; margin: 0 auto !important; width: 210mm !important; min-height: 297mm !important; height: auto !important; overflow: visible !important; }
+      .print-page { box-shadow: none !important; margin: 0 auto !important; width: ${landscape ? pageHeight : pageWidth} !important; min-height: ${landscape ? pageWidth : pageHeight} !important; height: auto !important; overflow: visible !important; }
       #omnia-career-print-root, #omnia-career-print-root > * { overflow: visible !important; height: auto !important; }
+      /* The screen preview uses zoom transforms; printing must use real flowing text. */
+      [data-career-document-surface="true"] { min-height: 0 !important; height: auto !important; overflow: visible !important; }
+      [data-career-surface-content="true"] { transform: none !important; position: static !important; left: auto !important; margin-top: 0 !important; width: auto !important; min-height: 0 !important; }
       .print-page-wrap { overflow: visible !important; }
       .print-page * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
     }
@@ -139,7 +152,8 @@ export async function printCareerElementAsPdf(
     await exportElementAsNativePdf(element, {
       title,
       fileName: `${safeFileName(title)}.pdf`,
-      orientation: 'portrait',
+      orientation: options.design?.orientation === 'landscape' ? 'landscape' : 'portrait',
+      pageFormat: options.design?.page_format === 'letter' ? 'letter' : 'a4',
     });
     return;
   }
