@@ -1,5 +1,6 @@
 import React from 'react';
 import { BUILTIN_CV_LAYOUTS, ConfigurableCvTemplate } from './EditableCareerTemplates';
+import { normalizeCareerContent } from '../../lib/careerDocumentCore';
 
 export interface DocData {
   name: string;
@@ -71,7 +72,8 @@ export function CvPreview({
   design: DesignOptions;
 }) {
   const Component = CV_TEMPLATE_MAP[templateKey];
+  const normalizedData = normalizeCareerContent('cv', data);
   return Component
-    ? <Component data={data} design={design} />
-    : <ConfigurableCvTemplate data={data} design={design} templateKey={templateKey} />;
+    ? <Component data={normalizedData} design={design} />
+    : <ConfigurableCvTemplate data={normalizedData} design={design} templateKey={templateKey} />;
 }

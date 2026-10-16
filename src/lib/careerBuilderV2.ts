@@ -2,6 +2,7 @@ import type { DocData, DesignOptions } from '../components/career/CvTemplates';
 import type { LmData, LmDesign } from '../components/career/LmTemplates';
 import type { CareerDocType, CareerDocumentFull } from './careerStudioData';
 import { createDefaultData, getPairedLmTemplateKey } from './careerStudioData';
+import { normalizeCareerContent, normalizeCareerDesign } from './careerDocumentCore';
 
 export type CareerEvidenceStatus = 'verified' | 'declared' | 'pending' | 'missing';
 export type CareerEvidenceType = 'experience' | 'project' | 'formation' | 'certificate' | 'badge' | 'recommendation' | 'document';
@@ -184,13 +185,15 @@ export function markCareerDocumentModified<T extends DocData | LmData>(data: T, 
 }
 
 export function normalizeCareerDocument(document: CareerDocumentFull): CareerDocumentFull {
-  const meta = getCareerMeta(document.doc_data, document.doc_type);
+  const content = normalizeCareerContent(document.doc_type, document.doc_data);
+  const meta = getCareerMeta(content, document.doc_type);
   return {
     ...document,
     target_job: document.target_job || meta.target.job_title || null,
     target_country: document.target_country || meta.target.country || null,
     application_type: document.application_type || meta.target.application_type || document.doc_type,
-    doc_data: withCareerMeta(document.doc_data, document.doc_type, meta),
+    doc_data: withCareerMeta(content, document.doc_type, meta),
+    design_options: normalizeCareerDesign(document.doc_type, document.design_options),
   };
 }
 

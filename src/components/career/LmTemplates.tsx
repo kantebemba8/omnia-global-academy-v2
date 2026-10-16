@@ -1,5 +1,6 @@
 import React from 'react';
 import { BUILTIN_LM_LAYOUTS, ConfigurableLmTemplate } from './EditableCareerTemplates';
+import { normalizeCareerContent } from '../../lib/careerDocumentCore';
 
 export interface LmData {
   sender: { name: string; address: string; phone: string; email: string; city: string; date: string; };
@@ -59,7 +60,8 @@ export function LmPreview({
   design: LmDesign;
 }) {
   const Component = LM_TEMPLATE_MAP[templateKey];
+  const normalizedData = normalizeCareerContent('lm', data);
   return Component
-    ? <Component data={data} design={design} />
-    : <ConfigurableLmTemplate data={data} design={design} templateKey={templateKey} />;
+    ? <Component data={normalizedData} design={design} />
+    : <ConfigurableLmTemplate data={normalizedData} design={design} templateKey={templateKey} />;
 }
