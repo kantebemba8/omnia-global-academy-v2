@@ -911,12 +911,14 @@ export function CoursLecteur() {
     const orderedVisibleLessons = modules.flatMap(mod => mod.lessons);
     const visibleIndex = orderedVisibleLessons.findIndex(item => item.lesson_id === currentLessonId);
     const nextId = visibleIndex >= 0 ? orderedVisibleLessons[visibleIndex + 1]?.lesson_id : findNext(modules, currentLessonId ?? '');
+    const targetLesson = modules.flatMap(m => m.lessons).find(item => item.lesson_id === nextId);
+    const nextLocked = !isPreview && Boolean(targetLesson && targetLesson.is_unlocked === false);
     const nextIsOutsideModule = Boolean(nextId && moduleNow && !moduleNow.lessons.some(item => item.lesson_id === nextId));
     const trainingPassed = !lessonData?.training?.required_count || lessonData.training.passed === true;
     const moduleExamPassed = !nextIsOutsideModule || !moduleNow?.exam_required || moduleNow.exam_passed === true;
-    const canAdvance = isPreview || (effectiveCpd && trainingPassed && quizPassed && moduleExamPassed);
+    const canAdvance = isPreview || (!nextLocked && effectiveCpd && trainingPassed && quizPassed && moduleExamPassed);
     if (!canAdvance) {
-      const reason = !effectiveCpd ? `Temps pédagogique requis : ${fmtTime(Math.max(0, Number(lessonData?.required_seconds || 0) - timeSpent))} restant.` : !trainingPassed ? 'Terminez les entraînements obligatoires avant de continuer.' : !quizPassed ? 'Réussissez l’évaluation obligatoire de cette leçon.' : 'Réussissez l’évaluation obligatoire du module avant de continuer.';
+      const reason = !effectiveCpd ? `Temps pédagogique requis : ${fmtTime(Math.max(0, Number(lessonData?.required_seconds || 0) - timeSpent))} restant.` : !trainingPassed ? 'Terminez les entraînements obligatoires avant de continuer.' : !quizPassed ? 'Réussissez l’évaluation obligatoire de cette leçon.' : nextLocked ? 'La prochaine étape reste verrouillée tant que les conditions de progression ne sont pas validées côté serveur.' : 'Réussissez l’évaluation obligatoire du module avant de continuer.';
       setResilientMessage(reason);
       return;
     }

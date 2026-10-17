@@ -47,7 +47,7 @@ Deno.serve(async(req:Request)=>{
         is_intro:!!mod.is_intro,is_conclusion:!!mod.is_conclusion,is_final_exam:!!mod.is_final_exam,
         section_type:mod.section_type|| (mod.is_intro?"introduction":mod.is_conclusion?"conclusion":mod.is_final_exam?"final_exam":"module"),
         exam_exists:Boolean(assessmentFor("module",mod.id)),exam_required:Boolean(assessmentFor("module",mod.id)?.required),exam_unlocked:true,exam_passed:false,exam_score:null,exam_attempts:0,
-        lessons:(lessons??[]).filter((l:any)=>l.module_id===mod.id).sort((a:any,b:any)=>a.position-b.position).map((lesson:any)=>({
+        lessons:orderedLessons.filter((l:any)=>l.module_id===mod.id).map((lesson:any)=>({
           lesson_id:lesson.id,title:lesson.title,position:lesson.position,
           content_type:lesson.is_external?"external":(lesson.video_url?"video":lesson.audio_url?"audio":"text"),
           duration_seconds:lesson.cpd_calculated_time_seconds??0,is_free:lesson.is_free_preview===true,
@@ -69,11 +69,34 @@ Deno.serve(async(req:Request)=>{
 
     const progressMap:Record<string,any>={};for(const p of lessonProgress??[])progressMap[(p as any).lesson_id]=p;
     const latestByAssessment:Record<string,any>={};for(const a of attempts??[]){const id=(a as any).assessment_id;if(!latestByAssessment[id])latestByAssessment[id]=a;}
-    const passedByAssessment:Record<string,any>={};for(const a of attempts??[]){const row=a as any;if(row.passed&&!passedByAssessment[row.assessment_id])passedByAssessment[row.assessment_id]=row;}
+    // Seules les notes publiées déverrouillent la progression. Une évaluation
+    // en attente de correction humaine/IA ne donne pas un succès anticipé.
+    const passedByAssessment:Record<string,any>={};for(const a of attempts??[]){const row=a as any;if(row.passed===true&&row.result_status==="published"&&!passedByAssessment[row.assessment_id])passedByAssessment[row.assessment_id]=row;}
 
-    for(let i=0;i<orderedLessons.length;i++){const lesson:any=orderedLessons[i];const previousRequired:any=orderedLessons.slice(0,i).reverse().find((candidate:any)=>candidate.is_required!==false);lessonUnlock[lesson.id]=previewAllowed||!sequential||!previousRequired||Boolean(progressMap[previousRequired.id]?.is_completed===true);}
+    const effectiveSection=(m:any)=>String(m.section_type||(m.is_intro?"introduction":m.is_conclusion?"conclusion":m.is_final_exam?"final_exam":"module"));
+    const realModules=(modules??[]).filter((m:any)=>effectiveSection(m)==="module").sort((a:any,b:any)=>Number(a.position||0)-Number(b.position||0));
+    const moduleGatePassed=(module:any)=>{
+      const requiredLessons=orderedLessons.filter((l:any)=>String(l.module_id)===String(module.id)&&String(l.stage_type||"lesson")==="lesson"&&l.is_required!==false);
+      if(!requiredLessons.every((l:any)=>progressMap[l.id]?.is_completed===true))return false;
+      const exam=assessmentFor("module",String(module.id));
+      return !exam||exam.required===false||Boolean(passedByAssessment[exam.id]);
+    };
+    // Règle commune : une leçon du module N+1 exige la clôture du module N,
+    // y compris son épreuve officielle obligatoire; pareil pour la conclusion.
+    for(let i=0;i<orderedLessons.length;i++){
+      const lesson:any=orderedLessons[i];
+      const previousRequired:any=orderedLessons.slice(0,i).reverse().find((candidate:any)=>candidate.is_required!==false);
+      let unlocked=previewAllowed||!sequential||!previousRequired||progressMap[previousRequired.id]?.is_completed===true;
+      if(sequential&&!previewAllowed){
+        const section=effectiveSection((modules??[]).find((m:any)=>m.id===lesson.module_id)||{});
+        const currentIndex=realModules.findIndex((m:any)=>String(m.id)===String(lesson.module_id));
+        const priorModules=currentIndex>=0?realModules.slice(0,currentIndex):["conclusion","final_exam"].includes(section)?realModules:[];
+        unlocked=unlocked&&priorModules.filter((m:any)=>m.is_required!==false).every(moduleGatePassed);
+      }
+      lessonUnlock[lesson.id]=Boolean(unlocked);
+    }
     const enriched=(modules??[]).map((mod:any,index:number)=>{
-      const moduleLessons=(lessons??[]).filter((l:any)=>l.module_id===mod.id).sort((a:any,b:any)=>a.position-b.position).map((lesson:any)=>{
+      const moduleLessons=orderedLessons.filter((l:any)=>l.module_id===mod.id).map((lesson:any)=>{
         const assessment=assessmentFor("lesson",lesson.id);const passedAttempt=assessment?passedByAssessment[assessment.id]:null;const p=progressMap[lesson.id];
         return {lesson_id:lesson.id,title:lesson.title,position:lesson.position,content_type:lesson.is_external?"external":(lesson.video_url?"video":lesson.audio_url?"audio":"text"),duration_seconds:lesson.cpd_calculated_time_seconds??0,is_free:lesson.is_free_preview===true,is_required:lesson.is_required!==false,is_completed:p?.is_completed??false,time_spent_seconds:p?.time_spent_seconds??0,quiz_passed:!!passedAttempt||!!p?.quiz_passed,is_unlocked:lessonUnlock[lesson.id]!==false,assessment_exists:Boolean(assessment),assessment_required:Boolean(assessment?.required),assessment_passed:Boolean(passedAttempt),is_intro:!!lesson.is_intro,is_module_intro:!!lesson.is_module_intro,is_conclusion:!!lesson.is_conclusion,is_final_exam:!!lesson.is_final_exam,stage_type:lesson.is_intro?"introduction":lesson.is_module_intro?"module_presentation":lesson.is_conclusion?"conclusion":lesson.is_final_exam?"final_exam":(lesson.stage_type||"lesson")};
       });

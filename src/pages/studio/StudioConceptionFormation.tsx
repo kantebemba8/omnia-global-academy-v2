@@ -634,6 +634,27 @@ export default function StudioConceptionFormation() {
     } else showToast(data.message || data.error || 'Impossible de créer cette étape.', 'error');
   }
 
+  // L'évaluation de module est toujours portée par le Bilan du module,
+  // jamais par une leçon choisie arbitrairement dans le programme.
+  async function openModuleAssessment(mod: Module) {
+    if (!course?.id || locked) return;
+    let summary = (mod.lessons || []).find(l => stageTypeOf(l) === 'module_summary');
+    let nextModule = mod;
+    if (!summary) {
+      const created = await api('create_module_stage', {
+        course_id: course.id, module_id: mod.id, stage_type: 'module_summary'
+      });
+      if (!created.success || !created.lesson) {
+        showToast(created.message || created.error || 'Impossible de créer le Bilan du module.', 'error');
+        return;
+      }
+      summary = created.lesson as Lesson;
+      nextModule = { ...mod, lessons: [...(mod.lessons || []).filter(l => l.id !== summary!.id), summary] };
+      setModules(ms => ms.map(m => m.id === mod.id ? nextModule : m));
+    }
+    await selectAssessmentWorkspace(nextModule, summary, 'module');
+  }
+
   async function deleteLesson(mod: Module, lesson: Lesson) {
     if (!course?.id || locked) return;
     if (!window.confirm(`Supprimer « ${lesson.title} » et tous ses contenus ? Cette action est définitive pour ce brouillon.`)) return;
@@ -1439,7 +1460,7 @@ export default function StudioConceptionFormation() {
                     <div className="mb-1 flex items-center gap-1">
                       <button type="button" onClick={() => addModuleStage(mod, 'module_presentation')} disabled={locked} className="text-[10px] px-2 py-0.5 rounded-full border" style={{borderColor:'#BF8813',color:'#92400E'}}>Présentation</button>
                       <button type="button" onClick={() => addModuleStage(mod, 'module_summary')} disabled={locked} className="text-[10px] px-2 py-0.5 rounded-full border" style={{borderColor:'#BF8813',color:'#92400E'}}>Bilan du module</button>
-                      <button type="button" onClick={() => { const stage=(mod.lessons||[]).find(l => stageTypeOf(l)==='module_summary') || (mod.lessons||[]).find(l => stageTypeOf(l)==='lesson'); if(stage)void selectAssessmentWorkspace(mod,stage,'module'); else showToast('Créez d’abord une leçon ou un bilan du module.','error'); }} disabled={locked} className="text-[10px] px-2 py-0.5 rounded-full border" style={{borderColor:'#DDD6FE',color:'#6D28D9'}}>Configurer évaluation module (facultative)</button>
+                      <button type="button" onClick={() => void openModuleAssessment(mod)} disabled={locked} className="text-[10px] px-2 py-0.5 rounded-full border" style={{borderColor:'#DDD6FE',color:'#6D28D9'}}>Configurer évaluation module (facultative)</button>
                       <button type="button" onClick={() => deleteModule(mod)} disabled={locked} className="rounded-full p-1 text-red-600 hover:bg-red-50" title="Supprimer ce module"><Trash2 size={11}/></button>
                     </div>
                   )}
@@ -1456,7 +1477,7 @@ export default function StudioConceptionFormation() {
                         {lesson.title}
                       </button>
                       {stageTypeOf(lesson) === 'lesson' && (
-                        <button type="button" onClick={() => selectAssessmentWorkspace(mod, lesson, 'lesson')} disabled={locked} className="text-[10px] px-1.5 py-0.5 rounded-full border" style={assessmentWorkspace?.lessonId===lesson.id&&assessmentWorkspace.scope==='lesson'?{background:'#7C3AED',color:'white',borderColor:'#7C3AED'}:{borderColor:'#DDD6FE',color:'#6D28D9',background:'#F5F3FF'}}>Configurer évaluation</button>
+                        <button type="button" onClick={() => selectAssessmentWorkspace(mod, lesson, 'lesson')} disabled={locked} className="text-[10px] px-1.5 py-0.5 rounded-full border" style={assessmentWorkspace?.lessonId===lesson.id&&assessmentWorkspace.scope==='lesson'?{background:'#7C3AED',color:'white',borderColor:'#7C3AED'}:{borderColor:'#DDD6FE',color:'#6D28D9',background:'#F5F3FF'}}>Évaluation facultative · configurer</button>
                       )}
                       {stageTypeOf(lesson) === 'module_summary' && (
                         <button type="button" onClick={() => selectAssessmentWorkspace(mod, lesson, 'module')} disabled={locked} className="text-[10px] px-1.5 py-0.5 rounded-full border" style={assessmentWorkspace?.lessonId===lesson.id&&assessmentWorkspace.scope==='module'?{background:'#7C3AED',color:'white',borderColor:'#7C3AED'}:{borderColor:'#DDD6FE',color:'#6D28D9',background:'#F5F3FF'}}>Configurer évaluation module</button>
@@ -1733,7 +1754,7 @@ export default function StudioConceptionFormation() {
                   {assessmentWorkspace && (
                     <div className="mt-3 rounded-xl border px-3 py-2" style={{borderColor:'#DDD6FE',background:'#F5F3FF'}}>
                       <p className="text-xs font-bold" style={{color:'#6D28D9'}}>{assessmentWorkspace.scope==='lesson'?'Sous-espace · Évaluation de la leçon':assessmentWorkspace.scope==='module'?'Sous-espace · Évaluation du module':'Sous-espace · Épreuve officielle finale'}</p>
-                      <p className="mt-1 text-[11px] text-slate-500">Ajoutez ici uniquement les questions de l’évaluation officielle. Elles ne seront pas répétées dans le contenu pédagogique.</p>
+                      <p className="mt-1 text-[11px] text-slate-500">Évaluation désactivée tant qu'aucune question officielle n'est créée. Chaque question peut être facultative ou obligatoire selon la politique de la formation. Les questions restent distinctes des exercices d'entraînement et ne sont pas répétées dans le contenu pédagogique.</p>
                     </div>
                   )}
                   {!assessmentWorkspace && !locked && course.id && (
