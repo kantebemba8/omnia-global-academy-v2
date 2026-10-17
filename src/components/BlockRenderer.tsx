@@ -610,7 +610,7 @@ function VideoBlock({ url, eco, title }: { url: string; eco: boolean; title?: st
 }
 
 function DocumentViewBlock({ block }: { block: Block }) {
-  const c = block.content_json;
+  const c = block.content_json || {};
   const url = block.file_url || c.url || '';
   if (!url) return <ResourceUnavailable block={block} label={block.block_type === 'pdf' ? 'PDF' : 'Document Word'} />;
   const title = resourceDisplayTitle(block, block.block_type === 'pdf' ? 'Document PDF' : 'Document Word');
@@ -640,7 +640,7 @@ function DocumentViewBlock({ block }: { block: Block }) {
 }
 
 function DownloadOnlyBlock({ block }: { block: Block }) {
-  const c = block.content_json;
+  const c = block.content_json || {};
   const url = block.file_url || c.url || '';
   if (!url) return <ResourceUnavailable block={block} label="Téléchargement" />;
   const title = String(c.title || block.title || 'Ressource à télécharger');
@@ -663,7 +663,7 @@ function DownloadOnlyBlock({ block }: { block: Block }) {
 }
 
 function ExcelBlock({ block }: { block: Block }) {
-  const c = block.content_json;
+  const c = block.content_json || {};
   const headers: string[] = c.headers || [];
   const rows: string[][] = c.preview_rows || [];
   const url = block.file_url || c.url || '';
@@ -710,7 +710,7 @@ function ExcelBlock({ block }: { block: Block }) {
 
 function ScormBlock({ block }: { block: Block }) {
   const [launched, setLaunched] = useState(false);
-  const c = block.content_json;
+  const c = block.content_json || {};
   const url = block.file_url || c.url || '';
   const packageType = c.package_type || 'scorm_2004';
 
@@ -754,7 +754,7 @@ function ScormBlock({ block }: { block: Block }) {
 }
 
 function QcmBlock({ block, onAnswer }: { block: Block; onAnswer?: (id: string, a: any, correct: boolean) => void }) {
-  const c = block.content_json;
+  const c = block.content_json || {};
   const [selected, setSelected] = useState<number | null>(null);
   const [revealed, setRevealed] = useState(false);
 
@@ -817,7 +817,7 @@ function QcmBlock({ block, onAnswer }: { block: Block; onAnswer?: (id: string, a
 }
 
 function TrueFalseBlock({ block, onAnswer }: { block: Block; onAnswer?: (id: string, a: any, correct: boolean) => void }) {
-  const c = block.content_json;
+  const c = block.content_json || {};
   const [selected, setSelected] = useState<boolean | null>(null);
   const [revealed, setRevealed] = useState(false);
 
@@ -868,13 +868,14 @@ function AccordionBlock({ items }: { items: Array<{ id: string; title: string; c
         <div key={item.id} className="rounded-xl overflow-hidden border" style={{ borderColor: '#E4E7EC' }}>
           <button className="w-full flex items-center justify-between px-5 py-3.5 text-left font-semibold text-sm"
             style={{ color: '#002050', background: openId === item.id ? '#EEF2FF' : 'white' }}
+            aria-expanded={openId === item.id}
             onClick={() => setOpenId(openId === item.id ? null : item.id)}>
             {item.title}
             {openId === item.id ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
           </button>
           {openId === item.id && (
             <div className="px-5 py-4 text-sm" style={{ color: '#374151', borderTop: '1px solid #E4E7EC' }}
-              dangerouslySetInnerHTML={{ __html: item.content || '' }} />
+              dangerouslySetInnerHTML={{ __html: richHtml(item.content || '') }} />
           )}
         </div>
       ))}
@@ -995,7 +996,7 @@ export function LessonBlocksRenderer({ blocks, contentText, onQuizAnswer, onTrai
       return (
         <div className="prose prose-sm max-w-none text-gray-700 leading-relaxed"
           style={{ lineHeight: 1.65 }}
-          dangerouslySetInnerHTML={{ __html: contentText.startsWith('<') ? contentText : `<p>${contentText}</p>` }}
+          dangerouslySetInnerHTML={{ __html: richHtml(contentText) }}
         />
       );
     }
@@ -1005,7 +1006,7 @@ export function LessonBlocksRenderer({ blocks, contentText, onQuizAnswer, onTrai
   return (
     <div>
       {(() => {
-        const orderedBlocks=[...blocks].sort((a,b)=>a.position-b.position);
+        const orderedBlocks=[...blocks].filter((block): block is Block => Boolean(block && block.id && block.block_type)).sort((a,b)=>(Number(a.position)||0)-(Number(b.position)||0));
         const completedSet=new Set(completedInteractionBlockIds.map(String));
         return orderedBlocks.map((block,index) => {
           if(block.block_type==='correction'&&!revealAllCorrections){

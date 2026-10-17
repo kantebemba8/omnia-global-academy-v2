@@ -227,6 +227,10 @@ export default function StudioConceptionFormation() {
   const [currentLesson, setCurrentLesson] = useState<Lesson | null>(null);
   const [blocks, setBlocks] = useState<Block[]>([]);
   const blockSaveQueues = useRef<Record<string, Promise<any>>>({});
+  // Never consider a failed write successful after its Promise leaves the queue.
+  const failedBlockSaves = useRef<Set<string>>(new Set());
+  const blockLoadRequest = useRef(0);
+  const reorderInFlight = useRef(false);
   const [selectedBlock, setSelectedBlock] = useState<Block | null>(null);
   const [selectedBlockDef, setSelectedBlockDef] = useState<typeof BLOCK_DEFS[0] | null>(null);
   const [assessmentWorkspace, setAssessmentWorkspace] = useState<{ scope: 'lesson'|'module'|'final'; lessonId: string; moduleId: string } | null>(null);
@@ -331,7 +335,10 @@ export default function StudioConceptionFormation() {
   }, [course.id, requestedPanel]);
 
   async function loadBlocks(lessonId: string) {
+    const request = ++blockLoadRequest.current;
     const data = await api('get_blocks', { lesson_id: lessonId });
+    // Ignore an older response if the creator switched lessons during the fetch.
+    if (request !== blockLoadRequest.current) return false;
     if (!data.success) {
       showToast(data.message || data.error || 'Impossible de charger les blocs de la leçon.', 'error');
       return false;
@@ -353,10 +360,12 @@ export default function StudioConceptionFormation() {
       .then(async () => {
         const result = await api('update_block', { block_id: blockId, ...updates });
         if (!result.success) {
-          showToast(result.message || result.error || 'Impossible d’enregistrer le bloc.', 'error');
-          if (currentLesson?.id) await loadBlocks(currentLesson.id);
+          failedBlockSaves.current.add(blockId);
+          showToast(result.message || result.error || 'Impossible d’enregistrer le bloc. Vos modifications restent visibles.', 'error');
+          // Do not reload over other unsaved edits. The next successful write may retry.
           throw new Error(result.error || 'BLOCK_UPDATE_FAILED');
         }
+        failedBlockSaves.current.delete(blockId);
         return result;
       });
     blockSaveQueues.current[blockId] = next;
@@ -371,9 +380,12 @@ export default function StudioConceptionFormation() {
     // Refuser la suite du parcours si une sauvegarde Ã©choue.
     for (let attempt = 0; attempt < 30; attempt += 1) {
       const pending = Object.values(blockSaveQueues.current);
-      if (!pending.length) return;
+      if (!pending.length) {
+        if (failedBlockSaves.current.size) throw new Error('BLOCK_SAVE_FAILED');
+        return;
+      }
       const outcomes = await Promise.allSettled(pending);
-      if (outcomes.some(result => result.status === 'rejected')) throw new Error('BLOCK_SAVE_FAILED');
+      if (outcomes.some(result => result.status === 'rejected') || failedBlockSaves.current.size) throw new Error('BLOCK_SAVE_FAILED');
       if (Object.values(blockSaveQueues.current).every(next => pending.includes(next))) return;
     }
     throw new Error('BLOCK_SAVE_QUEUE_NOT_STABLE');
@@ -482,17 +494,21 @@ export default function StudioConceptionFormation() {
   }
 
   // ─── Sélection leçon ──────────────────────────────────────
-  async function selectLesson(mod: Module, lesson: Lesson) {
+  async function selectLesson(mod: Module, lesson: Lesson): Promise<boolean> {
+    if (currentLesson?.id === lesson.id) return true;
+    try { await flushBlockUpdates(); }
+    catch { showToast('Sauvegarde incomplète : changement de leçon annulé.', 'error'); return false; }
+    const loaded = await loadBlocks(lesson.id);
+    if (!loaded) return false;
     setAssessmentWorkspace(null);
     setCurrentModule(mod);
     setCurrentLesson(lesson);
     setSelectedBlock(null);
-    setBlocks([]);
-    await loadBlocks(lesson.id);
+    return true;
   }
 
   async function selectAssessmentWorkspace(mod: Module, lesson: Lesson, scope: 'lesson'|'module'|'final') {
-    await selectLesson(mod, lesson);
+    if (!await selectLesson(mod, lesson)) return;
     setAssessmentWorkspace({ scope, lessonId: lesson.id, moduleId: mod.id });
     setActiveLibTab('blocs');
     setSelectedBlock(null);
@@ -584,6 +600,7 @@ export default function StudioConceptionFormation() {
 
   // ─── Ajouter bloc ─────────────────────────────────────────
   async function addBlock(blockType: string) {
+    if (locked || !BLOCK_DEFS.some(def => def.type === blockType)) return;
     if (!course?.id || !currentModule?.id || !currentLesson?.id) {
       showToast('Sélectionnez d\'abord une leçon', 'error'); return;
     }
@@ -620,6 +637,9 @@ export default function StudioConceptionFormation() {
 
   // ─── Supprimer / dupliquer / réordonner les blocs ───────────
   async function deleteBlock(blockId: string) {
+    if (locked) return;
+    try { await flushBlockUpdates(); }
+    catch { showToast('Sauvegarde incomplète : suppression annulée.', 'error'); return; }
     const result = await api('delete_block', { block_id: blockId });
     if (!result.success) {
       showToast(result.message || result.error || 'Impossible de supprimer le bloc.', 'error');
@@ -630,7 +650,9 @@ export default function StudioConceptionFormation() {
   }
 
   async function duplicateBlock(block: Block) {
-    if (!course?.id || !currentLesson?.id) return;
+    if (locked || !course?.id || !currentLesson?.id) return;
+    try { await flushBlockUpdates(); }
+    catch { showToast('Sauvegarde incomplète : duplication annulée.', 'error'); return; }
     const data = await api('duplicate_block', { course_id: course.id, block_id: block.id });
     if (data.success && data.block) {
       setBlocks(bs => {
@@ -658,39 +680,57 @@ export default function StudioConceptionFormation() {
   }
 
   const dragIdx = useRef<number | null>(null);
-  // Conserver le déplacement clavier et empêcher le dépôt de fichier de réordonner les blocs.
+  // Native drag on the handle + arrow buttons: keyboard/touch users have an alternative.
   const isBlockDrag = (e: React.DragEvent) => e.dataTransfer.types.includes('application/x-omnia-existing-block');
-  function onDragStart(idx: number, e: React.DragEvent) { dragIdx.current = idx; e.dataTransfer.setData('application/x-omnia-existing-block', String(idx)); e.dataTransfer.effectAllowed='move'; }
-  function onDragOver(e: React.DragEvent, idx: number) { if (!isBlockDrag(e)) return; e.preventDefault(); setDragOverIdx(idx); }
+  function onDragStart(idx: number, e: React.DragEvent) {
+    if (locked || reorderInFlight.current || idx < 0) { e.preventDefault(); return; }
+    dragIdx.current = idx;
+    e.dataTransfer.setData('application/x-omnia-existing-block', String(idx));
+    e.dataTransfer.effectAllowed = 'move';
+  }
+  function onDragOver(e: React.DragEvent, idx: number) {
+    if (locked || reorderInFlight.current || !isBlockDrag(e)) return;
+    e.preventDefault();
+    setDragOverIdx(idx);
+  }
+  async function persistBlockOrder(next: Block[], original: Block[], lessonId: string) {
+    if (locked || reorderInFlight.current || next.length !== original.length) return;
+    reorderInFlight.current = true;
+    try {
+      await flushBlockUpdates();
+      const result = await api('reorder_blocks', { lesson_id: lessonId, ordered_ids: next.map(b => b.id) });
+      if (!result.success) throw new Error(result.message || result.error || 'Échec du déplacement');
+      // Apply only if we are still editing the same lesson.
+      if (currentLesson?.id === lessonId) setBlocks(next.map((block, position) => ({ ...block, position })));
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Impossible de réordonner les blocs.', 'error');
+      // No optimistic update was applied: leave the user's newer local edits intact.
+    } finally {
+      reorderInFlight.current = false;
+      dragIdx.current = null;
+      setDragOverIdx(null);
+    }
+  }
   async function onDrop(e: React.DragEvent, targetIdx: number) {
     if (!isBlockDrag(e)) return;
-    e.preventDefault();e.stopPropagation();
-    if (dragIdx.current === null || dragIdx.current === targetIdx) { setDragOverIdx(null); return; }
+    e.preventDefault(); e.stopPropagation();
+    const sourceIdx = dragIdx.current;
+    dragIdx.current = null;
+    setDragOverIdx(null);
+    if (locked || reorderInFlight.current || !currentLesson?.id || sourceIdx === null || sourceIdx < 0 || sourceIdx >= blocks.length || sourceIdx === targetIdx || targetIdx < 0 || targetIdx >= blocks.length) return;
     const next = [...blocks];
-    const [moved] = next.splice(dragIdx.current, 1);
+    const [moved] = next.splice(sourceIdx, 1);
     next.splice(targetIdx, 0, moved);
-    setBlocks(next); setDragOverIdx(null); dragIdx.current = null;
-    if (currentLesson?.id) {
-      const result = await api('reorder_blocks', { lesson_id: currentLesson.id, ordered_ids: next.map(b => b.id) });
-      if (!result.success) {
-        showToast(result.message || result.error || 'Impossible de réordonner les blocs.', 'error');
-        await loadBlocks(currentLesson.id);
-      }
-    }
+    await persistBlockOrder(next, blocks, currentLesson.id);
   }
 
   async function moveBlock(index: number, delta: -1 | 1) {
     const target = index + delta;
-    if (target < 0 || target >= blocks.length || !currentLesson?.id) return;
+    if (locked || reorderInFlight.current || index < 0 || target < 0 || target >= blocks.length || !currentLesson?.id) return;
     const next = [...blocks];
     const [moved] = next.splice(index, 1);
     next.splice(target, 0, moved);
-    setBlocks(next);
-    const result = await api('reorder_blocks', { lesson_id: currentLesson.id, ordered_ids: next.map(b => b.id) });
-    if (!result.success) {
-      showToast(result.message || result.error || 'Impossible de réordonner les blocs.', 'error');
-      await loadBlocks(currentLesson.id);
-    }
+    await persistBlockOrder(next, blocks, currentLesson.id);
   }
 
   async function saveCurrentPage(goNext = false) {
@@ -1640,21 +1680,16 @@ export default function StudioConceptionFormation() {
                     const isSelected = selectedBlock?.id === block.id;
                     return (
                       <div key={block.id}
-                        draggable={!locked && typeof window !== 'undefined' && window.innerWidth >= 768}
-                        onDragStart={e => onDragStart(idx, e)}
-                        onDragEnd={() => {dragIdx.current=null;setDragOverIdx(null);}}
                         onDragOver={e => onDragOver(e, idx)}
                         onDrop={e => onDrop(e, idx)}
                         className="relative group"
                         style={{ opacity: dragOverIdx === idx ? 0.5 : 1 }}>
-                        <div aria-hidden="true" className="absolute left-0 top-0 bottom-0 flex items-center -translate-x-6 opacity-0 group-hover:opacity-100 transition-opacity cursor-grab">
-                          <GripVertical size={14} style={{ color: '#9CA3AF' }} />
-                        </div>
                         <div className={`bg-white rounded-xl border transition-all ${isSelected ? 'ring-2' : ''}`}
                           style={{ borderColor: isSelected ? '#002050' : '#E4E7EC', ringColor: '#002050' }}>
                           {/* Header bloc */}
                           <div className="flex items-center justify-between px-4 py-2.5 border-b" style={{ borderColor: '#F3F4F6' }}>
                             <div className="flex items-center gap-2">
+                              <span draggable={!locked} onDragStart={e => onDragStart(idx, e)} onDragEnd={() => { dragIdx.current=null; setDragOverIdx(null); }} title="Déplacer le bloc" aria-label="Poignée de déplacement du bloc" className={`inline-flex select-none ${locked ? 'opacity-30' : 'cursor-grab'}`}><GripVertical size={15} style={{ color: '#6B7280' }} /></span>
                               {def && <def.icon size={14} style={{ color: def.color }} />}
                               <span className="text-xs font-semibold" style={{ color: '#6B7280' }}>{def?.label || block.block_type}</span>
                               {block.ai_generated && !block.ai_confirmed && (
@@ -2028,8 +2063,8 @@ function sanitizePastedHtml(rawHtml: string, rawText: string) {
     if (node.nodeType !== Node.ELEMENT_NODE) return;
     const element = node as HTMLElement;
     const tag = element.tagName.toLowerCase();
-    if (['script','style','meta','link','iframe','object'].includes(tag)) return;
-    const allowed = new Set(['p','br','strong','b','em','i','ul','ol','li','a','blockquote']);
+    if (['script','style','meta','link','iframe','object','embed','svg','math','form','input','button','textarea','template'].includes(tag)) return;
+    const allowed = new Set(['p','br','strong','b','em','i','u','ul','ol','li','a','blockquote']);
     let nextParent = parent;
     if (allowed.has(tag)) {
       const cleanTag = tag === 'b' ? 'strong' : tag === 'i' ? 'em' : tag;
@@ -2056,7 +2091,11 @@ function RichTextEditor({ value, onChange, locked, placeholder, headingLevel, la
 }) {
   const ref = useRef<HTMLDivElement | null>(null);
   const [selectionToolbar, setSelectionToolbar] = useState<{ left: number; top: number } | null>(null);
-  useEffect(() => { if (ref.current && document.activeElement !== ref.current && ref.current.innerHTML !== (value || '')) ref.current.innerHTML = value || ''; }, [value]);
+  useEffect(() => {
+    if (!ref.current || document.activeElement === ref.current) return;
+    const clean = sanitizePastedHtml(value || '', value || '');
+    if (ref.current.innerHTML !== clean) ref.current.innerHTML = clean;
+  }, [value]);
   function emit() { if (ref.current) onChange(sanitizePastedHtml(ref.current.innerHTML, ref.current.textContent || '')); }
   function command(cmd: string, arg?: string) {
     ref.current?.focus();
@@ -2250,7 +2289,7 @@ function BlockPreview({ block, def, locked, onChange, onGenerateTts, onGenerateS
   mediaAiBusy?: string | null;
   defaultLanguage?: string;
 }) {
-  const c = block.content_json;
+  const c = block.content_json || {};
   const inputCls = 'w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:border-[#002050] transition-colors';
   const style = { borderColor: '#E4E7EC' };
 
@@ -2264,7 +2303,7 @@ function BlockPreview({ block, def, locked, onChange, onGenerateTts, onGenerateS
         placeholder="Sous-titre..." language={defaultLanguage} onChange={html => onChange({ ...c, html, text: stripHtml(html) })} />
     );
     case 'text': return (
-      <RichTextEditor value={c.html || ''} locked={locked} placeholder="Saisissez votre texte..."
+      <RichTextEditor value={c.html || c.text || c.content || ''} locked={locked} placeholder="Saisissez votre texte..."
         onChange={html => onChange({ ...c, html })} />
     );
     case 'callout': return (
@@ -2505,7 +2544,7 @@ function BlockSettings({ block, locked, onUpdate, onAI, onRemoveResource, course
   onRemoveResource: () => void;
   courseId: string; moduleId: string; lessonId: string; lessonBlocks: Block[]; forcedAssessmentScope?: 'lesson'|'module'|'final'|null;
 }) {
-  const c = block.content_json;
+  const c = block.content_json || {};
   const relationActivityTypes = new Set(['qcm','true_false','open_question','exercise','assignment_upload','case_study','flashcards','interactive_table','checklist','cloze','dictation','pronunciation','matching','sentence_order','oral_response','listening_comprehension','written_expression']);
   const relationCandidates = (lessonBlocks || []).filter(item => item.id !== block.id && relationActivityTypes.has(item.block_type));
   const correctionCandidates = relationCandidates.filter(item => item.interaction_mode !== 'assessment');
@@ -2543,7 +2582,9 @@ function BlockSettings({ block, locked, onUpdate, onAI, onRemoveResource, course
   function handleMediaDrop(e:React.DragEvent<HTMLElement>,kind:string){
     e.preventDefault();e.stopPropagation();setFileDragActive(false);
     if(locked||uploading)return;
-    const file=e.dataTransfer.files?.[0];
+    if((e.dataTransfer.files?.length||0)>1){setUploadError('Déposez un seul fichier à la fois.');return;}
+    if (e.dataTransfer.files.length !== 1) { setUploadError('Déposez un seul fichier à la fois.'); return; }
+    const file=e.dataTransfer.files[0];
     if(file)void handleFileUpload(file,kind);
   }
   async function handleFileUpload(file: File, blockType: string) {
@@ -2849,9 +2890,9 @@ function BlockSettings({ block, locked, onUpdate, onAI, onRemoveResource, course
               <p className="text-sm font-semibold" style={{ color: '#002050' }}>Mode éco-data</p>
               <p className="text-xs mt-0.5" style={{ color: '#9CA3AF' }}>La vidéo n’est chargée qu’après une action de l’apprenant.</p>
             </div>
-            <div className={`w-10 h-6 rounded-full relative transition-all cursor-pointer ${c.eco_data ? 'bg-[#002050]' : 'bg-gray-200'}`} onClick={() => onUpdate({ content_json: { ...c, eco_data: !c.eco_data } })}>
+            <button type="button" role="switch" aria-checked={Boolean(c.eco_data)} aria-label="Activer le mode éco-data" disabled={locked} className={`w-10 h-6 rounded-full relative transition-all disabled:opacity-40 ${c.eco_data ? 'bg-[#002050]' : 'bg-gray-200'}`} onClick={() => onUpdate({ content_json: { ...c, eco_data: !c.eco_data } })}>
               <span className="absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform" style={{ transform: c.eco_data ? 'translateX(20px)' : 'translateX(4px)' }} />
-            </div>
+            </button>
           </label>
         </div>
       )}
