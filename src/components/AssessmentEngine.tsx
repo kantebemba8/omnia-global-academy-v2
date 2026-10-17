@@ -239,7 +239,8 @@ export function AssessmentEngine({
     return raw !== undefined && String(raw ?? '').trim().length > 0;
   }
 
-  const complete = useMemo(() => assessment?.questions.every(question => {
+  // Array.every([]) is true: an empty or unconfigured assessment must never be submittable.
+  const complete = useMemo(() => Boolean(assessment?.questions?.length) && assessment!.questions.every(question => {
     const answer = answers[question.id];
     const responseMode = effectiveResponseMode(question);
     if (['exercise','case_study'].includes(question.question_type)) {
@@ -253,7 +254,7 @@ export function AssessmentEngine({
     if (['cloze', 'matching', 'listening_comprehension'].includes(question.question_type)) return Array.isArray(answer) && answer.length > 0 && answer.every(value => String(value ?? '').trim().length > 0);
     if (question.question_type === 'sentence_order') return Array.isArray(answer) ? answer.length > 0 : String(answer ?? '').trim().length > 0;
     return answer !== undefined && String(answer).trim() !== '';
-  }) ?? false, [assessment, answers]);
+  }), [assessment, answers]);
 
   function pendingFiles(questionId: string): PendingFile[] {
     return submissionObject(questionId).files || [];

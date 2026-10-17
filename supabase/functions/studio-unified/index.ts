@@ -267,12 +267,14 @@ function assessmentPlainText(value:any){
  raw=decodeXmlEntities(decodeXmlEntities(raw)).replace(/&nbsp;|&#160;|&#xA0;/gi," ");
  return raw.replace(/<br\s*\/?\s*>/gi,"\n").replace(/<li\b[^>]*>/gi,"• ").replace(/<\/(?:p|div|li|h[1-6]|blockquote)>/gi,"\n").replace(/<!--[\s\S]*?-->/g," ").replace(/<\/?[a-z][^>]*>/gi," ").replace(/\u00a0/g," ").replace(/\r/g,"").replace(/[ \t]+\n/g,"\n").replace(/\n[ \t]+/g,"\n").replace(/[ \t]{2,}/g," ").replace(/\n{3,}/g,"\n\n").trim();
 }
-const ASSESSMENT_SECRET_KEYS=new Set(["correct_answer","correctanswer","correct_index","correctindex","expected_answer","expectedanswer","answer_key","answerkey","solution","solutions","explanation","rubric","grading_rubric","teacher_notes","instructor_notes","accepted_orders","transcript"]);
+// Defense in depth: imported question-bank content may use alternative answer-key spellings.
+// Nothing resembling a correction key may be sent before publication of the result.
+const ASSESSMENT_SECRET_KEYS=new Set(["correctanswer","correctindex","correctoption","correctoptionid","correctchoice","correctchoiceid","iscorrect","correct","expectedanswer","answer","answerkey","rightanswer","referenceanswer","modelanswer","solution","solutions","explanation","rubric","gradingrubric","gradingcriteria","evaluationrubric","scoringguide","teachernotes","instructornotes","acceptedorders","transcript"]);
 function publicAssessmentValue(value:any,depth=0):any{
  if(depth>8||value==null)return null;
  if(Array.isArray(value))return value.map(item=>publicAssessmentValue(item,depth+1));
  if(typeof value!=="object")return typeof value==="string"?assessmentPlainText(value):value;
- const out:any={};for(const [key,item] of Object.entries(value)){if(ASSESSMENT_SECRET_KEYS.has(key.toLowerCase()))continue;out[key]=publicAssessmentValue(item,depth+1);}return out;
+ const out:any={};for(const [key,item] of Object.entries(value)){if(ASSESSMENT_SECRET_KEYS.has(key.toLowerCase().replace(/[^a-z0-9]/g,"")))continue;out[key]=publicAssessmentValue(item,depth+1);}return out;
 }
 function sanitizeAssessmentValue(value:any,depth=0):any{
  if(depth>6||value==null)return value;
@@ -799,7 +801,7 @@ Deno.serve(async(req)=>{
    const realLessons=(lessons||[]).filter((l:any)=>stageType(l)==="lesson").sort((a:any,b:any)=>Number(a.position||0)-Number(b.position||0));
    const selectedPreviewLesson=realLessons.find((l:any)=>l.is_free_preview===true)||null;
    const firstLesson=selectedPreviewLesson&&firstModule&&selectedPreviewLesson.module_id===firstModule.id?selectedPreviewLesson:null; // Never substitute a paid first lesson when none was explicitly authorized.
-   const safePreviewTypes=new Set(["heading","subheading","text","separator","callout","remember","objective","example","summary","important","definition","bullet_list","numbered_list","quote","code","accordion","flashcards","interactive_table","checklist","link_button","timeline","columns","formula","chart","image","gallery","video","audio","pdf","word","excel","download","embed","vocabulary","dialogue","matching","cloze","sentence_order"]);
+   const safePreviewTypes=new Set(["heading","subheading","text","separator","callout","remember","objective","example","summary","important","definition","bullet_list","numbered_list","quote","code","accordion","flashcards","interactive_table","checklist","link_button","timeline","columns","formula","chart","image","gallery","video","audio","pdf","word","excel","download","embed","vocabulary","dialogue"]);
    async function previewBlocks(lesson:any){if(!lesson)return[];const {data,error}=await sb.from("lesson_blocks").select("id,block_type,position,title,content_json,settings_json,file_url,file_name,file_size,file_mime,storage_path,bucket_name,interaction_mode,preview_allowed").eq("lesson_id",lesson.id).order("position");if(error)throw error;const filtered=(data||[]).filter((row:any)=>row.preview_allowed===true&&String(row.interaction_mode||"content")==="content"&&safePreviewTypes.has(String(row.block_type)));return await Promise.all(filtered.map((row:any)=>decorateStudioBlock(sb,row)));}
    const effectivePreviewMode=["none","introduction","introduction_first_lesson"].includes(String(course.free_preview_mode))?course.free_preview_mode:"introduction";
    const blocks=effectivePreviewMode!=="none"?await previewBlocks(introLesson):[];
@@ -1111,6 +1113,8 @@ Deno.serve(async(req)=>{
    const {data,error}=await sb.from("courses").select("id,title,studio_status,category,level,cover_image_url,creator_id,submitted_at,updated_at,admin_comment,word_count").eq("studio_status","pending_validation").order("submitted_at",{ascending:true});if(error)throw error;return json({success:true,courses:data||[]});
   }
   if(action==="create_course"){
+   // Client-provided creator_context is never an authority grant.
+   if(String(b.creator_context||"")==="super_admin"&&!isAdmin)return json({success:false,error:"SUPER_ADMIN_ROLE_REQUIRED"},403);
    const requestedStructureContext=String(b.creator_context||"")==="structure";
    if(requestedStructureContext&&!isAdmin){const access=await validatedStructureAccess(sb,userId);if(!access)return json({success:false,error:"STRUCTURE_NOT_VALIDATED"},403);if(!hasStructurePermission(access,"can_create_courses"))return json({success:false,error:"STRUCTURE_COURSE_PERMISSION_REQUIRED"},403);}
    if(b.client_draft_key){
@@ -1246,7 +1250,9 @@ Deno.serve(async(req)=>{
   if(action==="apply_course_import"){
    const jobId=String(b.job_id||"");const {data:job,error:jobError}=await sb.from("course_import_jobs").select("*").eq("id",jobId).eq("user_id",userId).maybeSingle();if(jobError)throw jobError;if(!job)return json({success:false,error:"IMPORT_JOB_NOT_FOUND"},404);if(job.status==="applied")return json({success:false,error:"IMPORT_ALREADY_APPLIED"},409);
    if(b.blueprint&&typeof b.blueprint==="object"){await sb.from("course_import_jobs").update({blueprint:b.blueprint}).eq("id",jobId);job.blueprint=b.blueprint;}
-   const creatorContext=String(job.analysis_metadata?.creator_context||b.creator_context||"professeur");const result=await applyImportJob(sb,userId,job,{...b,creator_context:creatorContext});await sb.from("course_import_jobs").update({status:"applied",applied_at:new Date().toISOString()}).eq("id",jobId);return json({success:true,...result});
+   const creatorContext=String(job.analysis_metadata?.creator_context||b.creator_context||"professeur");
+   if(["super_admin","admin"].includes(creatorContext)&&!isAdmin)return json({success:false,error:"SUPER_ADMIN_ROLE_REQUIRED"},403);
+   const result=await applyImportJob(sb,userId,job,{...b,creator_context:creatorContext});await sb.from("course_import_jobs").update({status:"applied",applied_at:new Date().toISOString()}).eq("id",jobId);return json({success:true,...result});
   }
   const courseId=b.course_id;
   if(["admin_validate","admin_publish","admin_request_changes","admin_reject","admin_archive"].includes(action)){

@@ -6,7 +6,6 @@ import { TalentAudienceLayout } from '../../components/talent/TalentRoleLayout';
 import { employabilityRequest, VerifiedTalentCandidate } from '../../lib/employabilityApi';
 
 const BLUE = '#002050';
-const GOLD = '#BF8813';
 
 export default function VerifiedTalentCandidates() {
   const location = useLocation();
