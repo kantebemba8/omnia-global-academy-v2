@@ -1,267 +1,291 @@
-import { useEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent, type MouseEvent } from 'react';
+/**
+ * OGA Formation Studio V4 — Tiptap 3 editor
+ * Storage contract: sanitized HTML strings in the existing lesson_blocks fields.
+ * No schema/data migration is required. All pre-existing Builder callers retain
+ * the same value/onChange/locked/placeholder/headingLevel/language props.
+ */
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { EditorContent, useEditor } from '@tiptap/react';
+import { Extension } from '@tiptap/core';
+import StarterKit from '@tiptap/starter-kit';
+import { TableKit } from '@tiptap/extension-table';
+import Image from '@tiptap/extension-image';
 
-type History = { previous: string[]; current: string; future: string[] };
-const ALLOWED = new Set(['p','br','strong','em','u','ul','ol','li','a','blockquote','h2','h3','table','thead','tbody','tr','th','td']);
-const BLOCKED = new Set(['script','style','meta','link','iframe','object','embed','svg','math','form','input','button','textarea','template']);
+const ALLOWED = new Set([
+  'p', 'br', 'strong', 'em', 'u', 's', 'code', 'pre', 'ul', 'ol', 'li', 'a',
+  'blockquote', 'h1', 'h2', 'h3', 'hr', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'img',
+]);
+const BLOCKED = new Set([
+  'script', 'style', 'meta', 'link', 'iframe', 'object', 'embed', 'svg',
+  'math', 'form', 'input', 'button', 'textarea', 'template', 'video', 'audio',
+]);
+const URL_OK = /^https:\/\/[^\s<>"']+$/i;
 
-/** Sanitizes legacy HTML and Word paste before it is stored in lesson_blocks. */
+const escapeHtml = (text: string) => text.replace(/&/g, '&amp;').replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+/** Clean input HTML without executing it. Keeps the shapes already used by OGA. */
 export function cleanStudioRichHtml(raw: string): string {
-  if (typeof document === 'undefined') return raw;
-  const source = new DOMParser().parseFromString(String(raw || ''), 'text/html');
-  const target = document.createElement('div');
-  function appendSafe(node: Node, parent: Node) {
+  if (!raw) return '';
+  if (typeof document === 'undefined' || typeof DOMParser === 'undefined') return String(raw);
+  const parsed = new DOMParser().parseFromString(String(raw), 'text/html');
+  const output = document.createElement('div');
+  function visit(node: Node, into: Node): void {
     if (node.nodeType === Node.TEXT_NODE) {
-      parent.appendChild(document.createTextNode(node.textContent || ''));
+      into.appendChild(document.createTextNode(node.textContent ?? ''));
       return;
     }
     if (node.nodeType !== Node.ELEMENT_NODE) return;
-    const from = node as HTMLElement;
-    const tag = from.tagName.toLowerCase();
+    const source = node as HTMLElement;
+    const tag = source.tagName.toLowerCase();
     if (BLOCKED.has(tag)) return;
-    let into: Node = parent;
-    if (ALLOWED.has(tag) || ['b','i','h1','h4','h5','h6','div'].includes(tag)) {
-      const normalized = tag === 'b' ? 'strong' : tag === 'i' ? 'em' : tag === 'div' ? 'p' : /^h[1456]$/.test(tag) ? 'h2' : tag;
+    let parent: Node = into;
+    const normalized = tag === 'b' ? 'strong' : tag === 'i' ? 'em'
+      : tag === 'strike' || tag === 'del' ? 's' : tag === 'div' ? 'p'
+      : /^h[4-6]$/.test(tag) ? 'h3' : tag;
+    if (ALLOWED.has(normalized)) {
+      if (normalized === 'img') {
+        const src = source.getAttribute('src')?.trim() ?? '';
+        if (URL_OK.test(src)) {
+          const img = document.createElement('img');
+          img.setAttribute('src', src);
+          img.setAttribute('alt', source.getAttribute('alt') || '');
+          into.appendChild(img);
+        }
+        return;
+      }
       const element = document.createElement(normalized);
       if (normalized === 'a') {
-        const href = String(from.getAttribute('href') || '').trim();
-        if (/^https:\/\/[^\s<>]+$/i.test(href)) {
+        const href = source.getAttribute('href')?.trim() ?? '';
+        if (URL_OK.test(href)) {
           element.setAttribute('href', href);
-          element.setAttribute('rel', 'noopener noreferrer');
           element.setAttribute('target', '_blank');
+          element.setAttribute('rel', 'noopener noreferrer');
+        } else {
+          // Keep link text but never render an untrusted href.
+          Array.from(source.childNodes).forEach(child => visit(child, into));
+          return;
         }
       }
-      parent.appendChild(element);
-      into = element;
+      if (normalized === 'th' || normalized === 'td') {
+        for (const attribute of ['colspan', 'rowspan']) {
+          const n = Number(source.getAttribute(attribute));
+          if (Number.isInteger(n) && n >= 1 && n <= 20) element.setAttribute(attribute, String(n));
+        }
+      }
+      into.appendChild(element);
+      parent = element;
     }
-    Array.from(from.childNodes).forEach(child => appendSafe(child, into));
+    Array.from(source.childNodes).forEach(child => visit(child, parent));
   }
-  Array.from(source.body.childNodes).forEach(node => appendSafe(node, target));
-  // An intentionally emptied field must remain empty after save/reload.
-  if (!target.textContent?.trim() && !target.querySelector('table')) return '';
-  return target.innerHTML;
+  Array.from(parsed.body.childNodes).forEach(node => visit(node, output));
+  if (!output.textContent?.trim() && !output.querySelector('table,img')) return '';
+  return output.innerHTML;
 }
 
-function textToRichHtml(text: string): string {
-  const escape = (value: string) => value.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-  return text.replace(/\r\n?/g,'\n').split(/\n{2,}/).map(paragraph => `<p>${escape(paragraph).replace(/\n/g,'<br>')}</p>`).join('');
+function normalizeInput(raw: string): string {
+  const value = String(raw ?? '');
+  if (!value.trim()) return '';
+  // Old blocks can contain plain text, including literal angle brackets.
+  if (!/<\/?[a-z][\s\S]*?>/i.test(value)) {
+    return value.replace(/\r\n?/g, '\n').split(/\n\n+/)
+      .map(paragraph => `<p>${escapeHtml(paragraph).replace(/\n/g, '<br>')}</p>`).join('');
+  }
+  return cleanStudioRichHtml(value);
 }
 
-export default function StudioRichTextEditor({value,onChange,locked,placeholder,headingLevel,language='fr'}: {
+const clipboardGuard = Extension.create({
+  name: 'ogaSafePaste',
+  transformPastedHTML(html) {
+    return cleanStudioRichHtml(html);
+  },
+});
+
+const editableExtensions = [
+  StarterKit.configure({
+    heading: { levels: [1, 2, 3] },
+    link: { openOnClick: false, autolink: false, protocols: ['https'] },
+  }),
+  TableKit,
+  Image.configure({ allowBase64: false, inline: false }),
+  clipboardGuard,
+];
+
+const translations: Record<string, Record<string, string>> = {
+  fr: { bold: 'Gras', italic: 'Italique', underline: 'Souligner', strike: 'Barré', paragraph: 'Paragraphe',
+    bullet: 'Puces', ordered: 'Numéros', link: 'Lien HTTPS', table: 'Tableau', undo: 'Annuler',
+    redo: 'Rétablir', title: 'Titre', quote: 'Citation', code: 'Code', image: 'Image HTTPS',
+    invalid: 'Adresse HTTPS invalide', tableAdd: 'Ligne +', tableRemove: 'Supprimer tableau' },
+  en: { bold: 'Bold', italic: 'Italic', underline: 'Underline', strike: 'Strike', paragraph: 'Paragraph',
+    bullet: 'Bullets', ordered: 'Numbers', link: 'HTTPS link', table: 'Table', undo: 'Undo',
+    redo: 'Redo', title: 'Heading', quote: 'Quote', code: 'Code', image: 'HTTPS image',
+    invalid: 'Invalid HTTPS address', tableAdd: 'Add row', tableRemove: 'Delete table' },
+  es: { bold: 'Negrita', italic: 'Cursiva', underline: 'Subrayar', strike: 'Tachado', paragraph: 'Párrafo',
+    bullet: 'Viñetas', ordered: 'Números', link: 'Enlace HTTPS', table: 'Tabla', undo: 'Deshacer',
+    redo: 'Rehacer', title: 'Título', quote: 'Cita', code: 'Código', image: 'Imagen HTTPS',
+    invalid: 'Dirección HTTPS inválida', tableAdd: 'Añadir fila', tableRemove: 'Eliminar tabla' },
+};
+
+type RichTextProps = {
   value: string;
   onChange: (html: string) => void;
   locked: boolean;
   placeholder: string;
   headingLevel?: 1 | 2;
   language?: string;
-}) {
-  const host = useRef<HTMLDivElement>(null);
-  const history = useRef<History>({ previous: [], current: '', future: [] });
-  const savedSelection = useRef<Range | null>(null);
-  const [selectionTools, setSelectionTools] = useState(false);
+};
+
+export default function StudioRichTextEditor({
+  value, onChange, locked, placeholder, headingLevel, language = 'fr',
+}: RichTextProps) {
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+  const lastEmitted = useRef<string | null>(null);
+  const lastExternal = useRef(String(value ?? ''));
+  const [error, setError] = useState('');
+  const [, refreshToolbar] = useState(0);
+  const labels = translations[language.slice(0, 2).toLowerCase()] || translations.fr;
+  const initialValue = useRef(normalizeInput(String(value ?? '')));
+
+  // This memoization prevents extension recreation on every keystroke.
+  const extensions = useMemo(() => editableExtensions, []);
+  const editor = useEditor({
+    extensions,
+    content: initialValue.current,
+    editable: !locked,
+    immediatelyRender: false,
+    // Tiptap controls input/history/selection; never mutate the DOM manually.
+    editorProps: {
+      attributes: {
+        class: `oga-tiptap-content rich-editor min-h-[88px] px-3 py-3 outline-none text-slate-700 text-sm
+          [&_p]:my-2 [&_h1]:text-xl [&_h1]:font-bold [&_h2]:text-lg [&_h2]:font-semibold
+          [&_h3]:font-semibold [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6
+          [&_li]:my-1 [&_a]:text-blue-700 [&_a]:underline [&_blockquote]:border-l-4
+          [&_blockquote]:border-amber-600 [&_blockquote]:pl-3 [&_table]:my-3
+          [&_table]:w-full [&_table]:border-collapse [&_td]:border [&_td]:p-2
+          [&_th]:border [&_th]:bg-slate-100 [&_th]:p-2 [&_img]:max-w-full`,
+        role: 'textbox',
+        'aria-label': placeholder || 'Éditeur pédagogique',
+        'aria-multiline': headingLevel ? 'false' : 'true',
+        lang: language,
+      },
+      handleKeyDown: (_view, event) => {
+        if (headingLevel && event.key === 'Enter') {
+          event.preventDefault();
+          return true;
+        }
+        return false;
+      },
+    },
+    onUpdate: ({ editor: current }) => {
+      const html = current.isEmpty ? '' : cleanStudioRichHtml(current.getHTML());
+      // An intentionally emptied field must be saved as empty, never restored from stale props.
+      lastEmitted.current = html;
+      onChangeRef.current(html);
+    },
+    onSelectionUpdate: () => refreshToolbar(v => (v + 1) % 100000),
+    onTransaction: () => refreshToolbar(v => (v + 1) % 100000),
+  });
 
   useEffect(() => {
-    const element = host.current;
-    if (!element || document.activeElement === element) return;
-    const clean = cleanStudioRichHtml(String(value || ''));
-    if (element.innerHTML !== clean) element.innerHTML = clean;
-    history.current = { previous: [], current: clean, future: [] };
-  }, [value]);
+    if (!editor || editor.isDestroyed) return;
+    editor.setEditable(!locked);
+  }, [editor, locked]);
 
-  function publish() {
-    if (!host.current) return;
-    const html = cleanStudioRichHtml(host.current.innerHTML);
-    const timeline = history.current;
-    if (timeline.current !== html) {
-      timeline.previous.push(timeline.current);
-      if (timeline.previous.length > 80) timeline.previous.shift();
-      timeline.current = html;
-      timeline.future = [];
+  useEffect(() => {
+    if (!editor || editor.isDestroyed) return;
+    const incoming = String(value ?? '');
+    if (incoming === lastExternal.current || incoming === lastEmitted.current) {
+      lastExternal.current = incoming;
+      return;
     }
-    onChange(html);
-  }
-
-  function showHistory(html: string) {
-    const element = host.current;
-    if (!element) return;
-    element.innerHTML = html;
-    onChange(html);
-    element.focus();
-    const range = document.createRange();
-    range.selectNodeContents(element);
-    range.collapse(false);
-    const sel = window.getSelection();
-    sel?.removeAllRanges();
-    sel?.addRange(range);
-  }
-
-  function undo() {
-    const h = history.current;
-    if (!h.previous.length) return;
-    h.future.push(h.current);
-    h.current = h.previous.pop() as string;
-    showHistory(h.current);
-  }
-
-  function redo() {
-    const h = history.current;
-    if (!h.future.length) return;
-    h.previous.push(h.current);
-    h.current = h.future.pop() as string;
-    showHistory(h.current);
-  }
-
-  function recordSelection() {
-    const sel = window.getSelection();
-    if (!sel || !sel.rangeCount || !host.current) { setSelectionTools(false); return; }
-    const range = sel.getRangeAt(0);
-    if (!host.current.contains(range.commonAncestorContainer)) { setSelectionTools(false); return; }
-    savedSelection.current = range.cloneRange();
-    setSelectionTools(!sel.isCollapsed);
-  }
-
-  function editorRange(): Range | null {
-    const editor = host.current;
-    if (!editor) return null;
-    const selection = window.getSelection();
-    const live = selection?.rangeCount ? selection.getRangeAt(0) : null;
-    const candidate = live && editor.contains(live.commonAncestorContainer) ? live : savedSelection.current;
-    if (candidate && editor.contains(candidate.commonAncestorContainer)) return candidate.cloneRange();
-    const fallback = document.createRange();
-    fallback.selectNodeContents(editor);
-    fallback.collapse(false);
-    return fallback;
-  }
-
-  function commitInsertion(range: Range, inserted: Node) {
-    range.deleteContents();
-    const insertedNodes = inserted.nodeType === Node.DOCUMENT_FRAGMENT_NODE ? Array.from(inserted.childNodes) : [inserted];
-    range.insertNode(inserted);
-    const caret = document.createRange();
-    const lastInserted = insertedNodes[insertedNodes.length - 1];
-    if (lastInserted?.parentNode) caret.setStartAfter(lastInserted);
-    else { caret.selectNodeContents(host.current as HTMLDivElement); caret.collapse(false); }
-    caret.collapse(true);
-    const selection = window.getSelection();
-    selection?.removeAllRanges();
-    selection?.addRange(caret);
-    savedSelection.current = caret.cloneRange();
-    host.current?.focus();
-    publish();
-  }
-
-  function formatInline(tag: 'strong'|'em'|'u') {
-    if (locked) return;
-    const range = editorRange();
-    if (!range || range.collapsed) return;
-    const wrapper = document.createElement(tag);
-    wrapper.appendChild(range.extractContents());
-    range.insertNode(wrapper);
-    const select = document.createRange();
-    select.selectNodeContents(wrapper);
-    const selection = window.getSelection();
-    selection?.removeAllRanges();
-    selection?.addRange(select);
-    savedSelection.current = select.cloneRange();
-    publish();
-  }
-
-  function insertList(ordered: boolean) {
-    if (locked) return;
-    const range = editorRange();
-    if (!range) return;
-    const selected = range.toString().split(/\n/).map(line => line.trim()).filter(Boolean);
-    const list = document.createElement(ordered ? 'ol' : 'ul');
-    for (const line of selected.length ? selected : ['']) {
-      const item = document.createElement('li');
-      item.textContent = line;
-      list.appendChild(item);
+    // External block selection/reload: update without emitting another save event.
+    const cleaned = normalizeInput(incoming);
+    if (cleaned !== cleanStudioRichHtml(editor.isEmpty ? '' : editor.getHTML())) {
+      editor.commands.setContent(cleaned || '<p></p>', { emitUpdate: false });
     }
-    commitInsertion(range, list);
-  }
+    lastExternal.current = incoming;
+    lastEmitted.current = null;
+  }, [editor, value]);
 
-  function insertLink() {
-    if (locked) return;
-    const selected = editorRange();
-    if (!selected) return;
-    const url = window.prompt('Adresse HTTPS du lien');
-    if (url === null) return;
-    const href = url.trim();
-    if (!/^https:\/\/[^\s<>]+$/i.test(href)) { window.alert('Utilisez une adresse HTTPS valide.'); return; }
-    const link = document.createElement('a');
-    link.href = href;
-    link.target = '_blank';
-    link.rel = 'noopener noreferrer';
-    link.appendChild(document.createTextNode(selected.toString() || href));
-    commitInsertion(selected, link);
-  }
+  useEffect(() => {
+    if (!editor || editor.isDestroyed) return;
+    editor.setOptions({ editorProps: {
+      ...editor.options.editorProps,
+      attributes: {
+        ...editor.options.editorProps?.attributes,
+        lang: language,
+        'aria-label': placeholder || 'Éditeur pédagogique',
+        'aria-multiline': headingLevel ? 'false' : 'true',
+      },
+    } });
+  }, [editor, language, placeholder, headingLevel]);
 
-  function insertTable() {
-    if (locked) return;
-    const range = editorRange();
-    if (!range) return;
-    const table = document.createElement('table');
-    const body = document.createElement('tbody');
-    for (let r = 0; r < 2; r++) {
-      const row = document.createElement('tr');
-      for (let c = 0; c < 2; c++) {
-        const cell = document.createElement(r === 0 ? 'th' : 'td');
-        cell.textContent = r === 0 ? `Colonne ${c + 1}` : '';
-        row.appendChild(cell);
-      }
-      body.appendChild(row);
+  function setHttpsLink() {
+    if (!editor || locked) return;
+    const previous = editor.getAttributes('link').href || 'https://';
+    const result = window.prompt(labels.link, previous);
+    if (result === null) return;
+    const url = result.trim();
+    if (!url) {
+      editor.chain().focus().unsetLink().run();
+      return;
     }
-    table.appendChild(body);
-    commitInsertion(range, table);
+    if (!URL_OK.test(url)) { setError(labels.invalid); return; }
+    setError('');
+    if (editor.state.selection.empty) {
+      editor.chain().focus().insertContent(`<a href="${escapeHtml(url)}">${escapeHtml(url)}</a>`).run();
+    } else {
+      editor.chain().focus().extendMarkRange('link').setLink({ href: url, target: '_blank', rel: 'noopener noreferrer' }).run();
+    }
   }
 
-  function onPaste(event: ClipboardEvent<HTMLDivElement>) {
-    if (locked) return;
-    event.preventDefault();
-    const text = event.clipboardData.getData('text/plain') || '';
-    const html = headingLevel ? '' : event.clipboardData.getData('text/html');
-    const sanitized = headingLevel ? text.replace(/\s+/g,' ').trim() : cleanStudioRichHtml(html || textToRichHtml(text));
-    const range = editorRange();
-    if (!range) return;
-    const wrapper = document.createElement('div');
-    if (headingLevel) wrapper.textContent = sanitized;
-    else wrapper.innerHTML = sanitized;
-    const fragment = document.createDocumentFragment();
-    while (wrapper.firstChild) fragment.appendChild(wrapper.firstChild);
-    commitInsertion(range, fragment);
+  function insertHttpsImage() {
+    if (!editor || locked) return;
+    const result = window.prompt(labels.image, 'https://');
+    if (result === null) return;
+    const url = result.trim();
+    if (!URL_OK.test(url)) { setError(labels.invalid); return; }
+    setError('');
+    editor.chain().focus().setImage({ src: url, alt: '' }).run();
   }
 
-  function onKeyDown(event: KeyboardEvent<HTMLDivElement>) {
-    if (locked || !(event.ctrlKey || event.metaKey)) return;
-    const key = event.key.toLowerCase();
-    if (key === 'z') { event.preventDefault(); if (event.shiftKey) redo(); else undo(); }
-    if (key === 'y') { event.preventDefault(); redo(); }
-    if (key === 'b' && !headingLevel) { event.preventDefault(); formatInline('strong'); }
-    if (key === 'i' && !headingLevel) { event.preventDefault(); formatInline('em'); }
-    if (key === 'u' && !headingLevel) { event.preventDefault(); formatInline('u'); }
+  const toolCls = 'rounded-md border border-slate-200 px-2.5 py-1.5 text-xs font-semibold transition-colors hover:bg-blue-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#BF8813] disabled:opacity-40';
+  function tool(name: string, text: string, action: () => void, active = false, disabled = false) {
+    return <button key={name} type="button" className={`${toolCls} ${active ? 'bg-[#002050] text-white hover:bg-[#002050]' : 'bg-white text-slate-700'}`}
+      title={name} aria-label={name} aria-pressed={active} disabled={disabled || locked || !editor}
+      onMouseDown={event => event.preventDefault()} onClick={action}>{text}</button>;
   }
 
-  const tool = 'rounded-lg border px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-blue-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#BF8813]';
-  const btnProps = { type: 'button' as const, onMouseDown: (event: MouseEvent) => event.preventDefault(), className: tool };
   return <div className="rounded-xl border border-slate-200 bg-white shadow-sm focus-within:ring-2 focus-within:ring-[#BF8813]/40">
     {!locked && !headingLevel && <div className="flex flex-wrap items-center gap-1 border-b border-slate-200 bg-slate-50 px-2 py-2" role="toolbar" aria-label="Mise en forme du texte">
-      <button {...btnProps} title="Gras (Ctrl+B)" onClick={() => formatInline('strong')}><strong>G</strong></button>
-      <button {...btnProps} title="Italique (Ctrl+I)" onClick={() => formatInline('em')}><em>I</em></button>
-      <button {...btnProps} title="Souligner (Ctrl+U)" onClick={() => formatInline('u')}><u>S</u></button>
-      <button {...btnProps} title="Liste à puces" onClick={() => insertList(false)}>• Liste</button>
-      <button {...btnProps} title="Liste numérotée" onClick={() => insertList(true)}>1. Liste</button>
-      <button {...btnProps} title="Créer un lien HTTPS" onClick={insertLink}>Lien</button>
-      <button {...btnProps} title="Insérer un tableau deux colonnes" onClick={insertTable}>Tableau</button>
-      <span className="mx-1 h-5 border-l border-slate-200" aria-hidden="true"/>
-      <button {...btnProps} aria-label="Annuler la dernière modification" title="Annuler (Ctrl+Z)" onClick={undo}>↶</button>
-      <button {...btnProps} aria-label="Rétablir la dernière modification" title="Rétablir (Ctrl+Y)" onClick={redo}>↷</button>
-      <span className="ml-auto text-[10px] text-slate-500">Collage Word nettoyé · Historique local</span>
+      {tool(labels.bold, 'G', () => editor?.chain().focus().toggleBold().run(), !!editor?.isActive('bold'))}
+      {tool(labels.italic, 'I', () => editor?.chain().focus().toggleItalic().run(), !!editor?.isActive('italic'))}
+      {tool(labels.underline, 'S', () => editor?.chain().focus().toggleUnderline().run(), !!editor?.isActive('underline'))}
+      {tool(labels.strike, '̶A̶', () => editor?.chain().focus().toggleStrike().run(), !!editor?.isActive('strike'))}
+      <span aria-hidden="true" className="mx-1 h-5 border-l border-slate-200" />
+      {tool(labels.paragraph, '¶', () => editor?.chain().focus().setParagraph().run(), !!editor?.isActive('paragraph'))}
+      {tool(`${labels.title} 2`, 'H2', () => editor?.chain().focus().toggleHeading({ level: 2 }).run(), !!editor?.isActive('heading', { level: 2 }))}
+      {tool(`${labels.title} 3`, 'H3', () => editor?.chain().focus().toggleHeading({ level: 3 }).run(), !!editor?.isActive('heading', { level: 3 }))}
+      {tool(labels.bullet, '• Liste', () => editor?.chain().focus().toggleBulletList().run(), !!editor?.isActive('bulletList'))}
+      {tool(labels.ordered, '1. Liste', () => editor?.chain().focus().toggleOrderedList().run(), !!editor?.isActive('orderedList'))}
+      {tool(labels.quote, '❝', () => editor?.chain().focus().toggleBlockquote().run(), !!editor?.isActive('blockquote'))}
+      {tool(labels.code, '</>', () => editor?.chain().focus().toggleCodeBlock().run(), !!editor?.isActive('codeBlock'))}
+      {tool(labels.link, 'Lien', setHttpsLink, !!editor?.isActive('link'))}
+      {tool(labels.table, 'Tableau', () => editor?.chain().focus().insertTable({ rows: 2, cols: 2, withHeaderRow: true }).run())}
+      {tool(labels.image, 'Image', insertHttpsImage)}
+      {editor?.isActive('table') && <>
+        {tool(labels.tableAdd, '+ Ligne', () => editor?.chain().focus().addRowAfter().run())}
+        {tool(labels.tableRemove, '× Tableau', () => editor?.chain().focus().deleteTable().run())}
+      </>}
+      <span aria-hidden="true" className="mx-1 h-5 border-l border-slate-200" />
+      {tool(labels.undo, '↶', () => editor?.chain().focus().undo().run(), false, !editor?.can().undo())}
+      {tool(labels.redo, '↷', () => editor?.chain().focus().redo().run(), false, !editor?.can().redo())}
     </div>}
-    <div ref={host} contentEditable={!locked} suppressContentEditableWarning spellCheck lang={language} role="textbox"
-      aria-multiline={!headingLevel} aria-label={placeholder || 'Éditeur de contenu'} data-placeholder={placeholder}
-      onInput={publish} onPaste={onPaste} onKeyDown={onKeyDown} onKeyUp={recordSelection} onMouseUp={recordSelection}
-      onBlur={() => { setSelectionTools(false); publish(); }}
-      className={`${headingLevel === 1 ? 'text-xl font-bold' : headingLevel === 2 ? 'text-lg font-semibold' : 'text-sm'} min-h-[72px] px-3 py-3 outline-none rich-editor text-slate-700 [&_p]:my-2 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:my-1 [&_a]:text-blue-700 [&_a]:underline [&_table]:my-3 [&_table]:w-full [&_table]:border-collapse [&_td]:min-w-16 [&_td]:border [&_td]:p-2 [&_th]:border [&_th]:bg-slate-100 [&_th]:p-2`}
-    />
-    {!locked && selectionTools && <p className="border-t border-slate-100 px-3 py-1 text-[10px] text-slate-500" role="status">Texte sélectionné : utilisez la barre de mise en forme.</p>}
+    <div className={headingLevel === 1 ? '[&_.oga-tiptap-content]:text-xl [&_.oga-tiptap-content]:font-bold' : headingLevel === 2 ? '[&_.oga-tiptap-content]:text-lg [&_.oga-tiptap-content]:font-semibold' : ''}>
+      <EditorContent editor={editor} />
+    </div>
+    {!locked && <p className="px-3 pb-1 text-[10px] text-slate-500">{placeholder}</p>}
+    {error && <p className="border-t border-red-100 px-3 py-1 text-xs text-red-700" role="alert">{error}</p>}
   </div>;
 }
