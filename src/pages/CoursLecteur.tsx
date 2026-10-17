@@ -128,13 +128,13 @@ function previewModulesFromCourseInfo(info: CourseInfoPayload | null): ModuleIte
       duration_seconds: Number(lesson.cpd_calculated_time_seconds || lesson.duration_seconds || 0),
       is_free: lesson.is_free_preview === true, is_completed: false, time_spent_seconds: 0, quiz_passed: false, is_unlocked: true,
       is_intro: lesson.is_intro === true, is_module_intro: lesson.is_module_intro === true, is_conclusion: lesson.is_conclusion === true, is_final_exam: lesson.is_final_exam === true,
-      stage_type: (lesson.stage_type || (lesson.is_intro ? 'introduction' : lesson.is_module_intro ? 'module_presentation' : lesson.is_conclusion ? 'conclusion' : lesson.is_final_exam ? 'final_exam' : 'lesson')) as LessonItem['stage_type'],
+      stage_type: (lesson.is_intro ? 'introduction' : lesson.is_module_intro ? 'module_presentation' : lesson.is_conclusion ? 'conclusion' : lesson.is_final_exam ? 'final_exam' : (lesson.stage_type || 'lesson')) as LessonItem['stage_type'],
     })),
   }));
 }
 function normalizeReaderModules(input: any): ModuleItem[] {
   if (!Array.isArray(input)) return [];
-  const stageType = (lesson:any) => String(lesson?.stage_type || (lesson?.is_intro ? 'introduction' : lesson?.is_module_intro ? 'module_presentation' : lesson?.is_conclusion ? 'conclusion' : lesson?.is_final_exam ? 'final_exam' : 'lesson'));
+  const stageType = (lesson:any) => String(lesson?.is_intro ? 'introduction' : lesson?.is_module_intro ? 'module_presentation' : lesson?.is_conclusion ? 'conclusion' : lesson?.is_final_exam ? 'final_exam' : (lesson?.stage_type || 'lesson'));
   const rankModule = (mod:any) => sectionType(mod)==='introduction'?-100000:sectionType(mod)==='conclusion'?100000:sectionType(mod)==='final_exam'?200000:Number(mod?.position||0);
   const rankLesson = (lesson:any) => stageType(lesson)==='module_presentation'?-10000:stageType(lesson)==='module_summary'?10000:Number(lesson?.position||0);
   return input.filter(Boolean).map((mod:any) => ({
@@ -288,7 +288,7 @@ function CourseSidebar({ modules, currentLessonId, onSelectLesson, onGoLessonAss
     const availableOffline = offlineLessonIds.has(lesson.lesson_id);
     const canOpen = module.is_unlocked && lesson.is_unlocked !== false && (isOnline || availableOffline);
     const stage = lesson.stage_type || (lesson.is_module_intro ? 'module_presentation' : 'lesson');
-    const stageLabel = stage === 'module_presentation' ? 'Présentation' : stage === 'module_summary' ? 'Synthèse' : stage === 'introduction' ? 'Introduction' : stage === 'conclusion' ? 'Conclusion' : stage === 'final_exam' ? 'Examen final' : null;
+    const stageLabel = stage === 'module_presentation' ? 'Présentation' : stage === 'module_summary' ? 'Bilan du module' : stage === 'introduction' ? 'Introduction' : stage === 'conclusion' ? 'Conclusion' : stage === 'final_exam' ? 'Examen final' : null;
     return (
       <div key={lesson.lesson_id}>
         <button
@@ -358,7 +358,7 @@ function CourseSidebar({ modules, currentLessonId, onSelectLesson, onGoLessonAss
               </button>
               {open.has(module.module_id) && (
                 <div>
-                  {module.lessons.filter(lesson => lesson.stage_type !== 'module_summary').map(lesson => renderLessonButton(lesson, module))}
+                  {module.lessons.map(lesson => renderLessonButton(lesson, module))}
                   {module.is_unlocked && module.exam_exists === true && (
                     <button onClick={() => { const summaryLesson = module.lessons.find(lesson => lesson.stage_type === 'module_summary'); if (isOnline && module.exam_unlocked) onGoExam(module.module_id, summaryLesson?.lesson_id); }} disabled={!isOnline || !module.exam_unlocked} className="w-full flex items-center gap-2.5 pl-6 pr-4 py-2 text-left hover:bg-gray-50 transition-colors" style={{ opacity: isOnline && module.exam_unlocked ? 1 : 0.4, cursor: isOnline && module.exam_unlocked ? 'pointer' : 'default' }}>
                       <ClipboardList size={14} style={{ color: module.exam_passed ? '#1E7A52' : '#BF8813', flexShrink: 0 }} />
@@ -497,7 +497,7 @@ function CourseInfoView({ info, modules, progressPct, preview, previewMode, onSt
               <div className="mt-5 space-y-3">{modules.map((mod, mi) => <details key={mod.module_id} open={mi < 2 || !!mod.is_intro} className="group overflow-hidden rounded-xl border" style={{ borderColor:'#E4E7EC' }}>
                 <summary className="flex cursor-pointer list-none items-center gap-3 bg-slate-50 px-4 py-3.5"><span className="rounded-lg px-2 py-1 text-[10px] font-black uppercase tracking-[.08em]" style={{background:'#FFF7E1',color:'#8A650F'}}>{stageLabel(mod,mi)}</span><span className="min-w-0 flex-1 font-bold" style={{color:'#002050'}}>{mod.title}</span>{sectionType(mod) === 'module' && <span className="text-xs text-slate-400">{mod.lessons.filter(l => (l.stage_type || 'lesson') === 'lesson').length} leçon{mod.lessons.filter(l => (l.stage_type || 'lesson') === 'lesson').length>1?'s':''}</span>}<ChevronDown size={16} className="text-slate-400 transition group-open:rotate-180"/></summary>
                 {(mod.section_type || (mod.is_intro ? 'introduction' : mod.is_conclusion ? 'conclusion' : mod.is_final_exam ? 'final_exam' : 'module')) === 'module' && mod.description && <p className="border-t px-4 py-3 text-xs leading-5 text-slate-500" style={{borderColor:'#EEF1F5'}}>{mod.description}</p>}
-                <div className="divide-y" style={{borderColor:'#EEF1F5'}}>{mod.lessons.filter(lesson => lesson.stage_type !== 'module_summary').map((lesson, li) => <button key={lesson.lesson_id} type="button" onClick={() => (preview || lesson.is_unlocked !== false) ? onSelectLesson(lesson.lesson_id) : undefined} className="flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-45" disabled={!preview && lesson.is_unlocked === false}><span className="flex h-7 min-w-7 shrink-0 items-center justify-center rounded-full bg-slate-100 px-2 text-[10px] font-black" style={{color:'#002050'}}>{lesson.stage_type === 'module_presentation' ? 'Intro' : lesson.stage_type === 'module_summary' ? 'Synth.' : lesson.stage_type === 'introduction' ? 'Intro' : lesson.stage_type === 'conclusion' ? 'Fin' : lesson.stage_type === 'final_exam' ? 'Exam' : mod.lessons.filter((candidate, idx) => idx <= li && (candidate.stage_type || 'lesson') === 'lesson').length}</span><span className="min-w-0 flex-1 text-sm font-medium text-slate-700">{lesson.title}</span>{lesson.duration_seconds > 0 && <span className="text-xs text-slate-400">{Math.max(1,Math.round(lesson.duration_seconds/60))} min</span>}{!preview&&lesson.is_unlocked===false&&<span className="text-xs text-slate-400">Verrouillée</span>}</button>)}</div>
+                <div className="divide-y" style={{borderColor:'#EEF1F5'}}>{mod.lessons.map((lesson, li) => <button key={lesson.lesson_id} type="button" onClick={() => (preview || lesson.is_unlocked !== false) ? onSelectLesson(lesson.lesson_id) : undefined} className="flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-45" disabled={!preview && lesson.is_unlocked === false}><span className="flex h-7 min-w-7 shrink-0 items-center justify-center rounded-full bg-slate-100 px-2 text-[10px] font-black" style={{color:'#002050'}}>{lesson.stage_type === 'module_presentation' ? 'Intro' : lesson.stage_type === 'module_summary' ? 'Bilan' : lesson.stage_type === 'introduction' ? 'Intro' : lesson.stage_type === 'conclusion' ? 'Fin' : lesson.stage_type === 'final_exam' ? 'Exam' : mod.lessons.filter((candidate, idx) => idx <= li && (candidate.stage_type || 'lesson') === 'lesson').length}</span><span className="min-w-0 flex-1 text-sm font-medium text-slate-700">{lesson.title}</span>{lesson.duration_seconds > 0 && <span className="text-xs text-slate-400">{Math.max(1,Math.round(lesson.duration_seconds/60))} min</span>}{!preview&&lesson.is_unlocked===false&&<span className="text-xs text-slate-400">Verrouillée</span>}</button>)}</div>
               </details>)}</div>
             </section>
           </div>
@@ -908,7 +908,7 @@ export function CoursLecteur() {
 
   const handleNext = () => {
     const moduleNow = modules.find(m => m.lessons.some(l => l.lesson_id === currentLessonId));
-    const orderedVisibleLessons = modules.flatMap(mod => mod.lessons).filter(item => item.stage_type !== 'module_summary');
+    const orderedVisibleLessons = modules.flatMap(mod => mod.lessons);
     const visibleIndex = orderedVisibleLessons.findIndex(item => item.lesson_id === currentLessonId);
     const nextId = visibleIndex >= 0 ? orderedVisibleLessons[visibleIndex + 1]?.lesson_id : findNext(modules, currentLessonId ?? '');
     const nextIsOutsideModule = Boolean(nextId && moduleNow && !moduleNow.lessons.some(item => item.lesson_id === nextId));
@@ -1196,7 +1196,7 @@ export function CoursLecteur() {
   }, [isPreview, safeLatestTrainingAttempts, safeBlockStates]);
 
   const currentMod = modules.find(m => m.lessons.some(l => l.lesson_id === currentLessonId));
-  const orderedReaderLessons = modules.flatMap(m => m.lessons).filter(item => item.stage_type !== 'module_summary');
+  const orderedReaderLessons = modules.flatMap(m => m.lessons);
   const currentReaderIndex = orderedReaderLessons.findIndex(l => l.lesson_id === currentLessonId);
   const previousReaderLesson = currentReaderIndex > 0 ? orderedReaderLessons[currentReaderIndex - 1] : null;
   const nextReaderLesson = currentReaderIndex >= 0 && currentReaderIndex < orderedReaderLessons.length - 1 ? orderedReaderLessons[currentReaderIndex + 1] : null;
@@ -1662,7 +1662,7 @@ export function CoursLecteur() {
           <div className="mx-auto flex max-w-5xl items-center justify-between gap-3">
             <button type="button" disabled={!previousReaderLesson} onClick={()=>previousReaderLesson&&goToLesson(previousReaderLesson.lesson_id)} className="rounded-xl border px-4 py-2.5 text-sm font-bold disabled:opacity-30" style={{borderColor:'#CBD5E1',color:'#002050'}}>← Précédent</button>
             <div className="text-right">
-              <button type="button" disabled={!nextReaderLesson || nextReaderLesson.is_unlocked===false || (!isPreview && (!effectiveCpd || (!!lessonData?.training?.required_count && lessonData.training.passed !== true) || !quizPassed || moduleAssessmentPending))} onClick={handleNext} className="rounded-xl px-5 py-2.5 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-30" style={{background:'#002050'}}>{lesson.stage_type === 'module_presentation' ? 'Commencer le module →' : lesson.stage_type === 'module_summary' ? 'Module suivant →' : lesson.stage_type === 'introduction' ? 'Continuer →' : 'Suivant →'}</button>
+              <button type="button" disabled={!nextReaderLesson || nextReaderLesson.is_unlocked===false || (!isPreview && (!effectiveCpd || (!!lessonData?.training?.required_count && lessonData.training.passed !== true) || !quizPassed || moduleAssessmentPending))} onClick={handleNext} className="rounded-xl px-5 py-2.5 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-30" style={{background:'#002050'}}>{lesson.stage_type === 'module_presentation' ? 'Commencer le module →' : lesson.stage_type === 'module_summary' ? 'Continuer →' : lesson.stage_type === 'introduction' ? 'Continuer →' : 'Suivant →'}</button>
               {!isPreview && nextReaderLesson && (!effectiveCpd || (!!lessonData?.training?.required_count && lessonData.training.passed !== true) || !quizPassed || moduleAssessmentPending) && <p className="mt-1 max-w-xs text-xs text-slate-500">{!effectiveCpd ? `${fmtTime(Math.max(0, Number(lessonData?.required_seconds || 0) - timeSpent))} de temps pédagogique restant` : (!!lessonData?.training?.required_count && lessonData.training.passed !== true) ? 'Entraînement obligatoire à terminer' : !quizPassed ? 'Évaluation obligatoire à réussir' : 'Évaluation du module à réussir'}</p>}
             </div>
           </div>

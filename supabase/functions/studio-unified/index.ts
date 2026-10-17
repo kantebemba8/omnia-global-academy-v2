@@ -109,6 +109,9 @@ async function syncExistingOfficialAssessmentFromBlock(sb:any,block:any){
   await sb.from("assessment_questions").delete().eq("source_lesson_block_id",sourceId);
   return;
  }
+ const {data:sourceStage,error:stageLookupError}=await sb.from("course_lessons").select("stage_type,is_intro,is_module_intro,is_conclusion,is_final_exam").eq("id",String(block.lesson_id)).maybeSingle();
+ if(stageLookupError)throw stageLookupError;
+ if(!sourceStage||sourceStage.is_intro===true||sourceStage.is_module_intro===true||sourceStage.is_conclusion===true||["introduction","module_presentation","conclusion"].includes(String(sourceStage.stage_type||"")))throw new Error("OFFICIAL_ASSESSMENT_NOT_ALLOWED_ON_STAGE");
  const scope=String(block.assessment_scope||"lesson");if(!["lesson","module","final"].includes(scope))return;
  const cfg=assessmentBlockSettings(block);const required=await assessmentRequiredForBlock(sb,block,cfg.required);const now=new Date().toISOString();
  let assessmentQuery=sb.from("course_assessments").select("*").eq("course_id",String(block.course_id)).eq("scope",scope);
@@ -120,7 +123,7 @@ async function syncExistingOfficialAssessmentFromBlock(sb:any,block:any){
   const {data:course}=await sb.from("courses").select("title,assessment_policy").eq("id",String(block.course_id)).maybeSingle();const policy=course?.assessment_policy&&typeof course.assessment_policy==="object"?course.assessment_policy:{};const remediation=Math.max(1,Number(policy.default_remediation_after_attempts??3));const cooldown=Math.max(0,Number(policy.default_retry_cooldown_hours??24));
   const title=scope==="final"?`Examen final — ${course?.title||"Formation"}`:scope==="module"?"Évaluation du module":"Évaluation de la leçon";
   const inserted=await sb.from("course_assessments").insert({course_id:block.course_id,module_id:scope==="module"?block.module_id:null,lesson_id:scope==="lesson"?block.lesson_id:null,scope,title,passing_score:cfg.passing_score,max_attempts:remediation,remediation_after_attempts:remediation,retry_cooldown_hours:cooldown,remediation_mode:scope==="lesson"?"review_lesson":String(policy.default_remediation_mode||"review_module"),attempts_unlimited_for_purchased:true,required,correction_mode:"mixed",created_by:block.created_by||null,estimated_minutes:scope==="final"?45:scope==="module"?20:10}).select("*").single();if(inserted.error)throw inserted.error;assessment=inserted.data;
- }else{const updated=await sb.from("course_assessments").update({required:assessment.required===true,passing_score:cfg.passing_score,updated_at:now}).eq("id",assessment.id).select("*").single();if(updated.error)throw updated.error;assessment=updated.data;}
+ }else{const updated=await sb.from("course_assessments").update({is_active:true,required:assessment.required===true,passing_score:cfg.passing_score,updated_at:now}).eq("id",assessment.id).select("*").single();if(updated.error)throw updated.error;assessment=updated.data;}
  const qdata=assessmentQuestionDataFromBlock(block);const rubric=await rubricCriteriaForTarget(sb,sourceId);const questionPayload={...qdata,rubric:rubric.length?rubric:(Array.isArray(block.content_json?.rubric)?block.content_json.rubric:[]),updated_at:now};
  const {data:question}=await sb.from("assessment_questions").select("id").eq("assessment_id",assessment.id).eq("source_lesson_block_id",sourceId).maybeSingle();
  if(question){const upd=await sb.from("assessment_questions").update(questionPayload).eq("id",question.id);if(upd.error)throw upd.error;}
@@ -178,7 +181,7 @@ async function sessionUser(sb:any, req:Request, bodyToken=""){
 }
 async function roles(sb:any,userId:string){const {data}=await sb.from("user_roles").select("role").eq("user_id",userId);return (data||[]).map((r:any)=>r.role)}
 async function owns(sb:any,userId:string,courseId:string,permission="can_edit_courses"){const {data}=await sb.from("courses").select("creator_id,creator_context,structure_id").eq("id",courseId).maybeSingle();if(!data)return false;const rs=await roles(sb,userId);if(rs.includes("super_admin"))return true;if(String(data.creator_context||"")==="structure"){if(!data.structure_id)return false;const access=await validatedStructureAccess(sb,userId,String(data.structure_id));return hasStructurePermission(access,permission)}return String(data.creator_id)===userId}
-function coursePermissionForAction(action:string){if(action==="submit_course")return "can_submit_courses";if(["create_module","update_module","delete_module","create_lesson","update_lesson","delete_lesson","create_module_stage","create_block","update_block","delete_block","duplicate_block","remove_block_resource","reorder_blocks","ensure_special_sections","ensure_assessments","assessment_policy_update","assessment_policy_confirm_review","assessment_composition_get","assessment_section_create","assessment_section_update","assessment_section_delete","assessment_question_design_update"].includes(action))return "can_manage_lessons";if(["prepare_upload","upload_block_file","prepare_assessment_correction_upload"].includes(action))return "can_upload_files";return "can_edit_courses"}
+function coursePermissionForAction(action:string){if(action==="submit_course")return "can_submit_courses";if(["create_module","update_module","delete_module","create_lesson","update_lesson","delete_lesson","create_module_stage","create_block","update_block","delete_block","duplicate_block","remove_block_resource","reorder_blocks","ensure_special_sections","remove_final_exam","ensure_assessments","assessment_policy_update","assessment_policy_confirm_review","assessment_composition_get","assessment_section_create","assessment_section_update","assessment_section_delete","assessment_question_design_update"].includes(action))return "can_manage_lessons";if(["prepare_upload","upload_block_file","prepare_assessment_correction_upload"].includes(action))return "can_upload_files";return "can_edit_courses"}
 async function log(sb:any,courseId:string,userId:string,action:string,details:any={}){await Promise.allSettled([sb.from("course_studio_logs").insert({course_id:courseId,user_id:userId,action,details}),sb.from("course_audit_log").insert({course_id:courseId,actor_id:userId,action,entity_type:"course",metadata:details})])}
 
 
@@ -789,7 +792,7 @@ Deno.serve(async(req)=>{
    const moduleIds=(modules||[]).map((m:any)=>m.id);
    const {data:lessons,error:lessonError}=moduleIds.length?await sb.from("course_lessons").select("id,module_id,title,position,is_intro,is_module_intro,is_conclusion,is_final_exam,is_free_preview,cpd_calculated_time_seconds,stage_type").in("module_id",moduleIds).order("position"):{data:[],error:null};if(lessonError)throw lessonError;
    const sectionType=(m:any)=>String(m.section_type||(m.is_intro?"introduction":m.is_conclusion?"conclusion":m.is_final_exam?"final_exam":"module"));
-   const stageType=(l:any)=>String(l.stage_type||(l.is_intro?"introduction":l.is_module_intro?"module_presentation":l.is_conclusion?"conclusion":l.is_final_exam?"final_exam":"lesson"));
+   const stageType=(l:any)=>String(l.is_intro?"introduction":l.is_module_intro?"module_presentation":l.is_conclusion?"conclusion":l.is_final_exam?"final_exam":(l.stage_type||"lesson"));
    const introLesson=(lessons||[]).find((l:any)=>stageType(l)==="introduction")||null;
    const firstModule=(modules||[]).filter((m:any)=>sectionType(m)==="module").sort((a:any,b:any)=>Number(a.position||0)-Number(b.position||0))[0]||null;
    const firstPresentation=firstModule?(lessons||[]).filter((l:any)=>l.module_id===firstModule.id&&stageType(l)==="module_presentation")[0]||null:null;
@@ -1168,7 +1171,7 @@ Deno.serve(async(req)=>{
    { // Introduction remains mandatory for all new courses.
     const lang=normalizedCourseLanguage(b.language);
     const {data:introModule,error:moduleError}=await sb.from("course_modules").insert({course_id:data.id,title:studioCopy(lang,"intro_module"),objective:"",position:-1,is_intro:true,is_required:true,section_type:"introduction"}).select("*").single();if(moduleError)throw moduleError;
-    const {data:introLesson,error:lessonError}=await sb.from("course_lessons").insert({course_id:data.id,module_id:introModule.id,title:studioCopy(lang,"intro_module"),position:0,is_intro:true,is_required:true,content_text:""}).select("*").single();if(lessonError)throw lessonError;
+    const {data:introLesson,error:lessonError}=await sb.from("course_lessons").insert({course_id:data.id,module_id:introModule.id,title:studioCopy(lang,"intro_module"),position:0,is_intro:true,is_required:true,stage_type:"introduction",content_text:""}).select("*").single();if(lessonError)throw lessonError;
     // V3 : l’Introduction est une section de structure vide. Le créateur la construit
     // avec les mêmes blocs que les leçons ; aucun faux texte d’exemple n’est persisté.
     modules=[{...introModule,lessons:[{...introLesson,has_blocks:false,block_count:0}]}];
@@ -1263,7 +1266,7 @@ Deno.serve(async(req)=>{
   if(courseId && !["learner_get_assessment","learner_submit_assessment","prepare_assessment_submission_upload","learner_complete_remediation"].includes(action) && !(await owns(sb,userId,courseId,coursePermissionForAction(action))))return json({success:false,error:"FORBIDDEN"},403);
   // V4/A: a published pedagogical version is immutable, including for super-admin.
   // Minor public metadata edits remain possible through update_course/autosave.
-  const immutableActions=new Set(["create_module","update_module","delete_module","create_lesson","update_lesson","delete_lesson","create_module_stage","create_block","update_block","delete_block","duplicate_block","remove_block_resource","reorder_blocks","ensure_special_sections","ensure_assessments","assessment_policy_update","assessment_policy_confirm_review","assessment_section_create","assessment_section_update","assessment_section_delete","assessment_question_design_update","assessment_add_training_blocks","question_bank_add_to_assessment","ai_course_blueprint_apply","resource_rag_update","upload_block_file","apply_template","apply_course_import","reorder_lessons","reorder_modules"]);
+  const immutableActions=new Set(["create_module","update_module","delete_module","create_lesson","update_lesson","delete_lesson","create_module_stage","create_block","update_block","delete_block","duplicate_block","remove_block_resource","reorder_blocks","ensure_special_sections","remove_final_exam","ensure_assessments","assessment_policy_update","assessment_policy_confirm_review","assessment_section_create","assessment_section_update","assessment_section_delete","assessment_question_design_update","assessment_add_training_blocks","question_bank_add_to_assessment","ai_course_blueprint_apply","resource_rag_update","upload_block_file","apply_template","apply_course_import","reorder_lessons","reorder_modules"]);
   if(courseId&&immutableActions.has(action)){
    const {data:state,error:stateError}=await sb.from("courses").select("is_published,studio_status").eq("id",courseId).maybeSingle();
    if(stateError)throw stateError;
@@ -1287,6 +1290,26 @@ Deno.serve(async(req)=>{
    }
    await log(sb,courseId,userId,"special_sections_ensured"); return json({success:true,created:result});
   }
+  if(action==="remove_final_exam"){
+   const {data:course,error:courseError}=await sb.from("courses").select("is_published,studio_status").eq("id",courseId).maybeSingle();
+   if(courseError)throw courseError;
+   if(!course||course.is_published||!(["draft","changes_requested", "needs_changes"].includes(String(course.studio_status||"draft"))))return json({success:false,error:"FINAL_EXAM_ONLY_REMOVABLE_IN_DRAFT"},409);
+   const {data:finalModules,error:moduleError}=await sb.from("course_modules").select("id").eq("course_id",courseId).or("is_final_exam.eq.true,section_type.eq.final_exam");
+   if(moduleError)throw moduleError;
+   const {data:finalAssessments,error:assessmentError}=await sb.from("course_assessments").select("id").eq("course_id",courseId).eq("scope","final");
+   if(assessmentError)throw assessmentError;
+   const assessIds=(finalAssessments||[]).map((a:any)=>a.id);
+   if(assessIds.length){
+    const {count,error:attemptError}=await sb.from("assessment_attempts").select("id",{count:"exact",head:true}).in("assessment_id",assessIds);
+    if(attemptError)throw attemptError;
+    if(Number(count||0)>0)return json({success:false,error:"FINAL_EXAM_HAS_ATTEMPTS",message:"Cet examen a déjà des tentatives. Il ne peut pas être supprimé sans procédure d'archivage."},409);
+   }
+   for(const item of finalAssessments||[]){const {error}=await sb.from("course_assessments").delete().eq("id",item.id);if(error)throw error;}
+   for(const item of finalModules||[]){const {error}=await sb.from("course_modules").delete().eq("id",item.id);if(error)throw error;}
+   await recalculateCourseDuration(sb,courseId);
+   await log(sb,courseId,userId,"final_exam_removed",{module_count:(finalModules||[]).length,assessment_count:(finalAssessments||[]).length});
+   return json({success:true});
+  }
   if(action==="get_course"){
    if(isAdmin)await ensurePublishedDurationEngineMigration(sb,userId);
    await recalculateCourseDuration(sb,courseId);
@@ -1301,7 +1324,9 @@ Deno.serve(async(req)=>{
    const [{data:normalMods},{data:courseMeta}]=await Promise.all([sb.from("course_modules").select("id").eq("course_id",courseId).eq("section_type","module"),sb.from("courses").select("language").eq("id",courseId).maybeSingle()]);
    const normalCount=(normalMods||[]).length;const lang=normalizedCourseLanguage(courseMeta?.language);
    const {data,error}=await sb.from("course_modules").insert({course_id:courseId,title:b.title||`Module ${normalCount+1}`,objective:b.objective||"",position:normalCount,is_intro:false,section_type:"module"}).select("*").single();if(error)throw error;
-   await log(sb,courseId,userId,"module_created",{module_id:data.id,automatic_lessons:false});return json({success:true,module:data,intro_lesson:null});
+   const {data:bilan,error:bilanError}=await sb.from("course_lessons").insert({course_id:courseId,module_id:data.id,title:"Bilan du module",position:9999,is_intro:false,is_module_intro:false,is_required:false,stage_type:"module_summary",content_text:""}).select("*").single();
+   if(bilanError)throw bilanError;
+   await log(sb,courseId,userId,"module_created",{module_id:data.id,automatic_lessons:false,bilan_lesson_id:bilan.id});return json({success:true,module:data,intro_lesson:null,bilan_lesson:bilan});
   }
   if(action==="update_module"){
    const moduleId=String(b.module_id||"");const title=String(b.title||"").trim();if(!moduleId||!title)return json({success:false,error:"MODULE_ID_AND_TITLE_REQUIRED"},400);
@@ -1327,12 +1352,12 @@ Deno.serve(async(req)=>{
   }
   if(action==="create_module_stage"){
    const moduleId=String(b.module_id||"");const stage=String(b.stage_type||"");
-   if(stage!=="module_presentation")return json({success:false,error:"STRUCTURAL_MODULE_SUMMARY_DEPRECATED"},400);
+   if(!["module_presentation","module_summary"].includes(stage))return json({success:false,error:"INVALID_MODULE_STAGE"},400);
    const {data:mod}=await sb.from("course_modules").select("id,course_id").eq("id",moduleId).eq("section_type","module").maybeSingle();
    if(!mod||!(await owns(sb,userId,String(mod.course_id),"can_manage_lessons")))return json({success:false,error:"FORBIDDEN"},403);
    const {data:existing}=await sb.from("course_lessons").select("*").eq("module_id",moduleId).eq("stage_type",stage).maybeSingle();
    if(existing)return json({success:true,lesson:{...existing,has_blocks:false,block_count:0},existing:true});
-   const title=String(b.title|| (stage==="module_presentation"?"Présentation du module":"Synthèse du module")).trim();
+   const title=String(b.title|| (stage==="module_presentation"?"Présentation du module":"Bilan du module")).trim();
    const position=stage==="module_presentation"?-1:9999;
    const {data,error}=await sb.from("course_lessons").insert({course_id:mod.course_id,module_id:moduleId,title,position,is_intro:false,is_module_intro:stage==="module_presentation",is_required:false,stage_type:stage}).select("*").single();if(error)throw error;
    await log(sb,String(mod.course_id),userId,"module_stage_created",{module_id:moduleId,lesson_id:data.id,stage_type:stage});
@@ -1364,14 +1389,37 @@ Deno.serve(async(req)=>{
   }
   if(action==="get_blocks"){const {data,error}=await sb.from("lesson_blocks").select("*").eq("lesson_id",b.lesson_id).order("position");if(error)throw error;const ids=(data||[]).map((x:any)=>String(x.id));const sourceIds=(data||[]).filter((x:any)=>relationTypeForBlock(String(x.block_type))).map((x:any)=>String(x.id));const linkMap=new Map<string,string[]>();const rubricIncoming=new Map<string,string[]>();const correctionIncoming=new Map<string,string[]>();if(ids.length){const {data:links,error:linkError}=await sb.from("lesson_block_links").select("source_block_id,target_block_id,relation_type").or(`source_block_id.in.(${ids.join(",")}),target_block_id.in.(${ids.join(",")})`);if(linkError)throw linkError;for(const link of links||[]){const source=String(link.source_block_id),target=String(link.target_block_id),relation=String(link.relation_type);if(sourceIds.includes(source))linkMap.set(source,[...(linkMap.get(source)||[]),target]);if(relation==="rubric_for")rubricIncoming.set(target,[...(rubricIncoming.get(target)||[]),source]);if(relation==="correction_for")correctionIncoming.set(target,[...(correctionIncoming.get(target)||[]),source]);}}const blocks=await Promise.all((data||[]).map(async(row:any)=>({...await decorateStudioBlock(sb,row),linked_block_ids:linkMap.get(String(row.id))||[],rubric_block_ids:rubricIncoming.get(String(row.id))||[],correction_block_ids:correctionIncoming.get(String(row.id))||[]})));return json({success:true,blocks})}
   if(action==="create_block"){
-   const [{count},{data:courseMeta}]=await Promise.all([sb.from("lesson_blocks").select("id",{count:"exact",head:true}).eq("lesson_id",b.lesson_id),sb.from("courses").select("language").eq("id",courseId).maybeSingle()]);const pos=Number.isInteger(b.position)?b.position:(count||0);
+   const [{data:existingBlocks,error:existingBlocksError},{data:courseMeta},{data:targetLesson,error:targetLessonError}]=await Promise.all([sb.from("lesson_blocks").select("id,position").eq("lesson_id",b.lesson_id).order("position").order("created_at"),sb.from("courses").select("language").eq("id",courseId).maybeSingle(),sb.from("course_lessons").select("id,course_id,module_id,stage_type,is_intro,is_module_intro,is_conclusion").eq("id",b.lesson_id).maybeSingle()]);
+   if(existingBlocksError)throw existingBlocksError;
+   if(targetLessonError)throw targetLessonError;
+   if(!targetLesson||String(targetLesson.course_id)!==String(courseId)||String(targetLesson.module_id)!==String(b.module_id))return json({success:false,error:"BLOCK_DESTINATION_MISMATCH"},403);
+   if(String(b.interaction_mode)==="assessment"&&(targetLesson.is_intro||targetLesson.is_module_intro||targetLesson.is_conclusion||["introduction","module_presentation","conclusion"].includes(String(targetLesson.stage_type))))return json({success:false,error:"OFFICIAL_ASSESSMENT_NOT_ALLOWED_ON_STAGE"},409);
+   const existingOrder=(existingBlocks||[]).map((item:any)=>String(item.id));
+   const requestedPosition=Number(b.position);
+   const desiredIndex=Number.isInteger(requestedPosition)?Math.max(0,Math.min(existingOrder.length,requestedPosition)):existingOrder.length;
+   const pos=existingOrder.length;
    const trainingTypes=new Set(["qcm","true_false","open_question","exercise","assignment_upload","case_study","flashcards","interactive_table","checklist","cloze","dictation","pronunciation","matching","sentence_order","oral_response","listening_comprehension","written_expression"]);
    const defaultMode=trainingTypes.has(String(b.block_type))?"training":"content";
-   const {data,error}=await sb.from("lesson_blocks").insert({course_id:courseId,module_id:b.module_id,lesson_id:b.lesson_id,block_type:b.block_type,position:pos,content_json:b.content_json||defaultBlockForLanguage(b.block_type,courseMeta?.language),settings_json:b.settings_json||{},interaction_mode:["content","training","assessment"].includes(String(b.interaction_mode))?b.interaction_mode:defaultMode,assessment_scope:b.assessment_scope&&["lesson","module","final"].includes(String(b.assessment_scope))?b.assessment_scope:null,is_required:b.is_required===true,training_passing_score:Math.min(100,Math.max(0,Number(b.training_passing_score??80))),training_is_graded:b.training_is_graded!==false,created_by:userId,ai_generated:!!b.ai_generated,source_type:b.ai_generated?"ai":"manual"}).select("*").single();if(error)throw error;if(String(data.interaction_mode)==="assessment")await syncExistingOfficialAssessmentFromBlock(sb,data);await recalculateCourseDuration(sb,courseId);await log(sb,courseId,userId,"block_created",{block_id:data.id,type:data.block_type});return json({success:true,block:data});
+   const {data,error}=await sb.from("lesson_blocks").insert({course_id:courseId,module_id:b.module_id,lesson_id:b.lesson_id,block_type:b.block_type,position:pos,content_json:b.content_json||defaultBlockForLanguage(b.block_type,courseMeta?.language),settings_json:b.settings_json||{},interaction_mode:["content","training","assessment"].includes(String(b.interaction_mode))?b.interaction_mode:defaultMode,assessment_scope:b.assessment_scope&&["lesson","module","final"].includes(String(b.assessment_scope))?b.assessment_scope:null,is_required:b.is_required===true,training_passing_score:Math.min(100,Math.max(0,Number(b.training_passing_score??80))),training_is_graded:b.training_is_graded!==false,created_by:userId,ai_generated:!!b.ai_generated,source_type:b.ai_generated?"ai":"manual"}).select("*").single();if(error)throw error;
+   if(desiredIndex<existingOrder.length){
+    const finalIds=[...existingOrder];finalIds.splice(desiredIndex,0,String(data.id));
+    for(let idx=0;idx<finalIds.length;idx++){
+     const reordered=await sb.from("lesson_blocks").update({position:idx,updated_at:new Date().toISOString()}).eq("id",finalIds[idx]).eq("lesson_id",b.lesson_id);
+     if(reordered.error)throw reordered.error;
+    }
+    data.position=desiredIndex;
+   }
+   if(String(data.interaction_mode)==="assessment")await syncExistingOfficialAssessmentFromBlock(sb,data);
+   await recalculateCourseDuration(sb,courseId);await log(sb,courseId,userId,"block_created",{block_id:data.id,type:data.block_type,position:desiredIndex});return json({success:true,block:data});
   }
   if(action==="update_block"){
    const {data:blk}=await sb.from("lesson_blocks").select("id,course_id,module_id,lesson_id,storage_path,bucket_name,content_json,settings_json,block_type,interaction_mode,assessment_scope").eq("id",b.block_id).maybeSingle();if(!blk||!(await owns(sb,userId,blk.course_id,"can_manage_lessons")))return json({success:false,error:"FORBIDDEN"},403);
    const allowed:any={updated_at:new Date().toISOString()};for(const k of ["title","content_json","settings_json","file_url","file_name","file_size","file_mime","source_type","ai_generated","interaction_mode","assessment_scope","is_required","training_passing_score","training_is_graded","rag_enabled","preview_allowed"])if(b[k]!==undefined)allowed[k]=b[k]; if(allowed.interaction_mode!==undefined&&!['content','training','assessment'].includes(String(allowed.interaction_mode)))return json({success:false,error:"INVALID_INTERACTION_MODE"},400);if(allowed.assessment_scope!==undefined&&allowed.assessment_scope!==null&&!['lesson','module','final'].includes(String(allowed.assessment_scope)))return json({success:false,error:"INVALID_ASSESSMENT_SCOPE"},400);if(allowed.training_passing_score!==undefined)allowed.training_passing_score=Math.min(100,Math.max(0,Number(allowed.training_passing_score)));
+   if(String(allowed.interaction_mode||blk.interaction_mode)==="assessment"){
+    const {data:stage,error:stageError}=await sb.from("course_lessons").select("stage_type,is_intro,is_module_intro,is_conclusion").eq("id",blk.lesson_id).maybeSingle();
+    if(stageError)throw stageError;
+    if(!stage||stage.is_intro||stage.is_module_intro||stage.is_conclusion||["introduction","module_presentation","conclusion"].includes(String(stage.stage_type)))return json({success:false,error:"OFFICIAL_ASSESSMENT_NOT_ALLOWED_ON_STAGE"},409);
+   }
    const incomingContent=allowed.content_json&&typeof allowed.content_json==="object"?allowed.content_json:null;const streamUid=String(incomingContent?.cloudflare_stream_uid||blk.content_json?.cloudflare_stream_uid||"").trim();
    if(streamUid){allowed.file_url=null;allowed.content_json={...(blk.content_json||{}),...(incomingContent||{}),url:null,provider:"cloudflare_stream",cloudflare_stream_uid:streamUid};}
    else if(PRIVATE_COURSE_BUCKET_SET.has(String(blk.bucket_name||""))&&blk.storage_path){allowed.file_url=String(blk.storage_path);if(incomingContent)allowed.content_json={...incomingContent,url:String(blk.storage_path)};}
@@ -1404,7 +1452,20 @@ Deno.serve(async(req)=>{
    await recalculateCourseDuration(sb,String(blk.course_id));await log(sb,String(blk.course_id),userId,"block_resource_removed",{block_id:blockId,stream_deleted:!!streamUid});return json({success:true,block:await decorateStudioBlock(sb,data)});
   }
   if(action==="reorder_blocks"){
-   const ids=b.ordered_ids||[];for(let i=0;i<ids.length;i++)await sb.from("lesson_blocks").update({position:i,updated_at:new Date().toISOString()}).eq("id",ids[i]).eq("lesson_id",b.lesson_id);return json({success:true});
+   const lessonId=String(b.lesson_id||"");const ids=Array.isArray(b.ordered_ids)?b.ordered_ids.map(String):[];
+   if(!lessonId||!ids.length||new Set(ids).size!==ids.length)return json({success:false,error:"INVALID_BLOCK_ORDER"},400);
+   const {data:lesson,error:lessonError}=await sb.from("course_lessons").select("id,course_id").eq("id",lessonId).maybeSingle();
+   if(lessonError)throw lessonError;
+   if(!lesson||String(lesson.course_id)!==String(courseId))return json({success:false,error:"LESSON_COURSE_MISMATCH"},403);
+   const {data:actual,error:actualError}=await sb.from("lesson_blocks").select("id").eq("lesson_id",lessonId);
+   if(actualError)throw actualError;
+   const existingIds=new Set((actual||[]).map((x:any)=>String(x.id)));
+   if(existingIds.size!==ids.length||ids.some((id:string)=>!existingIds.has(id)))return json({success:false,error:"BLOCK_ORDER_STALE",message:"La liste des blocs a changé : rechargez la leçon avant de déplacer un bloc."},409);
+   for(let i=0;i<ids.length;i++){
+    const {error}=await sb.from("lesson_blocks").update({position:i,updated_at:new Date().toISOString()}).eq("id",ids[i]).eq("lesson_id",lessonId);
+    if(error)throw error;
+   }
+   return json({success:true});
   }
   if(action==="update_course"||action==="autosave"){
    if(b.course_code!==undefined){const code=String(b.course_code||"").trim().toUpperCase();if(code&&!/^[A-Z0-9][A-Z0-9._-]{1,31}$/.test(code))return json({success:false,error:"INVALID_COURSE_CODE",message:"Le code formation doit contenir 2 à 32 caractères : lettres, chiffres, tiret, point ou underscore."},400);if(code){const {data:duplicate}=await sb.from("courses").select("id").eq("course_code",code).neq("id",courseId).limit(1).maybeSingle();if(duplicate)return json({success:false,error:"COURSE_CODE_ALREADY_EXISTS",message:"Ce code de formation est déjà utilisé."},409);}b.course_code=code||null;}
@@ -1474,7 +1535,7 @@ Deno.serve(async(req)=>{
    for(const block of blocks||[]){
     if(String(block.interaction_mode)!=="assessment")continue;
     const lesson:any=lessonById.get(String(block.lesson_id));
-    const stage=String(lesson?.stage_type||(lesson?.is_intro?"introduction":lesson?.is_module_intro?"module_presentation":lesson?.is_conclusion?"conclusion":lesson?.is_final_exam?"final_exam":"lesson"));
+    const stage=String(lesson?.is_intro?"introduction":lesson?.is_module_intro?"module_presentation":lesson?.is_conclusion?"conclusion":lesson?.is_final_exam?"final_exam":lesson?.stage_type||"lesson");
     const currentScope=["lesson","module","final"].includes(String(block.assessment_scope||""))?String(block.assessment_scope):"lesson";
     const expectedScope=stage==="final_exam"?"final":stage==="module_summary"?"module":currentScope;
     if(expectedScope===currentScope)continue;
@@ -1497,7 +1558,20 @@ Deno.serve(async(req)=>{
     const existing=await q.maybeSingle();
     if(existing.error)throw existing.error;
     let assessment=existing.data;
-    if(!assessment&&!required&&!configuredBlocks.length)return null;
+    if(!assessment&&!configuredBlocks.length)return null;
+    if(assessment&&!configuredBlocks.length){
+     const questions=await sb.from("assessment_questions").select("id",{count:"exact",head:true}).eq("assessment_id",assessment.id);
+     if(questions.error)throw questions.error;
+     if(Number(questions.count||0)===0){
+      const attempts=await sb.from("assessment_attempts").select("id",{count:"exact",head:true}).eq("assessment_id",assessment.id);
+      if(attempts.error)throw attempts.error;
+      if(Number(attempts.count||0)===0){
+       const empty=await sb.from("course_assessments").update({is_active:false,required:false,updated_at:new Date().toISOString()}).eq("id",assessment.id);
+       if(empty.error)throw empty.error;
+       return null;
+      }
+     }
+    }
     if(!assessment){
      const insertPayload:any={course_id:courseId,module_id:moduleId||null,lesson_id:lessonId||null,scope,title,passing_score:passing,max_attempts:defaultRemediation,remediation_after_attempts:defaultRemediation,retry_cooldown_hours:defaultCooldown,remediation_mode:scope==="lesson"?"review_lesson":defaultMode,attempts_unlimited_for_purchased:true,required,correction_mode:"mixed",created_by:userId,estimated_minutes:scope==="final"?45:scope==="module"?20:10};
      const inserted=await sb.from("course_assessments").insert(insertPayload).select("*").single();
@@ -1541,7 +1615,7 @@ Deno.serve(async(req)=>{
     return assessment;
    };
 
-   for(const lesson of lessons||[]){if(String(lesson.stage_type||"lesson")==="lesson")await ensureOne("lesson",`Évaluation — ${lesson.title}`,lesson.module_id,lesson.id,course.lesson_passing_score||80,lessonRequired)}
+   for(const lesson of lessons||[]){if(!lesson.is_intro&&!lesson.is_module_intro&&!lesson.is_conclusion&&!lesson.is_final_exam&&String(lesson.stage_type||"lesson")==="lesson")await ensureOne("lesson",`Évaluation — ${lesson.title}`,lesson.module_id,lesson.id,course.lesson_passing_score||80,lessonRequired)}
    for(const module of mods||[]){if(!module.is_intro&&!module.is_conclusion&&!module.is_final_exam)await ensureOne("module",`Évaluation du module — ${module.title}`,module.id,undefined,course.module_passing_score||80,moduleRequired)}
    await ensureOne("final",`Examen final — ${course.title}`,undefined,undefined,course.final_passing_score||70,finalRequired);
 
@@ -1637,6 +1711,11 @@ Deno.serve(async(req)=>{
    let q=sb.from("course_assessments").select("*").eq("is_active",true);
    if(b.assessment_id)q=q.eq("id",String(b.assessment_id));else{q=q.eq("course_id",courseId).eq("scope",b.scope||"lesson");if(b.lesson_id)q=q.eq("lesson_id",b.lesson_id);else if(b.module_id)q=q.eq("module_id",b.module_id);else q=q.is("lesson_id",null).is("module_id",null);}
    const {data:a,error:assessmentLookupError}=await q.maybeSingle();if(assessmentLookupError)return json({success:false,error:"ASSESSMENT_LOOKUP_FAILED",message:"L’évaluation du module n’a pas pu être chargée.",details:assessmentLookupError.message},500);if(!a)return json({success:true,assessment:null});
+   if(String(a.scope)==="lesson"&&a.lesson_id){
+    const {data:stage,error:stageError}=await sb.from("course_lessons").select("is_intro,is_module_intro,is_conclusion,stage_type").eq("id",a.lesson_id).maybeSingle();
+    if(stageError)throw stageError;
+    if(stage&&(stage.is_intro||stage.is_module_intro||stage.is_conclusion||["introduction","module_presentation","conclusion"].includes(String(stage.stage_type||""))))return json({success:true,assessment:null});
+   }
    const assessmentPreview=b.preview===true&&await owns(sb,userId,String(a.course_id),"can_edit_courses");
    if(b.preview===true&&!assessmentPreview&&!isAdmin)return json({success:false,error:"PREVIEW_FORBIDDEN"},403);
    if(!isAdmin&&!assessmentPreview){const {data:enroll}=await sb.from("user_enrollments").select("id").eq("user_id",userId).eq("course_id",a.course_id).maybeSingle();if(!enroll)return json({success:false,error:"NOT_ENROLLED"},403);}
@@ -1666,6 +1745,11 @@ Deno.serve(async(req)=>{
    const [{data:attemptUser},{data:attemptProfile}]=await Promise.all([sb.from("users").select("country_code").eq("id",userId).maybeSingle(),sb.from("user_profiles").select("preferred_pedagogical_currency").eq("user_id",userId).maybeSingle()]);const attemptCountry=String(attemptUser?.country_code||"").toUpperCase();let attemptSuggested:string|null=null;if(attemptCountry){const {data:attemptLoc}=await sb.from("country_localization_settings").select("default_currency_code").eq("country_code",attemptCountry).eq("is_active",true).maybeSingle();attemptSuggested=attemptLoc?.default_currency_code?String(attemptLoc.default_currency_code).toUpperCase():null;}const attemptCurrency=attemptProfile?.preferred_pedagogical_currency?String(attemptProfile.preferred_pedagogical_currency).toUpperCase():attemptSuggested;
    if(isAdmin)return json({success:false,error:"PREVIEW_READ_ONLY",message:"La prévisualisation administrative Omnia ne crée aucune tentative."},403);
    const assessmentId=String(b.assessment_id||"");const {data:a,error:ae}=await sb.from("course_assessments").select("*").eq("id",assessmentId).eq("is_active",true).single();if(ae)throw ae;
+   if(String(a.scope)==="lesson"&&a.lesson_id){
+    const {data:sourceStage,error:sourceStageError}=await sb.from("course_lessons").select("is_intro,is_module_intro,is_conclusion,stage_type").eq("id",a.lesson_id).maybeSingle();
+    if(sourceStageError)throw sourceStageError;
+    if(!sourceStage||sourceStage.is_intro||sourceStage.is_module_intro||sourceStage.is_conclusion||["introduction","module_presentation","conclusion"].includes(String(sourceStage.stage_type||"")))return json({success:false,error:"OFFICIAL_ASSESSMENT_NOT_ALLOWED_ON_STAGE"},409);
+   }
    const {data:enroll}=await sb.from("user_enrollments").select("id").eq("user_id",userId).eq("course_id",a.course_id).maybeSingle();if(!enroll&&!isAdmin)return json({success:false,error:"NOT_ENROLLED"},403);
    const {data:last}=await sb.from("assessment_attempts").select("id,status,retry_available_at,remediation_required,remediation_completed_at,attempt_number").eq("assessment_id",assessmentId).eq("user_id",userId).order("attempt_number",{ascending:false}).limit(1).maybeSingle();
    if(last&&["pending_review","submitted","in_progress"].includes(last.status))return json({success:false,error:"ATTEMPT_PENDING_REVIEW",message:"Une copie est déjà en attente de correction."},409);

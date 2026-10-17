@@ -246,6 +246,8 @@ export default function StudioConceptionFormation() {
   });
   const [showPreview, setShowPreview] = useState(false);
   const [mobileLibraryOpen, setMobileLibraryOpen] = useState(false);
+  const [blockLibrarySearch, setBlockLibrarySearch] = useState('');
+  const [collapsedBlockGroups, setCollapsedBlockGroups] = useState<Record<string, boolean>>({});
   const [showHistory, setShowHistory] = useState(false);
   const [showChecklist, setShowChecklist] = useState(false);
   const [showRolePreview, setShowRolePreview] = useState(false);
@@ -516,8 +518,8 @@ export default function StudioConceptionFormation() {
     setSelectedBlockDef(null);
   }
 
-  const sectionTypeOf = (m: Module) => m.section_type || (m.is_intro ? 'introduction' : m.is_conclusion ? 'conclusion' : m.is_final_exam ? 'final_exam' : 'module');
-  const stageTypeOf = (l: Lesson) => l.stage_type || (l.is_intro ? 'introduction' : l.is_module_intro ? 'module_presentation' : l.is_conclusion ? 'conclusion' : l.is_final_exam ? 'final_exam' : 'lesson');
+  const sectionTypeOf = (m: Module) => m.is_intro ? 'introduction' : m.is_conclusion ? 'conclusion' : m.is_final_exam ? 'final_exam' : (m.section_type || 'module');
+  const stageTypeOf = (l: Lesson) => l.is_intro ? 'introduction' : l.is_module_intro ? 'module_presentation' : l.is_conclusion ? 'conclusion' : l.is_final_exam ? 'final_exam' : (l.stage_type || 'lesson');
   const moduleRank = (m: Module) => sectionTypeOf(m) === 'introduction' ? -100000 : sectionTypeOf(m) === 'conclusion' ? 100000 : sectionTypeOf(m) === 'final_exam' ? 200000 : Number(m.position || 0);
   const orderedModules = [...modules].sort((a, b) => moduleRank(a) - moduleRank(b));
   const builderModules = orderedModules.filter(m => sectionTypeOf(m) !== 'conclusion' && sectionTypeOf(m) !== 'final_exam');
@@ -535,7 +537,8 @@ export default function StudioConceptionFormation() {
     const data = await api('create_module', { course_id: course.id, title, objective: '', create_module_introduction: false });
     if (data.success) {
       const introLesson = data.intro_lesson as Lesson | undefined;
-      const newMod: Module = { ...data.module, lessons: introLesson ? [introLesson] : [] };
+      const bilanLesson = data.bilan_lesson as Lesson | undefined;
+      const newMod: Module = { ...data.module, lessons: [...(introLesson ? [introLesson] : []), ...(bilanLesson ? [bilanLesson] : [])] };
       setModules(current => {
         const endings = current.filter(m => sectionTypeOf(m) === 'conclusion' || sectionTypeOf(m) === 'final_exam');
         const before = current.filter(m => sectionTypeOf(m) !== 'conclusion' && sectionTypeOf(m) !== 'final_exam');
@@ -600,7 +603,7 @@ export default function StudioConceptionFormation() {
   }
 
   // ─── Ajouter bloc ─────────────────────────────────────────
-  async function addBlock(blockType: string) {
+  async function addBlock(blockType: string, insertionIndex?: number) {
     if (locked || !BLOCK_DEFS.some(def => def.type === blockType)) return;
     if (!course?.id || !currentModule?.id || !currentLesson?.id) {
       showToast('Sélectionnez d\'abord une leçon', 'error'); return;
@@ -609,14 +612,21 @@ export default function StudioConceptionFormation() {
       showToast('Dans le sous-espace Évaluation, ajoutez uniquement un bloc pouvant servir de question officielle.', 'error');
       return;
     }
+    try { await flushBlockUpdates(); }
+    catch { showToast('Sauvegarde en attente : ajout annulé pour éviter une perte de données.', 'error'); return; }
+    const targetLessonId = currentLesson.id;
     const defaultContent = contentDefaultForLanguage(getDefaultContent(blockType), course.language || 'fr');
     const data = await api('create_block', {
       course_id: course.id, module_id: currentModule.id, lesson_id: currentLesson.id,
       block_type: blockType, content_json: defaultContent, settings_json: {},
+      ...(typeof insertionIndex === 'number' ? { position: insertionIndex } : {}),
       ...(assessmentWorkspace ? { interaction_mode: 'assessment', assessment_scope: assessmentWorkspace.scope } : {}),
     });
     if (data.success) {
-      setBlocks(bs => [...bs, data.block]);
+      if (currentLesson?.id === targetLessonId) {
+        const refreshed = await loadBlocks(targetLessonId);
+        if (!refreshed) showToast('Bloc créé, mais rechargement impossible : actualisez cette leçon.', 'error');
+      }
       // Un nouveau bloc reste directement éditable dans le canevas.
       // Le panneau Paramètres ne s'ouvre que via l'engrenage, sur PC comme sur mobile.
       setSelectedBlock(null);
@@ -690,8 +700,8 @@ export default function StudioConceptionFormation() {
     e.dataTransfer.effectAllowed = 'move';
   }
   function onDragOver(e: React.DragEvent, idx: number) {
-    if (locked || reorderInFlight.current || !isBlockDrag(e)) return;
-    e.preventDefault();
+    if (locked || reorderInFlight.current || (!isBlockDrag(e) && !e.dataTransfer.types.includes('application/x-omnia-block'))) return;
+    e.preventDefault(); e.stopPropagation();
     setDragOverIdx(idx);
   }
   async function persistBlockOrder(next: Block[], original: Block[], lessonId: string) {
@@ -713,6 +723,15 @@ export default function StudioConceptionFormation() {
     }
   }
   async function onDrop(e: React.DragEvent, targetIdx: number) {
+    const incomingType = e.dataTransfer.getData('application/x-omnia-block');
+    if (incomingType) {
+      e.preventDefault(); e.stopPropagation();
+      setDragOverIdx(null);
+      const bounds = e.currentTarget.getBoundingClientRect();
+      const insertAfter = e.clientY > bounds.top + bounds.height / 2;
+      await addBlock(incomingType, targetIdx + (insertAfter ? 1 : 0));
+      return;
+    }
     if (!isBlockDrag(e)) return;
     e.preventDefault(); e.stopPropagation();
     const sourceIdx = dragIdx.current;
@@ -1185,16 +1204,18 @@ export default function StudioConceptionFormation() {
             {/* Onglet Blocs */}
             {activeLibTab === 'blocs' && (
               <div>
+                <input type="search" value={blockLibrarySearch} onChange={event => setBlockLibrarySearch(event.target.value)} placeholder="Rechercher parmi les 52 blocs…" aria-label="Rechercher un bloc pédagogique" className="mb-3 w-full rounded-lg border px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-amber-400" style={{borderColor:'#E4E7EC'}} />
                 {['structure', 'pedagogique', 'media', 'evaluation', 'langues', 'avance'].map(group => {
-                  const groupBlocks = visibleBlocks.filter(b => b.group === group);
+                  const groupBlocks = visibleBlocks.filter(b => b.group === group && (!blockLibrarySearch.trim() || `${b.label} ${b.type}`.toLocaleLowerCase().includes(blockLibrarySearch.trim().toLocaleLowerCase())));
                   if (groupBlocks.length === 0) return null;
                   const groupLabels: Record<string, string> = { structure: 'Structure & texte', pedagogique: 'Pédagogie', media: 'Médias & documents', evaluation: 'Activités & évaluations', avance: 'Interactions avancées', langues: 'Apprentissage des langues' };
                   return (
                     <div key={group} className="mb-4">
-                      <p className="text-xs font-bold uppercase tracking-wider mb-2" style={{ color: '#9CA3AF' }}>
-                        {groupLabels[group]} {group === 'avance' && <span className="ml-1 normal-case font-medium text-[#BF8813]">— disponibles dans toutes les formations</span>}
-                      </p>
-                      <div className="grid grid-cols-3 gap-1.5">
+                      <button type="button" aria-expanded={!collapsedBlockGroups[group]} onClick={() => setCollapsedBlockGroups(current => ({ ...current, [group]: !current[group] }))} className="mb-2 flex w-full items-center justify-between rounded-md px-1 py-1 text-left text-xs font-bold uppercase tracking-wider" style={{ color: '#6B7280' }}>
+                        <span>{groupLabels[group]} ({groupBlocks.length})</span>
+                        {collapsedBlockGroups[group] ? <ChevronDown size={13}/> : <ChevronUp size={13}/>}
+                      </button>
+                      {!collapsedBlockGroups[group] && <div className="grid grid-cols-3 gap-1.5">
                         {groupBlocks.map(def => (
                           <button key={def.type} onClick={async () => { await addBlock(def.type); setMobileLibraryOpen(false); }} disabled={locked} draggable={!locked && !!currentLesson}
                             onDragStart={(e) => { e.dataTransfer.setData('application/x-omnia-block', def.type); e.dataTransfer.effectAllowed = 'copy'; }}
@@ -1206,7 +1227,7 @@ export default function StudioConceptionFormation() {
                             <span className="text-xs leading-tight" style={{ color: '#374151', fontSize: '10px' }}>{def.label}</span>
                           </button>
                         ))}
-                      </div>
+                      </div>}
                     </div>
                   );
                 })}
@@ -1346,6 +1367,8 @@ export default function StudioConceptionFormation() {
                   {!mod.is_intro && !mod.is_conclusion && !mod.is_final_exam && (
                     <div className="mb-1 flex items-center gap-1">
                       <button type="button" onClick={() => addModuleStage(mod, 'module_presentation')} disabled={locked} className="text-[10px] px-2 py-0.5 rounded-full border" style={{borderColor:'#BF8813',color:'#92400E'}}>Présentation</button>
+                      <button type="button" onClick={() => addModuleStage(mod, 'module_summary')} disabled={locked} className="text-[10px] px-2 py-0.5 rounded-full border" style={{borderColor:'#BF8813',color:'#92400E'}}>Bilan du module</button>
+                      <button type="button" onClick={() => { const stage=(mod.lessons||[]).find(l => stageTypeOf(l)==='module_summary') || (mod.lessons||[]).find(l => stageTypeOf(l)==='lesson'); if(stage)void selectAssessmentWorkspace(mod,stage,'module'); else showToast('Créez d’abord une leçon ou un bilan du module.','error'); }} disabled={locked} className="text-[10px] px-2 py-0.5 rounded-full border" style={{borderColor:'#DDD6FE',color:'#6D28D9'}}>Configurer évaluation module (facultative)</button>
                       <button type="button" onClick={() => deleteModule(mod)} disabled={locked} className="rounded-full p-1 text-red-600 hover:bg-red-50" title="Supprimer ce module"><Trash2 size={11}/></button>
                     </div>
                   )}
@@ -1362,10 +1385,10 @@ export default function StudioConceptionFormation() {
                         {lesson.title}
                       </button>
                       {stageTypeOf(lesson) === 'lesson' && (
-                        <button type="button" onClick={() => selectAssessmentWorkspace(mod, lesson, 'lesson')} disabled={locked} className="text-[10px] px-1.5 py-0.5 rounded-full border" style={assessmentWorkspace?.lessonId===lesson.id&&assessmentWorkspace.scope==='lesson'?{background:'#7C3AED',color:'white',borderColor:'#7C3AED'}:{borderColor:'#DDD6FE',color:'#6D28D9',background:'#F5F3FF'}}>Évaluation</button>
+                        <button type="button" onClick={() => selectAssessmentWorkspace(mod, lesson, 'lesson')} disabled={locked} className="text-[10px] px-1.5 py-0.5 rounded-full border" style={assessmentWorkspace?.lessonId===lesson.id&&assessmentWorkspace.scope==='lesson'?{background:'#7C3AED',color:'white',borderColor:'#7C3AED'}:{borderColor:'#DDD6FE',color:'#6D28D9',background:'#F5F3FF'}}>Configurer évaluation</button>
                       )}
                       {stageTypeOf(lesson) === 'module_summary' && (
-                        <button type="button" onClick={() => selectAssessmentWorkspace(mod, lesson, 'module')} disabled={locked} className="text-[10px] px-1.5 py-0.5 rounded-full border" style={assessmentWorkspace?.lessonId===lesson.id&&assessmentWorkspace.scope==='module'?{background:'#7C3AED',color:'white',borderColor:'#7C3AED'}:{borderColor:'#DDD6FE',color:'#6D28D9',background:'#F5F3FF'}}>Évaluation module</button>
+                        <button type="button" onClick={() => selectAssessmentWorkspace(mod, lesson, 'module')} disabled={locked} className="text-[10px] px-1.5 py-0.5 rounded-full border" style={assessmentWorkspace?.lessonId===lesson.id&&assessmentWorkspace.scope==='module'?{background:'#7C3AED',color:'white',borderColor:'#7C3AED'}:{borderColor:'#DDD6FE',color:'#6D28D9',background:'#F5F3FF'}}>Configurer évaluation module</button>
                       )}
                       {!mod.is_intro && !mod.is_conclusion && !mod.is_final_exam && (
                         <button type="button" onClick={() => deleteLesson(mod, lesson)} disabled={locked} className="rounded-full p-0.5 text-red-500 hover:bg-red-50" title="Supprimer cette étape"><Trash2 size={10}/></button>
@@ -1417,6 +1440,7 @@ export default function StudioConceptionFormation() {
                 </div>
               ))}
               {!endingSections.some(m => sectionTypeOf(m) === 'conclusion') && <button onClick={async()=>{if(!course.id){const created=await ensureCourseCreated();if(!created)return;} const d=await api('ensure_special_sections',{course_id:courseRef.current.id,include_final_exam:false}); if(d.success){await reloadCourse(courseRef.current.id);showToast('Conclusion prête à construire');}else showToast(d.message||d.error||'Création impossible','error');}} disabled={locked} className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg border border-dashed flex-shrink-0 disabled:opacity-40" style={{borderColor:'#BF8813',color:'#92400E'}}><Plus size={11}/> Ajouter la conclusion</button>}
+              {endingSections.some(m => sectionTypeOf(m) === 'final_exam') && !locked && <button type="button" onClick={async()=>{if(!course.id||!window.confirm('Retirer l’examen final de ce brouillon ? Les tentatives existantes seront protégées.'))return;const result=await api('remove_final_exam',{course_id:course.id});if(result.success){await reloadCourse(course.id);showToast('Examen final retiré du brouillon.');}else showToast(result.message||result.error||'Impossible de retirer cet examen','error');}} className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg border border-red-200 text-red-600"><Trash2 size={11}/> Retirer l’examen final</button>}
               {!endingSections.some(m => sectionTypeOf(m) === 'final_exam') && <button onClick={async()=>{if(!course.id){const created=await ensureCourseCreated();if(!created)return;} const d=await api('ensure_special_sections',{course_id:courseRef.current.id,include_final_exam:true}); if(d.success){await reloadCourse(courseRef.current.id);showToast('Examen final facultatif ajouté');}else showToast(d.message||d.error||'Création impossible','error');}} disabled={locked} className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg border border-dashed flex-shrink-0 disabled:opacity-40" style={{borderColor:'#BF8813',color:'#92400E'}}><Plus size={11}/> Ajouter un examen final (facultatif)</button>}
               <button onClick={runQualityCheck} className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg border flex-shrink-0" style={{background:'white',color:'#1E7A52',borderColor:'#1E7A52'}}><CheckCircle size={11}/> Qualité</button>
               <button onClick={()=>{setShowFinalization(true);setCurrentModule(null);setCurrentLesson(null);setBlocks([]);setSelectedBlock(null);}} className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg border flex-shrink-0" style={showFinalization?{background:'#002050',color:'white',borderColor:'#002050'}:{background:'white',color:'#002050',borderColor:'#002050'}}><ShieldCheck size={11}/> Finalisation</button>
@@ -1646,7 +1670,7 @@ export default function StudioConceptionFormation() {
                       <button type="button" onClick={() => setBuilderImportTarget({ type: 'lesson', id: currentLesson.id })} className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold" style={{ borderColor: '#E4E7EC', color: '#002050' }}>
                         <UploadCloud size={13} /> Importer un document dans cette leçon
                       </button>
-                      {(currentLesson.stage_type || (currentLesson.is_module_intro ? 'module_presentation' : currentLesson.is_intro ? 'introduction' : currentLesson.is_conclusion ? 'conclusion' : currentLesson.is_final_exam ? 'final_exam' : 'lesson')) === 'lesson' && (
+                      {stageTypeOf(currentLesson) === 'lesson' && (
                         <label className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold" style={{ borderColor:'#E4E7EC', color:'#002050' }}>
                           <input
                             type="checkbox"
@@ -1686,7 +1710,7 @@ export default function StudioConceptionFormation() {
                         onDragOver={e => onDragOver(e, idx)}
                         onDrop={e => onDrop(e, idx)}
                         className="relative group"
-                        style={{ opacity: dragOverIdx === idx ? 0.5 : 1 }}>
+                        style={{ opacity: dragOverIdx === idx && dragIdx.current !== null ? 0.5 : 1, outline: dragOverIdx === idx ? '2px dashed #BF8813' : undefined, outlineOffset: dragOverIdx === idx ? 2 : undefined }}>
                         <div className={`bg-white rounded-xl border transition-all ${isSelected ? 'ring-2' : ''}`}
                           style={{ borderColor: isSelected ? '#002050' : '#E4E7EC', ringColor: '#002050' }}>
                           {/* Header bloc */}
