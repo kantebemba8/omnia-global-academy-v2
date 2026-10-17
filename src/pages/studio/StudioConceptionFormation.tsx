@@ -1,6 +1,6 @@
 import { openInternalPreviewUrl } from '../../lib/mobile';
 import MobileBuilderAdvice from '../../components/MobileBuilderAdvice';
-import { Component, useState, useEffect, useCallback, useRef, type ReactNode } from 'react';
+import { Component, useState, useEffect, useCallback, useRef, useMemo, type ReactNode } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { AssessmentPolicyPanel } from '../../components/AssessmentPolicyPanel';
 import { edgeAuthHeaders } from '../../lib/edgeAuth';
@@ -12,6 +12,8 @@ import BuilderImportDialog from '../../components/studio/BuilderImportDialog';
 import RichTextEditor from '../../components/studio/StudioRichTextEditor';
 import StudioCollectionControls from '../../components/studio/StudioCollectionControls';
 import StudioSortableBlock from '../../components/studio/StudioSortableBlock';
+import Uppy from '@uppy/core';
+import { transferCancelled, uploadSignedResource } from '../../lib/studioTransfer';
 import { DndContext, PointerSensor, TouchSensor, KeyboardSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { STUDIO_MEDIA_POLICY, checkStudioMediaFile, type StudioMediaKind } from '../../lib/studioMediaPolicy';
@@ -2384,6 +2386,8 @@ function BlockPreview({ block, def, locked, onChange, onGenerateTts, onGenerateS
             </div>
           ))}
         </div>
+        {(!Number.isInteger(c.correctIndex) || c.correctIndex < 0 || c.correctIndex >= (c.options || ['', '', '', '']).length) &&
+          <p role="alert" className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">Sélectionnez une nouvelle bonne réponse avant de publier ce QCM. Aucune réponse ne sera choisie automatiquement après une suppression.</p>}
         <textarea className={inputCls} style={{ ...style, resize: 'none' }} rows={2}
           value={c.explanation || ''} onChange={e => onChange({ ...c, explanation: e.target.value })} placeholder="Explication de la bonne réponse..." disabled={locked} />
       </div>
@@ -2578,10 +2582,23 @@ function BlockSettings({ block, locked, onUpdate, onAI, onRemoveResource, onBefo
   const style = { borderColor: '#E4E7EC' };
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [transferCancellable, setTransferCancellable] = useState(false);
   const [uploadStatus, setUploadStatus] = useState('');
   const [uploadError, setUploadError] = useState('');
   const [fileDragActive, setFileDragActive] = useState(false);
   const uploadInFlight = useRef(false);
+  const transferController = useRef<AbortController | null>(null);
+  const mediaUppy = useMemo(() => new Uppy({
+    id: `oga-block-upload-${block.id}`,
+    autoProceed: false,
+    restrictions: {
+      maxNumberOfFiles: 1,
+      minFileSize: 1,
+      maxFileSize: STUDIO_MEDIA_POLICY[block.block_type as StudioMediaKind]?.maxBytes || undefined,
+      allowedFileTypes: STUDIO_MEDIA_POLICY[block.block_type as StudioMediaKind]?.extensions.map(extension => `.${extension}`),
+    },
+  }), [block.id, block.block_type]);
+  useEffect(() => () => { transferController.current?.abort(); mediaUppy.destroy(); }, [mediaUppy]);
   const showOptionalBlockTitle = !['heading','subheading','separator','callout','remember','objective','example','summary','important','definition','correction','quote'].includes(block.block_type);
   const resourceRagCapable = ['pdf','word','excel','download'].includes(block.block_type);
   const previewProtectedResource = ['image','gallery','video','audio','pdf','word','excel','download','embed'].includes(block.block_type);
@@ -2602,14 +2619,21 @@ function BlockSettings({ block, locked, onUpdate, onAI, onRemoveResource, onBefo
       setUploadError('Type de ressource non pris en charge.'); return;
     }
     const mediaKind = blockType as StudioMediaKind;
-    try { checkStudioMediaFile(file, mediaKind); }
-    catch(error) { setUploadError(error instanceof Error ? error.message : 'Fichier invalide'); return; }
+    try {
+      checkStudioMediaFile(file, mediaKind);
+      mediaUppy.getFiles().forEach(item => mediaUppy.removeFile(item.id));
+      mediaUppy.addFile({ name: file.name, type: file.type || undefined, data: file, source: 'oga-block' });
+      if (mediaUppy.getFiles().length !== 1) throw new Error('Uppy n’a pas accepté le média.');
+    } catch(error) { setUploadError(error instanceof Error ? error.message : 'Fichier invalide'); return; }
+    const controller = new AbortController();
+    transferController.current = controller;
     uploadInFlight.current = true;
-    setUploading(true); setUploadProgress(5);
+    setUploading(true); setUploadProgress(5); setTransferCancellable(false);
     try {
       // Do not let an older autosave overwrite the metadata committed by upload_block_file.
       setUploadStatus('Enregistrement des modifications en attente…');
       await onBeforeUpload();
+      if (controller.signal.aborted) throw new DOMException('Annulé', 'AbortError');
       const ext = file.name.split('.').pop()?.toLowerCase() || 'bin';
       const bucket = STUDIO_MEDIA_POLICY[mediaKind].bucket;
       // A unique object key avoids serving a cached older version after a new upload.
@@ -2625,17 +2649,18 @@ function BlockSettings({ block, locked, onUpdate, onAI, onRemoveResource, onBefo
         const uploadUrl = String(prepared.upload_url || '');
         const streamUid = String(prepared.stream_uid || '');
         if (!uploadUrl || !streamUid) throw new Error('Réponse Cloudflare Stream incomplète');
-        setUploadStatus('Envoi de la vidéo vers Cloudflare Stream…'); setUploadProgress(20);
+        setUploadStatus('Envoi de la vidéo vers Cloudflare Stream…'); setUploadProgress(20); setTransferCancellable(true);
         if (prepared.protocol === 'stream_tus') {
           // Cloudflare TUS offsets are authoritative; never assume the server accepted an entire chunk.
           const chunkSize = Math.max(256 * 1024, Number(prepared.chunk_size_bytes || 50 * 1024 * 1024));
           let offset = 0;
           while (offset < file.size) {
             const chunk = file.slice(offset, Math.min(file.size, offset + chunkSize));
+            if (controller.signal.aborted) throw new DOMException('Annulé', 'AbortError');
             const res = await fetch(uploadUrl, {
               method: 'PATCH',
               headers: { 'Tus-Resumable': '1.0.0', 'Upload-Offset': String(offset), 'Content-Type': 'application/offset+octet-stream' },
-              body: chunk,
+              body: chunk, signal: controller.signal,
             });
             if (!res.ok) throw new Error(`Échec du transfert vidéo TUS (${res.status})`);
             const rawOffset = res.headers.get('Upload-Offset');
@@ -2649,10 +2674,14 @@ function BlockSettings({ block, locked, onUpdate, onAI, onRemoveResource, onBefo
           }
         } else if (prepared.protocol === 'stream_basic') {
           const form = new FormData(); form.append('file', file, file.name);
-          const res = await fetch(uploadUrl, { method: 'POST', body: form });
-          if (!res.ok) throw new Error(`Échec du transfert Cloudflare Stream (${res.status})`);
+          await uploadSignedResource(uploadUrl, 'POST', form, {
+            signal: controller.signal,
+            onProgress: (sent, total) => setUploadProgress(20 + Math.round(sent / total * 65)),
+          });
           setUploadProgress(85);
         } else throw new Error('Protocole vidéo non reconnu.');
+        setTransferCancellable(false);
+        if (controller.signal.aborted) throw new DOMException('Annulé', 'AbortError');
         setUploadStatus('Enregistrement de la vidéo dans OGA…');
         const saved = await api('upload_block_file', {
           block_id: block.id, course_id: courseId, module_id: moduleId, lesson_id: lessonId,
@@ -2667,11 +2696,13 @@ function BlockSettings({ block, locked, onUpdate, onAI, onRemoveResource, onBefo
       if (prepared.provider !== 'supabase_storage' || !prepared.signedUrl) {
         throw new Error('Lien sécurisé de téléversement Supabase absent ou incorrect.');
       }
-      setUploadStatus('Envoi du fichier vers le stockage OGA…'); setUploadProgress(35);
-      const res = await fetch(String(prepared.signedUrl), {
-        method: 'PUT', headers: { 'Content-Type': file.type || 'application/octet-stream' }, body: file,
+      setUploadStatus('Envoi du fichier vers le stockage OGA…'); setUploadProgress(35); setTransferCancellable(true);
+      await uploadSignedResource(String(prepared.signedUrl), 'PUT', file, {
+        signal: controller.signal, contentType: file.type || 'application/octet-stream',
+        onProgress: (sent, total) => setUploadProgress(35 + Math.round(sent / total * 50)),
       });
-      if (!res.ok) throw new Error(`Téléversement refusé (${res.status}).`);
+      setTransferCancellable(false);
+      if (controller.signal.aborted) throw new DOMException('Annulé', 'AbortError');
       setUploadProgress(85); setUploadStatus('Enregistrement de la ressource dans OGA…');
       const saved = await api('upload_block_file', {
         block_id: block.id, course_id: courseId, module_id: moduleId, lesson_id: lessonId,
@@ -2693,12 +2724,19 @@ function BlockSettings({ block, locked, onUpdate, onAI, onRemoveResource, onBefo
       onResourceUploaded(authoritative);
       setUploadProgress(100); setUploadStatus('Ressource enregistrée.');
     } catch (error) {
-      console.error('Studio B2 media upload:', error);
-      setUploadError(error instanceof Error ? error.message : 'Téléversement impossible.');
-      setUploadStatus('');
+      if (transferCancelled(error)) {
+        setUploadStatus('Téléversement annulé : aucune nouvelle ressource n’a été associée au bloc.');
+      } else {
+        console.error('Studio media upload:', error);
+        setUploadError(error instanceof Error ? error.message : 'Téléversement impossible.');
+        setUploadStatus('');
+      }
     } finally {
+      if (transferController.current === controller) transferController.current = null;
       uploadInFlight.current = false;
+      setTransferCancellable(false);
       setUploading(false);
+      mediaUppy.getFiles().forEach(item => mediaUppy.removeFile(item.id));
     }
   }
 
@@ -2706,6 +2744,10 @@ function BlockSettings({ block, locked, onUpdate, onAI, onRemoveResource, onBefo
     <div className="space-y-4">
       {uploadError && <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{uploadError}</div>}
       {uploadStatus && <div role="status" aria-live="polite" className="text-xs font-medium text-[#002050]">{uploadStatus}{uploading ? ` · ${uploadProgress}%` : ''}</div>}
+      {uploading && <div className="space-y-2" role="group" aria-label="Téléversement en cours">
+        <progress className="h-2 w-full accent-[#BF8813]" value={uploadProgress} max={100} aria-label="Progression du transfert" />
+        {transferCancellable && <button type="button" onClick={() => transferController.current?.abort()} className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-700">Annuler le téléversement</button>}
+      </div>}
       {showOptionalBlockTitle && <div>
         <label className="block text-xs font-semibold mb-1.5" style={{ color: '#002050' }}>Nom affiché (facultatif)</label>
         <input className={inputCls} style={style} value={block.title || ''}

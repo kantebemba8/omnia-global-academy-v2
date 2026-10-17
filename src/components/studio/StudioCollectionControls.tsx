@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { ChevronDown, ChevronUp, Plus, Trash2 } from 'lucide-react';
 import { STUDIO_COLLECTIONS, editStudioCollection } from '../../lib/studioBlockCollections';
 
@@ -10,16 +11,18 @@ type Props = {
 
 /** Dedicated controls for nested items used by the existing 52 editor types. */
 export default function StudioCollectionControls({ blockType, content, locked, onChange }: Props) {
+  const [collectionError, setCollectionError] = useState('');
   const definitions = STUDIO_COLLECTIONS[blockType] || [];
   if (!definitions.length) return null;
 
   function update(key: string, action: 'add' | 'remove' | 'up' | 'down', index = 0) {
-    try { onChange(editStudioCollection(content || {}, blockType, key, action, index)); }
-    catch (error) { console.error('Studio collection operation rejected', error); }
+    try { setCollectionError(''); onChange(editStudioCollection(content || {}, blockType, key, action, index)); }
+    catch (error) { setCollectionError(error instanceof Error ? error.message : 'Modification impossible'); }
   }
 
   return <details className="rounded-xl border border-slate-200 bg-slate-50 p-3">
     <summary className="cursor-pointer text-xs font-bold text-[#002050]">Organiser les éléments internes</summary>
+    {collectionError && <p role="alert" className="mt-2 rounded border border-red-200 bg-red-50 p-2 text-xs text-red-700">{collectionError}</p>}
     <p className="mt-2 text-[11px] text-slate-600">Ajoutez, retirez ou déplacez les éléments sans perdre les données et réglages associés. Les champs se modifient dans le bloc central.</p>
     {definitions.map(def => {
       const items = Array.isArray(content?.[def.key]) ? content[def.key] as unknown[] : [];

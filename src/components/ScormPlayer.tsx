@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { AlertCircle, Maximize2, Minimize2, RefreshCw, WifiOff } from 'lucide-react';
 import { useOmniaNetworkStatus } from '../hooks/useOmniaNetwork';
 import { edgeAuthHeaders } from '../lib/edgeAuth';
+import { isTrustedScormMessage } from '../lib/studioScormSecurity';
 
 interface ScormPlayerProps {
   scormUrl: string;
@@ -112,6 +113,8 @@ export function ScormPlayer({
 
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
+      // A different tab, advertisement or iframe must never mark this SCORM complete.
+      if (!isTrustedScormMessage(event, iframeRef.current?.contentWindow, scormUrl, window.location.origin)) return;
       const data = event.data;
       if (!data || typeof data !== 'object') return;
       if (data.type === 'omnia-scorm-progress') {
@@ -131,7 +134,7 @@ export function ScormPlayer({
     };
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
-  }, []);
+  }, [scormUrl]);
 
   useEffect(() => {
     if (!network.connected) { setLoading(false); return; }

@@ -77,7 +77,7 @@ export function editStudioCollection(
   if (blockType === 'qcm' && key === 'options') {
     const originalCorrect = Number(content.correctIndex || 0);
     if (action === 'remove') {
-      result.correctIndex = index === originalCorrect ? 0 : Math.max(0, originalCorrect - (index < originalCorrect ? 1 : 0));
+      result.correctIndex = index === originalCorrect ? -1 : Math.max(0, originalCorrect - (index < originalCorrect ? 1 : 0));
     } else if (action === 'up' || action === 'down') {
       const other = index + (action === 'up' ? -1 : 1);
       result.correctIndex = originalCorrect === index ? other : originalCorrect === other ? index : originalCorrect;

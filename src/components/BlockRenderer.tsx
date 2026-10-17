@@ -788,9 +788,11 @@ function QcmBlock({ block, onAnswer }: { block: Block; onAnswer?: (id: string, a
   const c = block.content_json || {};
   const [selected, setSelected] = useState<number | null>(null);
   const [revealed, setRevealed] = useState(false);
+  const options: unknown[] = Array.isArray(c.options) ? c.options : [];
+  const configured = Number.isInteger(c.correctIndex) && c.correctIndex >= 0 && c.correctIndex < options.length;
 
   function submit() {
-    if (selected === null) return;
+    if (selected === null || !configured) return;
     setRevealed(true);
     const correct = selected === c.correctIndex;
     onAnswer?.(block.id, selected, correct);
@@ -801,8 +803,9 @@ function QcmBlock({ block, onAnswer }: { block: Block; onAnswer?: (id: string, a
       <p className="font-semibold mb-4 text-sm" style={{ color: '#002050' }}>
         ❓ {c.question || ''}
       </p>
+      {!configured && <p role="status" className="mb-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">Cet exercice est en cours de configuration. Il ne peut pas encore être noté.</p>}
       <div className="space-y-2 mb-4">
-        {(c.options || []).map((opt: string, i: number) => {
+        {options.map((opt, i: number) => {
           const isSelected = selected === i;
           const isCorrect = revealed && i === c.correctIndex;
           const isWrong = revealed && isSelected && i !== c.correctIndex;
@@ -824,7 +827,7 @@ function QcmBlock({ block, onAnswer }: { block: Block; onAnswer?: (id: string, a
         })}
       </div>
       {!revealed ? (
-        <button onClick={submit} disabled={selected === null}
+        <button onClick={submit} disabled={selected === null || !configured}
           className="px-5 py-2 rounded-xl text-sm font-bold text-white disabled:opacity-40"
           style={{ background: '#002050' }}>
           Valider ma réponse
