@@ -14,6 +14,24 @@ const cors = {"Access-Control-Allow-Origin":"*","Access-Control-Allow-Headers":"
 const json=(d:unknown,s=200)=>new Response(JSON.stringify(d),{status:s,headers:{...cors,"Content-Type":"application/json"}});
 
 const STUDIO_UPLOAD_BUCKETS=new Set<string>(["course-images",...PRIVATE_COURSE_BUCKET_SET]);
+// B2: validate file metadata *before* issuing signed object-upload links.
+// Keep unbound cover/assisted uploads unchanged: those use the same action without block_id.
+const STUDIO_BLOCK_MEDIA_POLICY:Record<string,{bucket:string;extensions:string[];maxBytes:number|null}>={
+ image:{bucket:"course-images",extensions:["jpg","jpeg","png","gif","webp"],maxBytes:20*1024*1024},
+ video:{bucket:"course-videos",extensions:["mp4","mov","avi","mkv","webm"],maxBytes:null},
+ audio:{bucket:"course-audios",extensions:["mp3","wav","ogg","m4a"],maxBytes:50*1024*1024},
+ pdf:{bucket:"course-documents",extensions:["pdf"],maxBytes:25*1024*1024},
+ word:{bucket:"course-documents",extensions:["doc","docx"],maxBytes:25*1024*1024},
+ excel:{bucket:"course-excel",extensions:["xls","xlsx","csv"],maxBytes:25*1024*1024},
+ scorm:{bucket:"course-scorm",extensions:["zip"],maxBytes:50*1024*1024},
+ download:{bucket:"course-resources",extensions:["pdf","doc","docx","xls","xlsx","csv","ppt","pptx","txt","md","zip","png","jpg","jpeg","webp","gif","mp3","wav","ogg","m4a","mp4","webm"],maxBytes:50*1024*1024},
+};
+function studioMediaExt(name:unknown){return String(name||"").split(".").pop()?.toLowerCase().trim()||""}
+function studioMediaMetadataValid(kind:string,bucket:string,fileName:unknown,size:unknown){
+ const policy=STUDIO_BLOCK_MEDIA_POLICY[kind];if(!policy||policy.bucket!==bucket)return false;
+ const bytes=Number(size);return !!String(fileName||"").trim()&&Number.isSafeInteger(bytes)&&bytes>0&&
+  (policy.maxBytes===null||bytes<=policy.maxBytes)&&policy.extensions.includes(studioMediaExt(fileName));
+}
 function validCourseStoragePath(courseId:string,path:unknown){const clean=String(path||"").trim().replace(/^\/+/,"");return clean&&clean.startsWith(`${courseId}/`)?clean:""}
 async function signNestedStudioRefs(sb:any,value:any,depth=0):Promise<any>{
  if(depth>5||value==null)return value;
@@ -2094,6 +2112,15 @@ Retourne uniquement un JSON valide : {"suggested_points": nombre entre 0 et ${ma
   if(action==="get_change_logs"){const {data,error}=await sb.from("course_studio_logs").select("*,users(full_name)").eq("course_id",courseId).order("created_at",{ascending:false}).limit(100);if(error)throw error;return json({success:true,logs:data||[]})}
   if(action==="prepare_upload"){
    const bucket=String(b.bucket_name||"course-resources");
+   if(b.block_id){
+    const {data:target,error:targetError}=await sb.from("lesson_blocks").select("course_id,module_id,lesson_id,block_type").eq("id",String(b.block_id)).maybeSingle();
+    if(targetError)throw targetError;
+    if(!target||String(target.course_id)!==String(courseId)||
+       String(target.module_id||"")!==String(b.module_id||"")||String(target.lesson_id||"")!==String(b.lesson_id||""))
+      return json({success:false,error:"INVALID_BLOCK_UPLOAD_TARGET"},403);
+    if(!studioMediaMetadataValid(String(target.block_type),bucket,b.file_name,b.size_bytes))
+      return json({success:false,error:"INVALID_MEDIA_UPLOAD",message:"Type, taille ou destination du fichier non autorisé pour ce bloc."},400);
+   }
    if(bucket==="course-videos"&&cloudflareStreamConfigured()){
     const fileName=String(b.file_name||"").trim();const sizeBytes=Math.max(0,Number(b.size_bytes||0));
     if(!fileName||sizeBytes<=0)return json({success:false,error:"VIDEO_FILE_METADATA_REQUIRED"},400);
@@ -2104,6 +2131,9 @@ Retourne uniquement un JSON valide : {"suggested_points": nombre entre 0 et ${ma
   }
   if(action==="upload_block_file"){
    const {data:blk}=await sb.from("lesson_blocks").select("course_id,module_id,lesson_id,block_type,content_json,storage_path,bucket_name").eq("id",b.block_id).maybeSingle();if(!blk||!(await owns(sb,userId,blk.course_id,"can_upload_files")))return json({success:false,error:"FORBIDDEN"},403);
+   if(String(b.course_id||"")!==String(blk.course_id)||String(b.module_id||"")!==String(blk.module_id||"")||String(b.lesson_id||"")!==String(blk.lesson_id||""))return json({success:false,error:"UPLOAD_BLOCK_CONTEXT_MISMATCH"},403);
+   const expectedBucket=STUDIO_BLOCK_MEDIA_POLICY[String(blk.block_type)]?.bucket||"";
+   if(!studioMediaMetadataValid(String(blk.block_type),expectedBucket,b.file_name,b.file_size))return json({success:false,error:"INVALID_MEDIA_METADATA"},400);
    if(String(b.provider||"")==="cloudflare_stream"){
     if(String(blk.block_type)!=="video")return json({success:false,error:"STREAM_ONLY_FOR_VIDEO_BLOCKS"},400);
     const streamUid=String(b.stream_uid||"").trim();if(!streamUid)return json({success:false,error:"STREAM_UID_REQUIRED"},400);
@@ -2117,7 +2147,9 @@ Retourne uniquement un JSON valide : {"suggested_points": nombre entre 0 et ${ma
     if(previousStreamUid&&previousStreamUid!==streamUid)await deleteStreamVideo(previousStreamUid).catch(()=>{});if(previousPath&&PRIVATE_COURSE_BUCKET_SET.has(previousBucket))await sb.storage.from(previousBucket).remove([previousPath]).then(()=>{}).catch(()=>{});
     const decorated=await decorateStudioBlock(sb,data);return json({success:true,provider:"cloudflare_stream",stream_uid:streamUid,block:decorated,file_url:decorated.file_url});
    }
-   const bucket=String(b.bucket_name||""),path=validCourseStoragePath(String(blk.course_id),b.storage_path);if(!STUDIO_UPLOAD_BUCKETS.has(bucket)||!path)return json({success:false,error:"INVALID_STORAGE_TARGET"},400);
+   const bucket=String(b.bucket_name||""),path=validCourseStoragePath(String(blk.course_id),b.storage_path);
+   if(!STUDIO_UPLOAD_BUCKETS.has(bucket)||bucket!==expectedBucket||!path||String(b.provider||"")!=="supabase_storage")return json({success:false,error:"INVALID_STORAGE_TARGET"},400);
+   if(studioMediaExt(path)!==studioMediaExt(b.file_name))return json({success:false,error:"STORAGE_FILE_EXTENSION_MISMATCH"},400);
    if(String(blk.block_type)==="scorm"){
     if(bucket!=="course-scorm"||!String(b.file_name||"").toLowerCase().endsWith(".zip"))return json({success:false,error:"SCORM_ZIP_REQUIRED",message:"Importez un package SCORM ZIP valide."},400);
     const scormBlock={...blk,id:b.block_id,module_id:b.module_id||null,lesson_id:b.lesson_id||null};
@@ -2131,7 +2163,10 @@ Retourne uniquement un JSON valide : {"suggested_points": nombre entre 0 et ${ma
     try{const download=await sb.storage.from(bucket).download(path);if(download.error||!download.data)throw download.error||new Error("EXCEL_DOWNLOAD_FAILED");const bytes=new Uint8Array(await download.data.arrayBuffer());const preview=extractXlsxPreview(bytes);persistedContent={...persistedContent,...preview,title:String((blk.content_json||{}).title||"")};}
     catch(excelError){console.warn("excel preview extraction",excelError);persistedContent={...persistedContent,headers:[],preview_rows:[],sheet:""};}
    }
-   const {data,error}=await sb.from("lesson_blocks").update({file_url:persistedUrl,content_json:persistedContent,file_name:b.file_name,file_size:b.file_size,file_mime:b.file_mime,storage_path:path,bucket_name:bucket,updated_at:new Date().toISOString()}).eq("id",b.block_id).select("*").single();if(error)throw error;await recalculateCourseDuration(sb,String(blk.course_id));const decorated=await decorateStudioBlock(sb,data);return json({success:true,provider:"supabase_storage",block:decorated,file_url:decorated.file_url});
+   const {data,error}=await sb.from("lesson_blocks").update({file_url:persistedUrl,content_json:persistedContent,file_name:b.file_name,file_size:b.file_size,file_mime:b.file_mime,storage_path:path,bucket_name:bucket,updated_at:new Date().toISOString()}).eq("id",b.block_id).select("*").single();if(error)throw error;await recalculateCourseDuration(sb,String(blk.course_id));if(blk.storage_path&&String(blk.storage_path)!==path&&PRIVATE_COURSE_BUCKET_SET.has(String(blk.bucket_name||""))){
+    await sb.storage.from(String(blk.bucket_name)).remove([String(blk.storage_path)]).then(()=>{}).catch(()=>{});
+   }
+   const decorated=await decorateStudioBlock(sb,data);return json({success:true,provider:"supabase_storage",block:decorated,file_url:decorated.file_url});
   }
   if(action==="resource_rag_update"){
    const blockId=String(b.block_id||"");const enabled=b.enabled===true;

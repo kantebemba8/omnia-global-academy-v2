@@ -9,6 +9,7 @@ import StudioCommercialCertificationPanel from '../../components/StudioCommercia
 import StudioQualityStatusPanel from '../../components/StudioQualityStatusPanel';
 import CourseAdvancedSettingsPanel from '../../components/CourseAdvancedSettingsPanel';
 import BuilderImportDialog from '../../components/studio/BuilderImportDialog';
+import { STUDIO_MEDIA_POLICY, checkStudioMediaFile, type StudioMediaKind } from '../../lib/studioMediaPolicy';
 import { CATEGORY_LABELS } from '../../lib/categories';
 import { LessonBlocksRenderer } from '../../components/BlockRenderer';
 import {
@@ -1905,6 +1906,14 @@ export default function StudioConceptionFormation() {
                       setAiAction(action); setAiInput(prompt); setShowAI(true); setSelectedBlock(null);
                     }}
                     onRemoveResource={() => removeBlockResource(selectedBlock)}
+                    onBeforeUpload={flushBlockUpdates}
+                    onResourceUploaded={(savedBlock) => {
+                      // upload_block_file has already written the authoritative resource on the server.
+                      // Do not queue a second update_block with a short-lived signed URL.
+                      if (savedBlock?.id !== selectedBlock.id) return;
+                      setBlocks(current => current.map(item => item.id === savedBlock.id ? { ...item, ...savedBlock } : item));
+                      setSelectedBlock(current => current?.id === savedBlock.id ? { ...current, ...savedBlock } : current);
+                    }}
                     courseId={course?.id || ''}
                     moduleId={currentModule?.id || ''}
                     lessonId={currentLesson?.id || ''}
@@ -2537,11 +2546,13 @@ function PedagogicalLocalizationEditor({ block, locked, onUpdate }: { block: Blo
 }
 
 // ─── Panneau réglages du bloc ─────────────────────────────────
-function BlockSettings({ block, locked, onUpdate, onAI, onRemoveResource, courseId, moduleId, lessonId, lessonBlocks, forcedAssessmentScope }: {
+function BlockSettings({ block, locked, onUpdate, onAI, onRemoveResource, onBeforeUpload, onResourceUploaded, courseId, moduleId, lessonId, lessonBlocks, forcedAssessmentScope }: {
   block: Block; locked: boolean;
   onUpdate: (updates: Partial<Block>) => void;
   onAI: (action: string, prompt: string) => void;
   onRemoveResource: () => void;
+  onBeforeUpload: () => Promise<void>;
+  onResourceUploaded: (savedBlock: Block) => void;
   courseId: string; moduleId: string; lessonId: string; lessonBlocks: Block[]; forcedAssessmentScope?: 'lesson'|'module'|'final'|null;
 }) {
   const c = block.content_json || {};
@@ -2561,175 +2572,134 @@ function BlockSettings({ block, locked, onUpdate, onAI, onRemoveResource, course
   const style = { borderColor: '#E4E7EC' };
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadStatus, setUploadStatus] = useState('');
   const [uploadError, setUploadError] = useState('');
   const [fileDragActive, setFileDragActive] = useState(false);
+  const uploadInFlight = useRef(false);
   const showOptionalBlockTitle = !['heading','subheading','separator','callout','remember','objective','example','summary','important','definition','correction','quote'].includes(block.block_type);
   const resourceRagCapable = ['pdf','word','excel','download'].includes(block.block_type);
   const previewProtectedResource = ['image','gallery','video','audio','pdf','word','excel','download','embed'].includes(block.block_type);
 
-  // ── Upload fichier vers Supabase Storage ──────────────────
-  const mediaFileExtensions:Record<string,string[]> = {
-    image:['jpg','jpeg','png','gif','webp'], video:['mp4','mov','avi','mkv','webm'],
-    audio:['mp3','wav','ogg','m4a'],pdf:['pdf'],word:['doc','docx'],
-    excel:['xls','xlsx','csv'],scorm:['zip'],
-  };
-  function acceptMediaFile(file:File,kind:string){
-    if(file.size<=0)throw new Error('Ce fichier est vide.');
-    const ext=file.name.split('.').pop()?.toLowerCase()||'';
-    if(mediaFileExtensions[kind]&&!mediaFileExtensions[kind].includes(ext))
-      throw new Error(`Format ${ext||'inconnu'} incompatible avec le bloc ${kind}.`);
-  }
-  function handleMediaDrop(e:React.DragEvent<HTMLElement>,kind:string){
-    e.preventDefault();e.stopPropagation();setFileDragActive(false);
-    if(locked||uploading)return;
-    if((e.dataTransfer.files?.length||0)>1){setUploadError('Déposez un seul fichier à la fois.');return;}
-    if (e.dataTransfer.files.length !== 1) { setUploadError('Déposez un seul fichier à la fois.'); return; }
-    const file=e.dataTransfer.files[0];
-    if(file)void handleFileUpload(file,kind);
+  // ── Téléversement sécurisé vers les fournisseurs OGA existants ─────
+  // Prepare/commit are backend actions; signed transient URLs never become source data.
+  function handleMediaDrop(e: React.DragEvent<HTMLElement>, kind: string) {
+    e.preventDefault(); e.stopPropagation(); setFileDragActive(false);
+    if (locked || uploadInFlight.current) return;
+    const files = e.dataTransfer.files;
+    if (files.length !== 1) { setUploadError('Déposez un seul fichier à la fois.'); return; }
+    void handleFileUpload(files[0], kind);
   }
   async function handleFileUpload(file: File, blockType: string) {
-    if (!file || locked || uploading) return;
-    setUploadError('');
-    try { acceptMediaFile(file,blockType); }
-    catch(err){setUploadError(err instanceof Error?err.message:'Fichier invalide');return;}
-    setUploading(true);
-    setUploadProgress(10);
+    if (!file || locked || uploadInFlight.current) return;
+    setUploadError(''); setUploadStatus('');
+    if (!Object.prototype.hasOwnProperty.call(STUDIO_MEDIA_POLICY, blockType)) {
+      setUploadError('Type de ressource non pris en charge.'); return;
+    }
+    const mediaKind = blockType as StudioMediaKind;
+    try { checkStudioMediaFile(file, mediaKind); }
+    catch(error) { setUploadError(error instanceof Error ? error.message : 'Fichier invalide'); return; }
+    uploadInFlight.current = true;
+    setUploading(true); setUploadProgress(5);
     try {
+      // Do not let an older autosave overwrite the metadata committed by upload_block_file.
+      setUploadStatus('Enregistrement des modifications en attente…');
+      await onBeforeUpload();
       const ext = file.name.split('.').pop()?.toLowerCase() || 'bin';
-      const bucketMap: Record<string, string> = {
-        image: 'course-images', video: 'course-videos', audio: 'course-audios',
-        pdf: 'course-documents', word: 'course-documents', excel: 'course-excel',
-        scorm: 'course-scorm', download: 'course-resources',
-      };
-      const bucket = bucketMap[blockType] || 'course-resources';
-      const path = `${courseId}/${moduleId}/${lessonId}/${block.id}.${ext}`;
-
-      setUploadProgress(20);
+      const bucket = STUDIO_MEDIA_POLICY[mediaKind].bucket;
+      // A unique object key avoids serving a cached older version after a new upload.
+      const path = `${courseId}/${moduleId}/${lessonId}/${block.id}-${crypto.randomUUID()}.${ext}`;
+      setUploadProgress(15); setUploadStatus('Préparation du téléversement…');
       const prepared = await api('prepare_upload', {
-        course_id: courseId,
-        module_id: moduleId,
-        lesson_id: lessonId,
-        block_id: block.id,
-        bucket_name: bucket,
-        storage_path: path,
-        file_name: file.name,
-        size_bytes: file.size,
-        file_mime: file.type,
+        course_id: courseId, module_id: moduleId, lesson_id: lessonId,
+        block_id: block.id, bucket_name: bucket, storage_path: path,
+        file_name: file.name, size_bytes: file.size, file_mime: file.type || 'application/octet-stream',
       });
-      if (!prepared.success) throw new Error(prepared.message || prepared.error || 'Impossible de préparer le téléversement');
-
+      if (!prepared.success) throw new Error(prepared.message || prepared.error || 'Préparation impossible');
       if (prepared.provider === 'cloudflare_stream') {
         const uploadUrl = String(prepared.upload_url || '');
         const streamUid = String(prepared.stream_uid || '');
         if (!uploadUrl || !streamUid) throw new Error('Réponse Cloudflare Stream incomplète');
-
+        setUploadStatus('Envoi de la vidéo vers Cloudflare Stream…'); setUploadProgress(20);
         if (prepared.protocol === 'stream_tus') {
+          // Cloudflare TUS offsets are authoritative; never assume the server accepted an entire chunk.
           const chunkSize = Math.max(256 * 1024, Number(prepared.chunk_size_bytes || 50 * 1024 * 1024));
           let offset = 0;
           while (offset < file.size) {
             const chunk = file.slice(offset, Math.min(file.size, offset + chunkSize));
-            const uploadRes = await fetch(uploadUrl, {
+            const res = await fetch(uploadUrl, {
               method: 'PATCH',
-              headers: {
-                'Tus-Resumable': '1.0.0',
-                'Upload-Offset': String(offset),
-                'Content-Type': 'application/offset+octet-stream',
-              },
+              headers: { 'Tus-Resumable': '1.0.0', 'Upload-Offset': String(offset), 'Content-Type': 'application/offset+octet-stream' },
               body: chunk,
             });
-            if (!uploadRes.ok) throw new Error(`Erreur Cloudflare Stream TUS (${uploadRes.status})`);
-            const nextOffset = Number(uploadRes.headers.get('Upload-Offset') || offset + chunk.size);
-            if (!Number.isFinite(nextOffset) || nextOffset <= offset) throw new Error('Offset TUS invalide');
+            if (!res.ok) throw new Error(`Échec du transfert vidéo TUS (${res.status})`);
+            const rawOffset = res.headers.get('Upload-Offset');
+            if (!rawOffset) throw new Error('Cloudflare Stream n’a pas confirmé la position du fichier.');
+            const nextOffset = Number(rawOffset);
+            if (!Number.isSafeInteger(nextOffset) || nextOffset <= offset || nextOffset > file.size || nextOffset > offset + chunk.size) {
+              throw new Error('Offset TUS invalide : téléversement interrompu pour éviter une vidéo corrompue.');
+            }
             offset = nextOffset;
-            setUploadProgress(20 + Math.round((offset / file.size) * 60));
+            setUploadProgress(20 + Math.round((offset / file.size) * 65));
           }
-        } else {
-          const form = new FormData();
-          form.append('file', file, file.name);
-          const uploadRes = await fetch(uploadUrl, { method: 'POST', body: form });
-          if (!uploadRes.ok) throw new Error(`Erreur Cloudflare Stream (${uploadRes.status})`);
-          setUploadProgress(80);
-        }
-
-        const saveRes = await api('upload_block_file', {
-          block_id: block.id,
-          course_id: courseId,
-          module_id: moduleId,
-          lesson_id: lessonId,
-          provider: 'cloudflare_stream',
-          stream_uid: streamUid,
-          file_name: file.name,
-          file_size: file.size,
-          file_mime: file.type,
+        } else if (prepared.protocol === 'stream_basic') {
+          const form = new FormData(); form.append('file', file, file.name);
+          const res = await fetch(uploadUrl, { method: 'POST', body: form });
+          if (!res.ok) throw new Error(`Échec du transfert Cloudflare Stream (${res.status})`);
+          setUploadProgress(85);
+        } else throw new Error('Protocole vidéo non reconnu.');
+        setUploadStatus('Enregistrement de la vidéo dans OGA…');
+        const saved = await api('upload_block_file', {
+          block_id: block.id, course_id: courseId, module_id: moduleId, lesson_id: lessonId,
+          provider: 'cloudflare_stream', stream_uid: streamUid,
+          file_name: file.name, file_size: file.size, file_mime: file.type || 'application/octet-stream',
         });
-        if (!saveRes.success) throw new Error(saveRes.message || saveRes.error || 'Impossible d’enregistrer la vidéo');
-        const secureUrl = String(saveRes.block?.file_url || saveRes.file_url || '');
-        setUploadProgress(100);
-        onUpdate({
-          file_url: secureUrl,
-          file_name: file.name,
-          file_size: file.size,
-          file_mime: file.type,
-          content_json: {
-            ...c,
-            url: secureUrl,
-            title: c.title || file.name,
-            provider: 'cloudflare_stream',
-            cloudflare_stream_uid: streamUid,
-          },
-        });
+        if (!saved.success || !saved.block) throw new Error(saved.message || saved.error || 'Enregistrement de la vidéo impossible');
+        onResourceUploaded(saved.block as Block); setUploadProgress(100);
+        setUploadStatus('Vidéo enregistrée.');
         return;
       }
-
-      if (!prepared.signedUrl) throw new Error('URL d’upload Supabase absente');
-      const uploadRes = await fetch(prepared.signedUrl, {
-        method: 'PUT',
-        headers: { 'Content-Type': file.type || 'application/octet-stream' },
-        body: file,
-      });
-      setUploadProgress(80);
-      if (!uploadRes.ok) throw new Error('Erreur upload');
-
-      const saveRes = await api('upload_block_file', {
-        block_id: block.id,
-        course_id: courseId,
-        module_id: moduleId,
-        lesson_id: lessonId,
-        provider: 'supabase_storage',
-        file_name: file.name,
-        file_size: file.size,
-        file_mime: file.type,
-        storage_path: path,
-        bucket_name: bucket,
-      });
-
-      setUploadProgress(100);
-      if (!saveRes.success) throw new Error(saveRes.message || saveRes.error || 'Impossible d’enregistrer le fichier');
-      const secureUrl = String(saveRes.block?.file_url || saveRes.file_url || '');
-      const nextContent = { ...c, url: secureUrl, title: c.title || file.name, provider: 'supabase_storage', cloudflare_stream_uid: null };
-      onUpdate({
-        file_url: secureUrl,
-        file_name: file.name,
-        file_size: file.size,
-        file_mime: file.type,
-        content_json: nextContent,
-      });
-      if (resourceRagCapable && block.rag_enabled === true) {
-        const rag = await api('resource_rag_update', { course_id: courseId, block_id: block.id, enabled: true });
-        if (rag.success && rag.block) onUpdate({ rag_enabled: true, content_json: rag.block.content_json || nextContent });
+      if (prepared.provider !== 'supabase_storage' || !prepared.signedUrl) {
+        throw new Error('Lien sécurisé de téléversement Supabase absent ou incorrect.');
       }
-    } catch (err) {
-      console.error('Upload error:', err);
-      setUploadError(err instanceof Error ? err.message : 'Téléversement impossible. Réessayez.');
+      setUploadStatus('Envoi du fichier vers le stockage OGA…'); setUploadProgress(35);
+      const res = await fetch(String(prepared.signedUrl), {
+        method: 'PUT', headers: { 'Content-Type': file.type || 'application/octet-stream' }, body: file,
+      });
+      if (!res.ok) throw new Error(`Téléversement refusé (${res.status}).`);
+      setUploadProgress(85); setUploadStatus('Enregistrement de la ressource dans OGA…');
+      const saved = await api('upload_block_file', {
+        block_id: block.id, course_id: courseId, module_id: moduleId, lesson_id: lessonId,
+        provider: 'supabase_storage', bucket_name: bucket, storage_path: path,
+        file_name: file.name, file_size: file.size, file_mime: file.type || 'application/octet-stream',
+      });
+      if (!saved.success || !saved.block) throw new Error(saved.message || saved.error || 'Enregistrement du fichier impossible');
+      let authoritative = saved.block as Block;
+      // RAG is a separate operation. Failure should not imply that upload itself failed.
+      if (resourceRagCapable && block.rag_enabled === true) {
+        onResourceUploaded(authoritative);
+        try {
+          const rag = await api('resource_rag_update', { course_id: courseId, block_id: block.id, enabled: true });
+          if (rag.success && rag.block) authoritative = rag.block as Block;
+        } catch (error) {
+          setUploadError(`Ressource enregistrée, mais indexation RAG indisponible : ${error instanceof Error ? error.message : 'Erreur inconnue'}`);
+        }
+      }
+      onResourceUploaded(authoritative);
+      setUploadProgress(100); setUploadStatus('Ressource enregistrée.');
+    } catch (error) {
+      console.error('Studio B2 media upload:', error);
+      setUploadError(error instanceof Error ? error.message : 'Téléversement impossible.');
+      setUploadStatus('');
     } finally {
-      setTimeout(() => { setUploading(false); setUploadProgress(0); }, 800);
+      uploadInFlight.current = false;
+      setUploading(false);
     }
   }
-
 
   return (
     <div className="space-y-4">
       {uploadError && <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{uploadError}</div>}
+      {uploadStatus && <div role="status" aria-live="polite" className="text-xs font-medium text-[#002050]">{uploadStatus}{uploading ? ` · ${uploadProgress}%` : ''}</div>}
       {showOptionalBlockTitle && <div>
         <label className="block text-xs font-semibold mb-1.5" style={{ color: '#002050' }}>Nom affiché (facultatif)</label>
         <input className={inputCls} style={style} value={block.title || ''}
@@ -2918,9 +2888,9 @@ function BlockSettings({ block, locked, onUpdate, onAI, onRemoveResource, course
                 )}
               </div>
             ) : (
-              <label onDragEnter={e=>{e.preventDefault();if(!locked)setFileDragActive(true);}} onDragOver={e=>{e.preventDefault();e.dataTransfer.dropEffect=locked?'none':'copy';}} onDragLeave={e=>{e.preventDefault();setFileDragActive(false);}} onDrop={e=>handleMediaDrop(e,block.block_type)} className={`flex flex-col items-center justify-center p-6 rounded-xl border-2 border-dashed cursor-pointer transition-all ${fileDragActive?'border-[#BF8813] bg-amber-50':''} ${locked ? 'opacity-50 cursor-not-allowed' : 'hover:border-[#002050]'}`}
+              <label onDragEnter={e=>{e.preventDefault();if(!locked&&!uploading)setFileDragActive(true);}} onDragOver={e=>{e.preventDefault();e.dataTransfer.dropEffect=(locked||uploading)?'none':'copy';}} onDragLeave={e=>{e.preventDefault();setFileDragActive(false);}} onDrop={e=>handleMediaDrop(e,block.block_type)} className={`flex flex-col items-center justify-center p-6 rounded-xl border-2 border-dashed cursor-pointer transition-all ${fileDragActive?'border-[#BF8813] bg-amber-50':''} ${locked ? 'opacity-50 cursor-not-allowed' : 'hover:border-[#002050]'}`}
                 style={{ borderColor: '#E4E7EC', background: '#F8F9FA' }}>
-                <input type="file" className="hidden" disabled={locked}
+                <input type="file" className="hidden" disabled={locked || uploading}
                   accept={
                     block.block_type === 'video' ? '.mp4,.mov,.avi,.mkv,.webm' :
                     block.block_type === 'pdf' ? '.pdf' :
@@ -3030,9 +3000,9 @@ function BlockSettings({ block, locked, onUpdate, onAI, onRemoveResource, course
       {block.block_type === 'image' && (
         <div className="space-y-3">
           {!block.file_name ? (
-            <label onDragEnter={e=>{e.preventDefault();if(!locked)setFileDragActive(true);}} onDragOver={e=>{e.preventDefault();e.dataTransfer.dropEffect=locked?'none':'copy';}} onDragLeave={e=>{e.preventDefault();setFileDragActive(false);}} onDrop={e=>handleMediaDrop(e,'image')} className={`flex flex-col items-center justify-center p-6 rounded-xl border-2 border-dashed cursor-pointer transition-all ${fileDragActive?'border-[#BF8813] bg-amber-50':''} ${locked ? 'opacity-50 cursor-not-allowed' : 'hover:border-[#002050]'}`}
+            <label onDragEnter={e=>{e.preventDefault();if(!locked&&!uploading)setFileDragActive(true);}} onDragOver={e=>{e.preventDefault();e.dataTransfer.dropEffect=(locked||uploading)?'none':'copy';}} onDragLeave={e=>{e.preventDefault();setFileDragActive(false);}} onDrop={e=>handleMediaDrop(e,'image')} className={`flex flex-col items-center justify-center p-6 rounded-xl border-2 border-dashed cursor-pointer transition-all ${fileDragActive?'border-[#BF8813] bg-amber-50':''} ${locked ? 'opacity-50 cursor-not-allowed' : 'hover:border-[#002050]'}`}
               style={{ borderColor: '#E4E7EC', background: '#F8F9FA' }}>
-              <input type="file" className="hidden" accept=".jpg,.jpeg,.png,.gif,.webp" disabled={locked}
+              <input type="file" className="hidden" accept=".jpg,.jpeg,.png,.gif,.webp" disabled={locked || uploading}
                 onChange={e => { const f = e.target.files?.[0]; if (f) void handleFileUpload(f, 'image'); e.currentTarget.value=''; }} />
               {uploading ? (
                 <p className="text-xs" style={{ color: '#6B7280' }}>Envoi... {uploadProgress}%</p>
