@@ -148,6 +148,7 @@ export function CoursDetail() {
 
   const course = detail.course as Record<string, unknown>;
   const creator = (detail.creator ?? {}) as Record<string, unknown>;
+  const platformCreator = course.creator_context === 'super_admin' || course.creator_type === 'plateforme' || creator.public_creator_type === 'plateforme';
   const modules = Array.isArray(detail.modules) ? detail.modules as Record<string, unknown>[] : [];
   const reviews = Array.isArray(detail.reviews) ? detail.reviews as Record<string, unknown>[] : [];
   const ratingDist = Array.isArray(detail.rating_distribution) ? detail.rating_distribution as { stars: number; count: number; pct: number }[] : [];
@@ -272,13 +273,13 @@ export function CoursDetail() {
               <span className="text-sm" style={{ color: 'rgba(255,255,255,0.60)' }}>· {totalStudents} élèves</span>
             </div>
 
-            {(creator.full_name || creator.school_name) && (
+            {(platformCreator || creator.full_name || creator.school_name) && (
               <div className="mt-5 flex items-center gap-3">
                 {((course.creator_type === 'plateforme' || course.creator_context === 'super_admin') || String(creator.full_name ?? creator.school_name ?? '').toLowerCase().includes('omnia global academy')) ? <img src="/omnia-sidebar-logo.png" alt="Omnia Global Academy" className="h-11 w-11 rounded-xl border border-white/30 bg-white p-1 object-contain" /> : (creator.avatar_url || creator.logo_url) ? <img src={String(creator.avatar_url || creator.logo_url)} alt="" className="h-11 w-11 rounded-full border-2 border-white/30 object-cover" /> : <Monogram name={String(creator.full_name || creator.school_name || 'Omnia')} size={44} />}
-                <div><p className="text-xs" style={{ color:'rgba(255,255,255,.55)' }}>Créé par</p><p className="text-sm font-bold text-white">{String(creator.full_name || creator.school_name)}</p>{creator.expertise_domain&&<p className="text-xs" style={{color:'#E5BE5B'}}>{String(creator.expertise_domain)}</p>}</div>
+                <div><p className="text-xs" style={{ color:'rgba(255,255,255,.55)' }}>Créé par</p><p className="text-sm font-bold text-white">{platformCreator ? 'Omnia Global Academy' : String(creator.full_name || creator.school_name)}</p>{!platformCreator && creator.expertise_domain&&<p className="text-xs" style={{color:'#E5BE5B'}}>{String(creator.expertise_domain)}</p>}</div>
               </div>
             )}
-            {creator.school_name && (
+            {!platformCreator && creator.school_name && (
               <p className="text-sm mb-2" style={{ color: 'rgba(255,255,255,0.70)' }}>École : <span>{String(creator.school_name)}</span></p>
             )}
             {estimatedDurationLabel && <p className="text-sm mt-2" style={{ color: 'rgba(255,255,255,0.70)' }}>⏱ Durée estimée · {estimatedDurationLabel}</p>}
@@ -634,15 +635,15 @@ export function CoursDetail() {
 
         {/* Creator */}
         <section>
-          <h2 className="font-bold mb-5" style={{ color: '#002050', fontSize: '22px' }}>{creator.public_creator_type === 'plateforme' ? 'Publié par' : creator.public_creator_type === 'structure' ? 'Structure créatrice' : 'Votre formateur'}</h2>
+          <h2 className="font-bold mb-5" style={{ color: '#002050', fontSize: '22px' }}>{platformCreator ? 'Publié par' : creator.public_creator_type === 'structure' ? 'Structure créatrice' : 'Votre formateur'}</h2>
           <div className="flex items-start gap-4 p-5 rounded-xl" style={{ border: '1px solid #E4E7EC' }}>
             {((course.creator_type === 'plateforme' || course.creator_context === 'super_admin') || String(creator.full_name ?? creator.school_name ?? '').toLowerCase().includes('omnia global academy')) ? <img src="/omnia-sidebar-logo.png" alt="Omnia Global Academy" className="h-16 w-16 rounded-xl object-contain bg-white p-1" /> : (creator.avatar_url || creator.logo_url) ? <img src={String(creator.avatar_url || creator.logo_url)} alt="" className="h-16 w-16 rounded-full object-cover" /> : <Monogram name={String(creator.full_name ?? creator.school_name ?? 'Omnia')} size={64} />}
             <div>
               <p className="font-bold" style={{ color: '#002050', fontSize: '17px' }}>
-                {String(creator.full_name ?? creator.school_name ?? 'Omnia Global Academy')}
+                {platformCreator ? 'Omnia Global Academy' : String(creator.full_name ?? creator.school_name ?? 'Omnia Global Academy')}
               </p>
-              {creator.expertise_domain && <p className="text-sm mt-0.5" style={{ color: '#BF8813' }}>{String(creator.expertise_domain)}</p>}
-              {creator.bio && <p className="text-sm mt-2" style={{ color: '#6B7280', lineHeight: 1.65 }}>{String(creator.bio)}</p>}
+              {!platformCreator && creator.expertise_domain && <p className="text-sm mt-0.5" style={{ color: '#BF8813' }}>{String(creator.expertise_domain)}</p>}
+              {!platformCreator && creator.bio && <p className="text-sm mt-2" style={{ color: '#6B7280', lineHeight: 1.65 }}>{String(creator.bio)}</p>}
               {(course.creator_type === 'plateforme' || course.creator_context === 'super_admin') && <p className="text-sm mt-2" style={{ color: '#6B7280' }}>Formation créée et publiée par Omnia Global Academy.</p>}
             </div>
           </div>

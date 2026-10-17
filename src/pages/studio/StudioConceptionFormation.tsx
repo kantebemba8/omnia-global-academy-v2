@@ -925,8 +925,9 @@ export default function StudioConceptionFormation() {
       await flushBlockUpdates();
 
       const quality = await api('validate_checklist', { course_id: course.id, phase: 'quality' });
+      if (!quality.success) throw new Error(quality.message || quality.error || 'Le contrôle qualité a échoué.');
       setChecklist(quality);
-      if (quality.success) setCourse(current => ({ ...current, quality_status: quality.valid ? 'ready' : 'incomplete', calculated_duration_minutes: quality.calculated_duration_minutes ?? current.calculated_duration_minutes, ready_to_submit: false }));
+      setCourse(current => ({ ...current, quality_status: quality.valid ? 'ready' : 'incomplete', calculated_duration_minutes: quality.calculated_duration_minutes ?? current.calculated_duration_minutes, ready_to_submit: false }));
       if (!quality.valid) {
         setShowChecklist(true);
         showToast('Corrigez les erreurs de qualité avant la publication.', 'error');
@@ -934,6 +935,7 @@ export default function StudioConceptionFormation() {
       }
 
       const publication = await api('validate_checklist', { course_id: course.id, phase: 'publication' });
+      if (!publication.success) throw new Error(publication.message || publication.error || 'Le contrôle de finalisation a échoué.');
       setFinalizationCheck({
         valid: Boolean(publication.valid),
         errors: Array.isArray(publication.errors) ? publication.errors : [],

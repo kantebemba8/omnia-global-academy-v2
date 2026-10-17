@@ -88,7 +88,7 @@ type Assessment = {
   title: string;
   instructions?: string;
   scope: string;
-  passing_score: number;
+  passing_score: number | null;
   remediation_after_attempts: number;
   remediation_mode: 'none' | 'review_lesson' | 'review_module' | 'exercise' | 'manual';
   retry_cooldown_hours: number;
@@ -605,7 +605,7 @@ export function AssessmentEngine({
 
       {result && !latest && !preview && (
         <div className={`mt-4 rounded-xl p-4 ${result.passed ? 'bg-green-50' : 'bg-amber-50'}`}>
-          {result.passed ? <div className="flex gap-2 text-green-700"><CheckCircle size={18} />Évaluation réussie : {result.score}%</div> : result.pending_review ? <div className="flex gap-2 text-amber-700"><Clock size={18} />Évaluation envoyée. Vous recevrez une notification lorsque la correction sera disponible.</div> : <div className="flex gap-2 text-red-700"><XCircle size={18} />Score : {result.score}% — seuil requis {assessment.passing_score}%.</div>}
+          {result.passed ? <div className="flex gap-2 text-green-700"><CheckCircle size={18} />Évaluation réussie : {result.score}%</div> : result.pending_review ? <div className="flex gap-2 text-amber-700"><Clock size={18} />Évaluation envoyée. Vous recevrez une notification lorsque la correction sera disponible.</div> : <div className="flex gap-2 text-red-700"><XCircle size={18} />Score : {result.score}% {(result.passing_score ?? assessment.passing_score) !== null ? `— seuil requis ${result.passing_score ?? assessment.passing_score}%.` : ""}</div>}
         </div>
       )}
 
