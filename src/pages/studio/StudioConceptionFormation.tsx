@@ -1,6 +1,6 @@
 import { openInternalPreviewUrl } from '../../lib/mobile';
 import MobileBuilderAdvice from '../../components/MobileBuilderAdvice';
-import { Component, useState, useEffect, useCallback, useRef, type ReactNode, type ClipboardEvent } from 'react';
+import { Component, useState, useEffect, useCallback, useRef, type ReactNode } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { AssessmentPolicyPanel } from '../../components/AssessmentPolicyPanel';
 import { edgeAuthHeaders } from '../../lib/edgeAuth';
@@ -9,7 +9,9 @@ import StudioCommercialCertificationPanel from '../../components/StudioCommercia
 import StudioQualityStatusPanel from '../../components/StudioQualityStatusPanel';
 import CourseAdvancedSettingsPanel from '../../components/CourseAdvancedSettingsPanel';
 import BuilderImportDialog from '../../components/studio/BuilderImportDialog';
+import RichTextEditor from '../../components/studio/StudioRichTextEditor';
 import { STUDIO_MEDIA_POLICY, checkStudioMediaFile, type StudioMediaKind } from '../../lib/studioMediaPolicy';
+import { reorderBlocksAtSlot, orderChanged } from '../../lib/studioBlockOrdering';
 import { CATEGORY_LABELS } from '../../lib/categories';
 import { LessonBlocksRenderer } from '../../components/BlockRenderer';
 import {
@@ -256,7 +258,8 @@ export default function StudioConceptionFormation() {
   const [showAssessmentPolicy, setShowAssessmentPolicy] = useState(false);
   const [finalizationCheck, setFinalizationCheck] = useState<{ valid: boolean; errors: string[]; warnings: string[] } | null>(null);
   const [activeLibTab, setActiveLibTab] = useState<'blocs' | 'sections' | 'templates'>('blocs');
-  const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
+  const [dragOverSlot, setDragOverSlot] = useState<number | null>(null);
+  const [insertionSlot, setInsertionSlot] = useState<number | null>(null);
   const [toast, setToast] = useState('');
   const [toastType, setToastType] = useState<'success' | 'error' | 'info'>('success');
   const [lastSave, setLastSave] = useState('');
@@ -690,66 +693,65 @@ export default function StudioConceptionFormation() {
     showToast('Ressource retirée et nettoyage serveur effectué.', 'success');
   }
 
-  const dragIdx = useRef<number | null>(null);
-  // Native drag on the handle + arrow buttons: keyboard/touch users have an alternative.
+  const dragBlockId = useRef<string | null>(null);
   const isBlockDrag = (e: React.DragEvent) => e.dataTransfer.types.includes('application/x-omnia-existing-block');
-  function onDragStart(idx: number, e: React.DragEvent) {
-    if (locked || reorderInFlight.current || idx < 0) { e.preventDefault(); return; }
-    dragIdx.current = idx;
-    e.dataTransfer.setData('application/x-omnia-existing-block', String(idx));
+  function onDragStart(blockId: string, e: React.DragEvent) {
+    if (locked || reorderInFlight.current) { e.preventDefault(); return; }
+    dragBlockId.current = blockId;
+    e.dataTransfer.setData('application/x-omnia-existing-block', blockId);
     e.dataTransfer.effectAllowed = 'move';
   }
   function onDragOver(e: React.DragEvent, idx: number) {
     if (locked || reorderInFlight.current || (!isBlockDrag(e) && !e.dataTransfer.types.includes('application/x-omnia-block'))) return;
     e.preventDefault(); e.stopPropagation();
-    setDragOverIdx(idx);
+    const bounds = e.currentTarget.getBoundingClientRect();
+    const slot = idx + (e.clientY >= bounds.top + bounds.height / 2 ? 1 : 0);
+    setDragOverSlot(slot);
+    e.dataTransfer.dropEffect = isBlockDrag(e) ? 'move' : 'copy';
   }
   async function persistBlockOrder(next: Block[], original: Block[], lessonId: string) {
-    if (locked || reorderInFlight.current || next.length !== original.length) return;
+    if (locked || reorderInFlight.current || next.length !== original.length || !orderChanged(original, next)) return;
     reorderInFlight.current = true;
     try {
       await flushBlockUpdates();
       const result = await api('reorder_blocks', { lesson_id: lessonId, ordered_ids: next.map(b => b.id) });
       if (!result.success) throw new Error(result.message || result.error || 'Échec du déplacement');
-      // Apply only if we are still editing the same lesson.
       if (currentLesson?.id === lessonId) setBlocks(next.map((block, position) => ({ ...block, position })));
+      showToast('Nouvel ordre enregistré', 'success');
     } catch (error) {
       showToast(error instanceof Error ? error.message : 'Impossible de réordonner les blocs.', 'error');
-      // No optimistic update was applied: leave the user's newer local edits intact.
     } finally {
       reorderInFlight.current = false;
-      dragIdx.current = null;
-      setDragOverIdx(null);
+      dragBlockId.current = null;
+      setDragOverSlot(null);
     }
   }
   async function onDrop(e: React.DragEvent, targetIdx: number) {
     const incomingType = e.dataTransfer.getData('application/x-omnia-block');
+    if (!incomingType && !isBlockDrag(e)) return;
+    e.preventDefault(); e.stopPropagation();
+    const bounds = e.currentTarget.getBoundingClientRect();
+    const slot = targetIdx + (e.clientY >= bounds.top + bounds.height / 2 ? 1 : 0);
+    setDragOverSlot(null);
     if (incomingType) {
-      e.preventDefault(); e.stopPropagation();
-      setDragOverIdx(null);
-      const bounds = e.currentTarget.getBoundingClientRect();
-      const insertAfter = e.clientY > bounds.top + bounds.height / 2;
-      await addBlock(incomingType, targetIdx + (insertAfter ? 1 : 0));
+      await addBlock(incomingType, slot);
       return;
     }
-    if (!isBlockDrag(e)) return;
-    e.preventDefault(); e.stopPropagation();
-    const sourceIdx = dragIdx.current;
-    dragIdx.current = null;
-    setDragOverIdx(null);
-    if (locked || reorderInFlight.current || !currentLesson?.id || sourceIdx === null || sourceIdx < 0 || sourceIdx >= blocks.length || sourceIdx === targetIdx || targetIdx < 0 || targetIdx >= blocks.length) return;
-    const next = [...blocks];
-    const [moved] = next.splice(sourceIdx, 1);
-    next.splice(targetIdx, 0, moved);
-    await persistBlockOrder(next, blocks, currentLesson.id);
+    const sourceId = dragBlockId.current || e.dataTransfer.getData('application/x-omnia-existing-block');
+    dragBlockId.current = null;
+    if (locked || reorderInFlight.current || !currentLesson?.id || !sourceId) return;
+    try {
+      const next = reorderBlocksAtSlot(blocks, sourceId, slot);
+      await persistBlockOrder(next, blocks, currentLesson.id);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Déplacement refusé.', 'error');
+    }
   }
 
   async function moveBlock(index: number, delta: -1 | 1) {
     const target = index + delta;
     if (locked || reorderInFlight.current || index < 0 || target < 0 || target >= blocks.length || !currentLesson?.id) return;
-    const next = [...blocks];
-    const [moved] = next.splice(index, 1);
-    next.splice(target, 0, moved);
+    const next = reorderBlocksAtSlot(blocks, blocks[index].id, delta === -1 ? index - 1 : index + 2);
     await persistBlockOrder(next, blocks, currentLesson.id);
   }
 
@@ -1204,6 +1206,7 @@ export default function StudioConceptionFormation() {
             {/* Onglet Blocs */}
             {activeLibTab === 'blocs' && (
               <div>
+                {insertionSlot !== null && <div className="mb-3 flex items-center justify-between rounded-lg border border-amber-300 bg-amber-50 px-2 py-2 text-xs text-amber-900" role="status"><span>Insérer le prochain bloc à l'emplacement {insertionSlot + 1}</span><button type="button" onClick={() => setInsertionSlot(null)} aria-label="Annuler la position d'insertion" className="rounded p-1 hover:bg-amber-100"><X size={13}/></button></div>}
                 <input type="search" value={blockLibrarySearch} onChange={event => setBlockLibrarySearch(event.target.value)} placeholder="Rechercher parmi les 52 blocs…" aria-label="Rechercher un bloc pédagogique" className="mb-3 w-full rounded-lg border px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-amber-400" style={{borderColor:'#E4E7EC'}} />
                 {['structure', 'pedagogique', 'media', 'evaluation', 'langues', 'avance'].map(group => {
                   const groupBlocks = visibleBlocks.filter(b => b.group === group && (!blockLibrarySearch.trim() || `${b.label} ${b.type}`.toLocaleLowerCase().includes(blockLibrarySearch.trim().toLocaleLowerCase())));
@@ -1217,8 +1220,8 @@ export default function StudioConceptionFormation() {
                       </button>
                       {!collapsedBlockGroups[group] && <div className="grid grid-cols-3 gap-1.5">
                         {groupBlocks.map(def => (
-                          <button key={def.type} onClick={async () => { await addBlock(def.type); setMobileLibraryOpen(false); }} disabled={locked} draggable={!locked && !!currentLesson}
-                            onDragStart={(e) => { e.dataTransfer.setData('application/x-omnia-block', def.type); e.dataTransfer.effectAllowed = 'copy'; }}
+                          <button key={def.type} onClick={async () => { await addBlock(def.type, insertionSlot ?? undefined); setInsertionSlot(null); setMobileLibraryOpen(false); }} disabled={locked} draggable={!locked && !!currentLesson}
+                            onDragStart={(e) => { e.dataTransfer.setData('application/x-omnia-block', def.type); e.dataTransfer.effectAllowed = 'copy'; }} onDragEnd={() => setDragOverSlot(null)}
                             className="flex flex-col items-center gap-1 p-2 rounded-lg border text-center transition-all hover:shadow-sm disabled:opacity-40"
                             style={{ borderColor: '#E4E7EC', background: 'white' }}>
                             <div className="w-6 h-6 flex items-center justify-center">
@@ -1450,7 +1453,7 @@ export default function StudioConceptionFormation() {
 
 
           {/* Canevas */}
-          <div className="flex-1 overflow-y-auto p-4 sm:p-6" style={{ background: '#F0F2F5' }} onDragOver={(e) => { if (e.dataTransfer.types.includes('application/x-omnia-block')) e.preventDefault(); }} onDrop={async (e) => { const bt = e.dataTransfer.getData('application/x-omnia-block'); if (bt) { e.preventDefault(); await addBlock(bt); } }}>
+          <div className="flex-1 overflow-y-auto p-4 sm:p-6" style={{ background: '#F0F2F5' }} onDragOver={(e) => { if (e.dataTransfer.types.includes('application/x-omnia-block')) e.preventDefault(); }} onDrop={async (e) => { const bt = e.dataTransfer.getData('application/x-omnia-block'); if (bt) { e.preventDefault(); setDragOverSlot(null); await addBlock(bt); } }}>
 
             {/* ── VUE INFOS FORMATION ──────────────────── */}
             {!currentModule && !showFinalization && (
@@ -1710,13 +1713,15 @@ export default function StudioConceptionFormation() {
                         onDragOver={e => onDragOver(e, idx)}
                         onDrop={e => onDrop(e, idx)}
                         className="relative group"
-                        style={{ opacity: dragOverIdx === idx && dragIdx.current !== null ? 0.5 : 1, outline: dragOverIdx === idx ? '2px dashed #BF8813' : undefined, outlineOffset: dragOverIdx === idx ? 2 : undefined }}>
+                        style={{ opacity: dragBlockId.current === block.id ? 0.68 : 1 }}>
+                        {(dragOverSlot === idx || insertionSlot === idx) && <div aria-hidden="true" className="absolute -top-1 inset-x-2 z-20 h-1 rounded-full bg-[#BF8813] shadow-md" />}
+                        {(dragOverSlot === idx + 1 || insertionSlot === idx + 1) && <div aria-hidden="true" className="absolute -bottom-1 inset-x-2 z-20 h-1 rounded-full bg-[#BF8813] shadow-md" />}
                         <div className={`bg-white rounded-xl border transition-all ${isSelected ? 'ring-2' : ''}`}
                           style={{ borderColor: isSelected ? '#002050' : '#E4E7EC', ringColor: '#002050' }}>
                           {/* Header bloc */}
                           <div className="flex items-center justify-between px-4 py-2.5 border-b" style={{ borderColor: '#F3F4F6' }}>
                             <div className="flex items-center gap-2">
-                              <span draggable={!locked} onDragStart={e => onDragStart(idx, e)} onDragEnd={() => { dragIdx.current=null; setDragOverIdx(null); }} title="Déplacer le bloc" aria-label="Poignée de déplacement du bloc" className={`inline-flex select-none ${locked ? 'opacity-30' : 'cursor-grab'}`}><GripVertical size={15} style={{ color: '#6B7280' }} /></span>
+                              <span draggable={!locked} onDragStart={e => onDragStart(block.id, e)} onDragEnd={() => { dragBlockId.current=null; setDragOverSlot(null); }} title="Déplacer le bloc" aria-label="Poignée de déplacement du bloc" className={`inline-flex select-none ${locked ? 'opacity-30' : 'cursor-grab'}`}><GripVertical size={15} style={{ color: '#6B7280' }} /></span>
                               {def && <def.icon size={14} style={{ color: def.color }} />}
                               <span className="text-xs font-semibold" style={{ color: '#6B7280' }}>{def?.label || block.block_type}</span>
                               {block.ai_generated && !block.ai_confirmed && (
@@ -1729,6 +1734,12 @@ export default function StudioConceptionFormation() {
                                   <UploadCloud size={13} style={{ color: '#BF8813' }} />
                                 </button>
                               )}
+                              <button type="button" title="Insérer un bloc avant celui-ci" aria-label={`Insérer avant ${def?.label || block.block_type}`} onClick={e => { e.stopPropagation(); setInsertionSlot(idx); setActiveLibTab('blocs'); setMobileLibraryOpen(true); }} className="p-1 rounded hover:bg-amber-50" disabled={locked}>
+                                <Plus size={12} style={{ color: '#BF8813' }} /><span className="hidden xl:inline text-[10px] font-medium">Avant</span>
+                              </button>
+                              <button type="button" title="Insérer un bloc après celui-ci" aria-label={`Insérer après ${def?.label || block.block_type}`} onClick={e => { e.stopPropagation(); setInsertionSlot(idx + 1); setActiveLibTab('blocs'); setMobileLibraryOpen(true); }} className="p-1 rounded hover:bg-amber-50" disabled={locked}>
+                                <Plus size={12} style={{ color: '#002050' }} /><span className="hidden xl:inline text-[10px] font-medium">Après</span>
+                              </button>
                               <button title="Réglages du bloc" onClick={e => { e.stopPropagation(); setSelectedBlock(block); setSelectedBlockDef(def || null); setShowPreview(false); setShowAI(false); }} className="p-1 rounded hover:bg-gray-100">
                                 <Settings size={13} style={{ color: '#002050' }} />
                               </button>
@@ -1776,7 +1787,7 @@ export default function StudioConceptionFormation() {
                           onKeyDown={async (event) => {
                             if (event.key === 'Enter' && quickBlockMatches[0]) {
                               event.preventDefault();
-                              await addBlock(quickBlockMatches[0].type);
+                              await addBlock(quickBlockMatches[0].type, insertionSlot ?? undefined); setInsertionSlot(null);
                               setQuickBlockQuery('');
                             }
                           }}
@@ -1788,7 +1799,7 @@ export default function StudioConceptionFormation() {
                       </div>
                       {(quickBlockQuery.trim() || displayedBlocks.length === 0) && (
                         <div className="mt-2 flex flex-wrap gap-2">
-                          {quickBlockMatches.map(def => <button key={def.type} type="button" onClick={async()=>{await addBlock(def.type);setQuickBlockQuery('');}} className="flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium" style={{ borderColor: '#E4E7EC', color: '#374151' }}><def.icon size={12} style={{ color: def.color }}/>{def.label}</button>)}
+                          {quickBlockMatches.map(def => <button key={def.type} type="button" onClick={async()=>{await addBlock(def.type, insertionSlot ?? undefined);setInsertionSlot(null);setQuickBlockQuery('');}} className="flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium" style={{ borderColor: '#E4E7EC', color: '#374151' }}><def.icon size={12} style={{ color: def.color }}/>{def.label}</button>)}
                         </div>
                       )}
                     </div>
@@ -2080,127 +2091,6 @@ function stripHtml(html: string) {
   const div = document.createElement('div');
   div.innerHTML = html;
   return div.textContent || div.innerText || '';
-}
-
-function escapePastedText(value: string) {
-  return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
-
-function sanitizePastedHtml(rawHtml: string, rawText: string) {
-  if (!rawHtml.trim()) {
-    const lines = rawText.replace(/\r\n?/g, '\n').split(/\n{2,}/).map(part => part.trim()).filter(Boolean);
-    return lines.length ? lines.map(part => `<p>${escapePastedText(part).replace(/\n/g, '<br>')}</p>`).join('') : escapePastedText(rawText);
-  }
-  const source = new DOMParser().parseFromString(rawHtml, 'text/html');
-  const target = document.createElement('div');
-  const copyNode = (node: Node, parent: HTMLElement) => {
-    if (node.nodeType === Node.TEXT_NODE) { parent.appendChild(document.createTextNode(node.textContent || '')); return; }
-    if (node.nodeType !== Node.ELEMENT_NODE) return;
-    const element = node as HTMLElement;
-    const tag = element.tagName.toLowerCase();
-    if (['script','style','meta','link','iframe','object','embed','svg','math','form','input','button','textarea','template'].includes(tag)) return;
-    const allowed = new Set(['p','br','strong','b','em','i','u','ul','ol','li','a','blockquote']);
-    let nextParent = parent;
-    if (allowed.has(tag)) {
-      const cleanTag = tag === 'b' ? 'strong' : tag === 'i' ? 'em' : tag;
-      const clean = document.createElement(cleanTag);
-      if (cleanTag === 'a') {
-        const href = String(element.getAttribute('href') || '').trim();
-        if (/^https?:\/\//i.test(href)) clean.setAttribute('href', href);
-      }
-      parent.appendChild(clean);
-      nextParent = clean;
-    } else if (tag === 'div' || /^h[1-6]$/.test(tag)) {
-      const paragraph = document.createElement('p');
-      parent.appendChild(paragraph);
-      nextParent = paragraph;
-    }
-    Array.from(element.childNodes).forEach(child => copyNode(child, nextParent));
-  };
-  Array.from(source.body.childNodes).forEach(node => copyNode(node, target));
-  return target.innerHTML;
-}
-
-function RichTextEditor({ value, onChange, locked, placeholder, headingLevel, language = 'fr' }: {
-  value: string; onChange: (html: string) => void; locked: boolean; placeholder: string; headingLevel?: 1 | 2; language?: string;
-}) {
-  const ref = useRef<HTMLDivElement | null>(null);
-  const [selectionToolbar, setSelectionToolbar] = useState<{ left: number; top: number } | null>(null);
-  useEffect(() => {
-    if (!ref.current || document.activeElement === ref.current) return;
-    const clean = sanitizePastedHtml(value || '', value || '');
-    if (ref.current.innerHTML !== clean) ref.current.innerHTML = clean;
-  }, [value]);
-  function emit() { if (ref.current) onChange(sanitizePastedHtml(ref.current.innerHTML, ref.current.textContent || '')); }
-  function command(cmd: string, arg?: string) {
-    ref.current?.focus();
-    document.execCommand(cmd, false, arg);
-    emit();
-    window.setTimeout(updateSelectionToolbar, 0);
-  }
-  function updateSelectionToolbar() {
-    if (locked || !ref.current) return setSelectionToolbar(null);
-    const selection = window.getSelection();
-    if (!selection || selection.isCollapsed || selection.rangeCount === 0) return setSelectionToolbar(null);
-    const range = selection.getRangeAt(0);
-    if (!ref.current.contains(range.commonAncestorContainer)) return setSelectionToolbar(null);
-    const rect = range.getBoundingClientRect();
-    const host = ref.current.getBoundingClientRect();
-    setSelectionToolbar({ left: Math.max(8, Math.min(host.width - 210, rect.left - host.left)), top: Math.max(4, rect.top - host.top - 38) });
-  }
-  function handlePaste(event: ClipboardEvent<HTMLDivElement>) {
-    if (locked) return;
-    event.preventDefault();
-    const rawText = event.clipboardData.getData('text/plain') || '';
-    if (headingLevel) {
-      document.execCommand('insertText', false, rawText.replace(/\s+/g, ' ').trim());
-      emit();
-      return;
-    }
-    const cleanHtml = sanitizePastedHtml(event.clipboardData.getData('text/html') || '', rawText);
-    document.execCommand('insertHTML', false, cleanHtml);
-    emit();
-  }
-  function addLink() {
-    const url = window.prompt('Adresse du lien HTTPS');
-    if (!url) return;
-    if (!/^https:\/\//i.test(url.trim())) { window.alert('Utilisez une adresse HTTPS valide.'); return; }
-    command('createLink', url.trim());
-  }
-  const toolBtn = 'h-8 rounded-lg border px-2.5 text-xs font-semibold hover:bg-slate-50 disabled:opacity-40';
-  return (
-    <div className="relative overflow-visible rounded-xl border bg-white" style={{ borderColor: '#E4E7EC' }}>
-      {!locked && !headingLevel && (
-        <div className="flex flex-wrap items-center gap-1 border-b px-2 py-2" style={{ borderColor: '#EEF1F5', background: '#FBFCFE' }}>
-          <button type="button" className={toolBtn} onMouseDown={e=>e.preventDefault()} onClick={()=>command('bold')} title="Gras"><strong>B</strong></button>
-          <button type="button" className={toolBtn} onMouseDown={e=>e.preventDefault()} onClick={()=>command('italic')} title="Italique"><em>I</em></button>
-          <button type="button" className={toolBtn} onMouseDown={e=>e.preventDefault()} onClick={()=>command('underline')} title="Souligné"><u>U</u></button>
-          <button type="button" className={toolBtn} onMouseDown={e=>e.preventDefault()} onClick={()=>command('undo')} title="Annuler">↶</button>
-          <button type="button" className={toolBtn} onMouseDown={e=>e.preventDefault()} onClick={()=>command('redo')} title="Rétablir">↷</button>
-          <button type="button" className={toolBtn} onMouseDown={e=>e.preventDefault()} onClick={()=>command('insertUnorderedList')} title="Liste à puces">• Puces</button>
-          <button type="button" className={toolBtn} onMouseDown={e=>e.preventDefault()} onClick={()=>command('insertOrderedList')} title="Liste numérotée">1. Liste</button>
-          <button type="button" className={toolBtn} onMouseDown={e=>e.preventDefault()} onClick={addLink} title="Ajouter un lien">Lien</button>
-          <span className="ml-auto text-[10px] text-slate-400">Entrée = nouveau paragraphe · Maj+Entrée = retour simple</span>
-        </div>
-      )}
-      {!locked && selectionToolbar && (
-        <div className="absolute z-30 flex items-center gap-1 rounded-lg border bg-white p-1 shadow-lg" style={{ left: selectionToolbar.left, top: selectionToolbar.top, borderColor: '#E4E7EC' }}>
-          <button type="button" onMouseDown={e => e.preventDefault()} onClick={() => command('bold')} className="h-7 min-w-7 rounded px-2 text-xs font-bold hover:bg-slate-50" title="Gras">B</button>
-          <button type="button" onMouseDown={e => e.preventDefault()} onClick={() => command('italic')} className="h-7 min-w-7 rounded px-2 text-xs italic hover:bg-slate-50" title="Italique">I</button>
-          <button type="button" onMouseDown={e => e.preventDefault()} onClick={() => command('insertUnorderedList')} className="h-7 rounded px-2 text-xs hover:bg-slate-50" title="Puces">•</button>
-          <button type="button" onMouseDown={e => e.preventDefault()} onClick={() => command('insertOrderedList')} className="h-7 rounded px-2 text-xs hover:bg-slate-50" title="Numérotation">1.</button>
-          <button type="button" onMouseDown={e => e.preventDefault()} onClick={addLink} className="h-7 rounded px-2 text-xs font-semibold hover:bg-slate-50" title="Ajouter un lien">Lien</button>
-        </div>
-      )}
-      <div ref={ref} contentEditable={!locked} suppressContentEditableWarning spellCheck lang={language} data-placeholder={placeholder}
-        role="textbox" aria-multiline={headingLevel ? false : true} aria-label={placeholder || "Éditeur de contenu"}
-        onInput={emit}
-        onPaste={handlePaste}
-        onMouseUp={updateSelectionToolbar} onKeyUp={updateSelectionToolbar} onBlur={() => window.setTimeout(() => setSelectionToolbar(null), 120)}
-        className={`${headingLevel === 1 ? 'text-xl font-bold' : headingLevel === 2 ? 'text-lg font-semibold' : 'text-sm'} min-h-[88px] px-3 py-3 outline-none rich-editor [&_p]:my-2 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:my-1 [&_a]:text-blue-700 [&_a]:underline`}
-        style={{ color: headingLevel ? '#002050' : '#374151' }} />
-    </div>
-  );
 }
 
 function RichListEditor({ items, ordered, locked, onChange, placeholder, language = 'fr' }: { items:string[]; ordered?:boolean; locked:boolean; onChange:(items:string[])=>void; placeholder:string; language?:string }) {

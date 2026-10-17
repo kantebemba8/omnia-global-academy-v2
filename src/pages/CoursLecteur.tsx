@@ -1056,6 +1056,12 @@ export function CoursLecteur() {
   }, [user?.id, courseId, currentLessonId, sessionToken, lessonData, isOnline]);
 
   const lesson = lessonData?.lesson;
+  // Legacy lesson-level media remain a fallback for old courses. Ordered
+  // lesson blocks are authoritative when the same medium is present in both.
+  const hasOrderedVideoBlock = Array.isArray(lessonData?.blocks) && lessonData.blocks.some((block: any) =>
+    block?.block_type === 'video' && Boolean(block?.content_json?.cloudflare_stream_uid || block?.content_json?.url || block?.file_url || block?.storage_path));
+  const hasOrderedAudioBlock = Array.isArray(lessonData?.blocks) && lessonData.blocks.some((block: any) =>
+    block?.block_type === 'audio' && Boolean(block?.content_json?.url || block?.file_url || block?.storage_path));
   const prog = lessonData?.progress;
   const isCompleted = prog?.is_completed ?? false;
   const quizPassed = prog?.quiz_passed ?? false;
@@ -1401,7 +1407,7 @@ export function CoursLecteur() {
                 </div>
               )}
 
-              {lesson.content_type === 'video' && !(lesson.is_external) && !dataSaver && isOnline && (
+              {lesson.content_type === 'video' && !hasOrderedVideoBlock && !(lesson.is_external) && !dataSaver && isOnline && (
                 <div
                   ref={videoContainerRef}
                   className="mx-auto max-w-3xl rounded-2xl overflow-hidden mb-5"
@@ -1416,14 +1422,14 @@ export function CoursLecteur() {
                   }
                 </div>
               )}
-              {lesson.content_type === 'video' && !(lesson.is_external) && (dataSaver || !isOnline) && (
+              {lesson.content_type === 'video' && !hasOrderedVideoBlock && !(lesson.is_external) && (dataSaver || !isOnline) && (
                 <div className="mx-auto max-w-3xl rounded-2xl border p-5 mb-5" style={{ borderColor: '#BF8813', backgroundColor: '#FFFBEB' }}>
                   <div className="flex items-center gap-2 font-bold text-sm" style={{ color: '#002050' }}><Gauge size={16}/>Lecture vidéo suspendue pour économiser les données</div>
                   <p className="mt-2 text-xs text-slate-600">Utilisez le texte, la transcription ou la piste audio lorsqu’elle est disponible. Désactivez l’économie de données pour reprendre la vidéo.</p>
                   {lesson.audio_url && isOnline && <audio controls controlsList="nodownload" preload="metadata" className="mt-3 w-full" src={lesson.audio_url} />}
                 </div>
               )}
-              {lesson.content_type === 'audio' && lesson.audio_url && (
+              {lesson.content_type === 'audio' && !hasOrderedAudioBlock && lesson.audio_url && (
                 <div className="mx-auto max-w-3xl rounded-2xl p-5 mb-5" style={{ border: '1px solid #E4E7EC', backgroundColor: '#F8F9FA' }}>
                   <audio controls controlsList="nodownload" preload="metadata" className="w-full"><source src={lesson.audio_url} /></audio>
                 </div>

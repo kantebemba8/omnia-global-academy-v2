@@ -58,7 +58,7 @@ function escapeHtml(value: string) {
 function safeCourseHtml(value: string): string {
   if (typeof document === 'undefined') return escapeHtml(value);
   const parsed = new DOMParser().parseFromString(value, 'text/html');
-  const allowed = new Set(['p','div','br','strong','b','em','i','u','ul','ol','li','a','blockquote','span','h1','h2','h3','h4','h5','h6']);
+  const allowed = new Set(['p','div','br','strong','b','em','i','u','ul','ol','li','a','blockquote','span','h1','h2','h3','h4','h5','h6','table','thead','tbody','tr','th','td']);
   const clean = (node: Node): Node | null => {
     if (node.nodeType === Node.TEXT_NODE) return document.createTextNode(node.textContent || '');
     if (node.nodeType !== Node.ELEMENT_NODE) return null;
@@ -90,7 +90,7 @@ function safeCourseHtml(value: string): string {
 function richHtml(value: any) {
   const raw = String(value ?? '').trim();
   if (!raw) return '';
-  if (/<\/?(?:p|div|strong|b|em|i|u|ul|ol|li|a|br|span|blockquote)\b/i.test(raw)) return safeCourseHtml(raw);
+  if (/<\/?(?:p|div|strong|b|em|i|u|ul|ol|li|a|br|span|blockquote|table|thead|tbody|tr|th|td|h2|h3)\b/i.test(raw)) return safeCourseHtml(raw);
   return raw
     .split(/\n{2,}/)
     .map(paragraph => `<p>${escapeHtml(paragraph).replace(/\n/g, '<br />')}</p>`)
@@ -100,7 +100,7 @@ function richHtml(value: any) {
 function RichContent({ value, className = '' }: { value: any; className?: string }) {
   const html = richHtml(value);
   if (!html) return null;
-  return <div className={`prose prose-sm max-w-none leading-relaxed [&_p]:my-1.5 [&_ul]:my-1.5 [&_ol]:my-1.5 ${className}`} dangerouslySetInnerHTML={{ __html: html }} />;
+  return <div className={`prose prose-sm max-w-none leading-relaxed [&_p]:my-1.5 [&_ul]:my-1.5 [&_ol]:my-1.5 [&_table]:my-4 [&_table]:w-full [&_table]:border-collapse [&_th]:border [&_th]:bg-slate-50 [&_th]:p-2 [&_td]:border [&_td]:p-2 ${className}`} dangerouslySetInnerHTML={{ __html: html }} />;
 }
 
 
@@ -182,7 +182,7 @@ export function BlockRenderer({ block, onQuizAnswer, onTrainingResult, onFileTra
 
     case 'text':
       return (
-        <div className="prose prose-sm max-w-none my-3 text-gray-700 leading-relaxed"
+        <div className="prose prose-sm max-w-none my-3 text-gray-700 leading-relaxed [&_table]:my-4 [&_table]:w-full [&_table]:border-collapse [&_th]:border [&_th]:bg-slate-50 [&_th]:p-2 [&_td]:border [&_td]:p-2"
           style={{ lineHeight: 1.65 }}
           dangerouslySetInnerHTML={{ __html: richHtml(c.html || c.text || '') }}
         />
