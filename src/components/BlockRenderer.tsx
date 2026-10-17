@@ -58,7 +58,7 @@ function escapeHtml(value: string) {
 function safeCourseHtml(value: string): string {
   if (typeof document === 'undefined') return escapeHtml(value);
   const parsed = new DOMParser().parseFromString(value, 'text/html');
-  const allowed = new Set(['p','div','br','strong','b','em','i','u','ul','ol','li','a','blockquote','span','h1','h2','h3','h4','h5','h6','table','thead','tbody','tr','th','td']);
+  const allowed = new Set(['p','div','br','strong','b','em','i','u','ul','ol','li','a','blockquote','span','h1','h2','h3','h4','h5','h6','table','thead','tbody','tr','th','td','s','strike','code','pre','hr','img']);
   const clean = (node: Node): Node | null => {
     if (node.nodeType === Node.TEXT_NODE) return document.createTextNode(node.textContent || '');
     if (node.nodeType !== Node.ELEMENT_NODE) return null;
@@ -68,9 +68,23 @@ function safeCourseHtml(value: string): string {
     const output = document.createElement(allowed.has(tag) ? tag : 'span');
     if (tag === 'a') {
       const href = (el.getAttribute('href') || '').trim();
-      if (/^https?:\/\//i.test(href)) {
+      if (/^https?:\/\/[^\s<>'"]+$/i.test(href)) {
         (output as HTMLAnchorElement).href = href;
         (output as HTMLAnchorElement).rel = 'noopener noreferrer';
+        (output as HTMLAnchorElement).target = '_blank';
+      }
+    }
+    if (tag === 'img') {
+      const src = (el.getAttribute('src') || '').trim();
+      if (!/^https:\/\/[^\s<>'"]+$/i.test(src)) return null;
+      (output as HTMLImageElement).src = src;
+      (output as HTMLImageElement).alt = el.getAttribute('alt') || '';
+      (output as HTMLImageElement).loading = 'lazy';
+    }
+    if (tag === 'td' || tag === 'th') {
+      for (const name of ['colspan', 'rowspan']) {
+        const value = Number(el.getAttribute(name));
+        if (Number.isInteger(value) && value >= 1 && value <= 20) output.setAttribute(name, String(value));
       }
     }
     for (const child of Array.from(el.childNodes)) {
@@ -90,7 +104,7 @@ function safeCourseHtml(value: string): string {
 function richHtml(value: any) {
   const raw = String(value ?? '').trim();
   if (!raw) return '';
-  if (/<\/?(?:p|div|strong|b|em|i|u|ul|ol|li|a|br|span|blockquote|table|thead|tbody|tr|th|td|h2|h3)\b/i.test(raw)) return safeCourseHtml(raw);
+  if (/<\/?(?:p|div|strong|b|em|i|u|ul|ol|li|a|br|span|blockquote|table|thead|tbody|tr|th|td|h1|h2|h3|pre|code|s|strike|hr|img)\b/i.test(raw)) return safeCourseHtml(raw);
   return raw
     .split(/\n{2,}/)
     .map(paragraph => `<p>${escapeHtml(paragraph).replace(/\n/g, '<br />')}</p>`)

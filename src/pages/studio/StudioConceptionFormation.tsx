@@ -10,6 +10,7 @@ import StudioQualityStatusPanel from '../../components/StudioQualityStatusPanel'
 import CourseAdvancedSettingsPanel from '../../components/CourseAdvancedSettingsPanel';
 import BuilderImportDialog from '../../components/studio/BuilderImportDialog';
 import RichTextEditor from '../../components/studio/StudioRichTextEditor';
+import StudioCollectionControls from '../../components/studio/StudioCollectionControls';
 import { STUDIO_MEDIA_POLICY, checkStudioMediaFile, type StudioMediaKind } from '../../lib/studioMediaPolicy';
 import { reorderBlocksAtSlot, orderChanged } from '../../lib/studioBlockOrdering';
 import { CATEGORY_LABELS } from '../../lib/categories';
@@ -208,7 +209,7 @@ class BuilderBlockBoundary extends Component<{ children: ReactNode; blockType: s
     if (prevProps.blockType !== this.props.blockType && this.state.failed) this.setState({ failed: false });
   }
   render() {
-    if (this.state.failed) return <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700"><p className="font-semibold">Ce bloc n’a pas pu être affiché.</p><p className="mt-1 text-xs">Le reste de la formation reste disponible. Modifiez ou rechargez uniquement ce bloc.</p></div>;
+    if (this.state.failed) return <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700"><p className="font-semibold">Ce bloc n’a pas pu être affiché.</p><p className="mt-1 text-xs">Le reste de la formation reste disponible.</p><button type="button" onClick={() => this.setState({ failed: false })} className="mt-2 rounded-lg border border-red-300 px-3 py-1.5 text-xs font-semibold">Réessayer ce bloc</button></div>;
     return this.props.children;
   }
 }
@@ -232,6 +233,7 @@ export default function StudioConceptionFormation() {
   const blockSaveQueues = useRef<Record<string, Promise<any>>>({});
   // Never consider a failed write successful after its Promise leaves the queue.
   const failedBlockSaves = useRef<Set<string>>(new Set());
+  const [failedBlockIds, setFailedBlockIds] = useState<string[]>([]);
   const blockLoadRequest = useRef(0);
   const reorderInFlight = useRef(false);
   const [selectedBlock, setSelectedBlock] = useState<Block | null>(null);
@@ -249,6 +251,21 @@ export default function StudioConceptionFormation() {
   const [showPreview, setShowPreview] = useState(false);
   const [mobileLibraryOpen, setMobileLibraryOpen] = useState(false);
   const [blockLibrarySearch, setBlockLibrarySearch] = useState('');
+  const [favoriteBlockTypes, setFavoriteBlockTypes] = useState<string[]>(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('oga_studio_v4_block_favorites') || '[]');
+      return Array.isArray(saved) ? saved.filter((type): type is string => typeof type === 'string') : [];
+    } catch { return []; }
+  });
+  const [libraryDetailType, setLibraryDetailType] = useState<string | null>(null);
+  const [inspectorCollapsed, setInspectorCollapsed] = useState(false);
+  function toggleFavorite(type: string) {
+    setFavoriteBlockTypes(previous => {
+      const next = previous.includes(type) ? previous.filter(item => item !== type) : [...previous, type];
+      try { localStorage.setItem('oga_studio_v4_block_favorites', JSON.stringify(next)); } catch { /* private browsing */ }
+      return next;
+    });
+  }
   const [collapsedBlockGroups, setCollapsedBlockGroups] = useState<Record<string, boolean>>({});
   const [showHistory, setShowHistory] = useState(false);
   const [showChecklist, setShowChecklist] = useState(false);
@@ -367,11 +384,13 @@ export default function StudioConceptionFormation() {
         const result = await api('update_block', { block_id: blockId, ...updates });
         if (!result.success) {
           failedBlockSaves.current.add(blockId);
+          setFailedBlockIds([...failedBlockSaves.current]);
           showToast(result.message || result.error || 'Impossible d’enregistrer le bloc. Vos modifications restent visibles.', 'error');
           // Do not reload over other unsaved edits. The next successful write may retry.
           throw new Error(result.error || 'BLOCK_UPDATE_FAILED');
         }
         failedBlockSaves.current.delete(blockId);
+        setFailedBlockIds([...failedBlockSaves.current]);
         return result;
       });
     blockSaveQueues.current[blockId] = next;
@@ -379,6 +398,32 @@ export default function StudioConceptionFormation() {
       if (blockSaveQueues.current[blockId] === next) delete blockSaveQueues.current[blockId];
     }).catch(() => undefined);
     return next;
+  }
+
+  async function retryFailedBlockSaves() {
+    const failed = [...failedBlockSaves.current];
+    if (!failed.length) return;
+    const current = blocks.filter(block => failed.includes(block.id));
+    if (current.length !== failed.length) {
+      showToast('La leçon a changé : rechargez-la avant de reprendre les sauvegardes.', 'error');
+      return;
+    }
+    const tasks = current.map(block => queueBlockUpdate(block.id, {
+      title: block.title, content_json: block.content_json, settings_json: block.settings_json,
+      interaction_mode: block.interaction_mode, assessment_scope: block.assessment_scope,
+      is_required: block.is_required, preview_allowed: block.preview_allowed,
+      training_passing_score: block.training_passing_score,
+      training_is_graded: block.training_is_graded,
+      linked_block_ids: block.linked_block_ids,
+      rubric_block_ids: block.rubric_block_ids,
+      correction_block_ids: block.correction_block_ids,
+    }));
+    const results = await Promise.allSettled(tasks);
+    if (results.some(result => result.status === 'rejected')) {
+      showToast('Au moins un bloc reste non enregistré. Vérifiez la connexion.', 'error');
+    } else {
+      showToast('Les blocs ont été enregistrés sur le serveur.', 'success');
+    }
   }
 
   async function flushBlockUpdates() {
@@ -1165,6 +1210,7 @@ export default function StudioConceptionFormation() {
           {!headerCollapsed && <button onClick={loadHistory} className="hidden md:flex items-center gap-1 px-3 py-1.5 rounded-lg border text-xs font-medium" style={{ borderColor: '#E4E7EC', color: '#6B7280' }}>
             <History size={13} /> Historique
           </button>}
+          {inspectorCollapsed && <button type="button" onClick={() => setInspectorCollapsed(false)} className="hidden md:flex items-center gap-1 rounded-lg border border-amber-300 px-3 py-1.5 text-xs font-semibold text-[#002050]"><Settings size={13}/> Inspecteur</button>}
           <button type="button" onClick={() => setHeaderCollapsedPersisted(!headerCollapsed)} className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border text-xs font-medium" style={{ borderColor: '#E4E7EC', color: '#6B7280' }} title={headerCollapsed ? 'Afficher les paramètres du Builder' : 'Réduire les paramètres du Builder'}>
             {headerCollapsed ? <ChevronDown size={13} /> : <ChevronUp size={13} />}<span className="hidden lg:inline">{headerCollapsed ? 'Afficher' : 'Réduire'}</span>
           </button>
@@ -1207,9 +1253,16 @@ export default function StudioConceptionFormation() {
             {activeLibTab === 'blocs' && (
               <div>
                 {insertionSlot !== null && <div className="mb-3 flex items-center justify-between rounded-lg border border-amber-300 bg-amber-50 px-2 py-2 text-xs text-amber-900" role="status"><span>Insérer le prochain bloc à l'emplacement {insertionSlot + 1}</span><button type="button" onClick={() => setInsertionSlot(null)} aria-label="Annuler la position d'insertion" className="rounded p-1 hover:bg-amber-100"><X size={13}/></button></div>}
-                <input type="search" value={blockLibrarySearch} onChange={event => setBlockLibrarySearch(event.target.value)} placeholder="Rechercher parmi les 52 blocs…" aria-label="Rechercher un bloc pédagogique" className="mb-3 w-full rounded-lg border px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-amber-400" style={{borderColor:'#E4E7EC'}} />
+                {!advancedMode && !assessmentWorkspace && <div className="mb-3 rounded-xl border border-blue-100 bg-[#F1F5FA] p-3 text-xs text-[#002050]">
+                  <p className="font-semibold">Bibliothèque complète : 52 blocs</p>
+                  <p className="mt-1 text-slate-600">Le mode simple affiche les blocs essentiels. Le mode avancé permet d'utiliser les activités spécialisées et linguistiques.</p>
+                  <button type="button" disabled={locked} onClick={() => void changeStudioMode(true)} className="mt-2 rounded-lg bg-[#002050] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40">Afficher les 52 blocs</button>
+                </div>}
+                <input type="search" value={blockLibrarySearch} onChange={event => setBlockLibrarySearch(event.target.value)} placeholder="Rechercher un bloc, une fonction ou un format…" aria-label="Rechercher un bloc pédagogique" className="mb-3 w-full rounded-lg border px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-amber-400" style={{borderColor:'#E4E7EC'}} />
                 {['structure', 'pedagogique', 'media', 'evaluation', 'langues', 'avance'].map(group => {
-                  const groupBlocks = visibleBlocks.filter(b => b.group === group && (!blockLibrarySearch.trim() || `${b.label} ${b.type}`.toLocaleLowerCase().includes(blockLibrarySearch.trim().toLocaleLowerCase())));
+                  const query = blockLibrarySearch.trim().toLocaleLowerCase();
+                  const groupBlocks = visibleBlocks.filter(b => b.group === group && (!query || `${b.label} ${b.type} ${(BLOCK_SEARCH_ALIASES[b.type] || []).join(' ')}`.toLocaleLowerCase().includes(query)))
+                    .sort((a,b) => Number(favoriteBlockTypes.includes(b.type)) - Number(favoriteBlockTypes.includes(a.type)));
                   if (groupBlocks.length === 0) return null;
                   const groupLabels: Record<string, string> = { structure: 'Structure & texte', pedagogique: 'Pédagogie', media: 'Médias & documents', evaluation: 'Activités & évaluations', avance: 'Interactions avancées', langues: 'Apprentissage des langues' };
                   return (
@@ -1220,20 +1273,29 @@ export default function StudioConceptionFormation() {
                       </button>
                       {!collapsedBlockGroups[group] && <div className="grid grid-cols-3 gap-1.5">
                         {groupBlocks.map(def => (
-                          <button key={def.type} onClick={async () => { await addBlock(def.type, insertionSlot ?? undefined); setInsertionSlot(null); setMobileLibraryOpen(false); }} disabled={locked} draggable={!locked && !!currentLesson}
-                            onDragStart={(e) => { e.dataTransfer.setData('application/x-omnia-block', def.type); e.dataTransfer.effectAllowed = 'copy'; }} onDragEnd={() => setDragOverSlot(null)}
-                            className="flex flex-col items-center gap-1 p-2 rounded-lg border text-center transition-all hover:shadow-sm disabled:opacity-40"
-                            style={{ borderColor: '#E4E7EC', background: 'white' }}>
-                            <div className="w-6 h-6 flex items-center justify-center">
-                              <def.icon size={18} style={{ color: def.color }} />
+                          <div key={def.type} className="group/lib relative rounded-xl border border-slate-200 bg-white p-1.5 transition-shadow hover:border-amber-400 hover:shadow-sm focus-within:ring-2 focus-within:ring-amber-400">
+                            <button type="button" disabled={locked || !currentLesson} draggable={!locked && !!currentLesson}
+                              onClick={async () => { await addBlock(def.type, insertionSlot ?? undefined); setInsertionSlot(null); setMobileLibraryOpen(false); }}
+                              onDragStart={e => { e.dataTransfer.setData('application/x-omnia-block', def.type); e.dataTransfer.effectAllowed = 'copy'; }} onDragEnd={() => setDragOverSlot(null)}
+                              className="flex w-full flex-col items-center gap-1 px-1 py-2 text-center disabled:opacity-40" title={`Ajouter ${def.label}`}>
+                              <def.icon size={19} style={{ color: def.color }} />
+                              <span className="text-[10px] leading-tight text-slate-700">{def.label}</span>
+                            </button>
+                            <div className="mt-1 flex justify-center gap-2 border-t border-slate-100 pt-1">
+                              <button type="button" aria-label={`${favoriteBlockTypes.includes(def.type) ? 'Retirer des favoris' : 'Ajouter aux favoris'} : ${def.label}`} onClick={() => toggleFavorite(def.type)} className="rounded p-1 text-amber-700 hover:bg-amber-50"><Star size={12} fill={favoriteBlockTypes.includes(def.type) ? '#BF8813' : 'none'}/></button>
+                              <button type="button" aria-label={`Description du bloc : ${def.label}`} onClick={() => setLibraryDetailType(v => v === def.type ? null : def.type)} className="rounded p-1 text-slate-600 hover:bg-slate-100"><Info size={12}/></button>
                             </div>
-                            <span className="text-xs leading-tight" style={{ color: '#374151', fontSize: '10px' }}>{def.label}</span>
-                          </button>
+                          </div>
                         ))}
                       </div>}
                     </div>
                   );
                 })}
+                {libraryDetailType && BLOCK_DEFS.some(def => def.type === libraryDetailType) && <div role="status" className="mb-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-slate-700">
+                  <p className="font-bold text-[#002050]">{BLOCK_DEFS.find(def => def.type === libraryDetailType)?.label}</p>
+                  <p className="mt-1">Type conservé : <code>{libraryDetailType}</code>. La configuration et les ressources sont disponibles dans le panneau Paramètres après insertion.</p>
+                  <button type="button" onClick={() => setLibraryDetailType(null)} className="mt-2 font-semibold text-amber-800 underline">Fermer</button>
+                </div>}
                 {!currentLesson && (
                   <div className="mt-4 p-3 rounded-lg text-center" style={{ background: '#F8F9FA', border: '1px dashed #E4E7EC' }}>
                     <p className="text-xs" style={{ color: '#9CA3AF' }}>Sélectionnez une leçon pour ajouter des blocs</p>
@@ -1702,6 +1764,11 @@ export default function StudioConceptionFormation() {
                   )}
                 </div>
 
+                {/* Statut réel des écritures Supabase, aucun faux message de succès. */}
+                {failedBlockIds.length > 0 && <div role="alert" className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-xs text-red-800">
+                  <span>{failedBlockIds.length} bloc(s) non enregistré(s). Les changements locaux restent visibles.</span>
+                  <button type="button" onClick={() => void retryFailedBlockSaves()} className="rounded-lg border border-red-400 bg-white px-3 py-1.5 font-semibold">Réessayer la sauvegarde</button>
+                </div>}
                 {/* Blocs */}
                 <div className="space-y-3">
                   {displayedBlocks.map((block) => {
@@ -1740,7 +1807,7 @@ export default function StudioConceptionFormation() {
                               <button type="button" title="Insérer un bloc après celui-ci" aria-label={`Insérer après ${def?.label || block.block_type}`} onClick={e => { e.stopPropagation(); setInsertionSlot(idx + 1); setActiveLibTab('blocs'); setMobileLibraryOpen(true); }} className="p-1 rounded hover:bg-amber-50" disabled={locked}>
                                 <Plus size={12} style={{ color: '#002050' }} /><span className="hidden xl:inline text-[10px] font-medium">Après</span>
                               </button>
-                              <button title="Réglages du bloc" onClick={e => { e.stopPropagation(); setSelectedBlock(block); setSelectedBlockDef(def || null); setShowPreview(false); setShowAI(false); }} className="p-1 rounded hover:bg-gray-100">
+                              <button title="Réglages du bloc" onClick={e => { e.stopPropagation(); setSelectedBlock(block); setSelectedBlockDef(def || null); setShowPreview(false); setShowAI(false); setInspectorCollapsed(false); }} className="p-1 rounded hover:bg-gray-100">
                                 <Settings size={13} style={{ color: '#002050' }} />
                               </button>
                               <button type="button" aria-label={`Déplacer ${def?.label||block.block_type} vers le haut`} title="Déplacer vers le haut" onClick={e => { e.stopPropagation(); moveBlock(idx, -1); }} className="p-1 rounded hover:bg-gray-100" disabled={locked || idx === 0}>
@@ -1864,9 +1931,20 @@ export default function StudioConceptionFormation() {
         </div>
 
         {/* ── COLONNE DROITE : Réglages ou Aperçu ─────── */}
-        {(selectedBlock || showPreview || showAI) && (
-          <div className="absolute inset-0 z-50 flex flex-col border-l bg-white md:static md:w-[300px]" style={{ borderColor: '#E4E7EC' }}>
+        {(selectedBlock || showPreview || showAI || !inspectorCollapsed) && (
+          <div className={`${selectedBlock || showPreview || showAI ? 'absolute inset-0 z-50' : 'hidden'} flex-col border-l bg-white md:static md:flex md:w-[330px] md:max-w-[36%] md:flex-shrink-0`}  style={{ borderColor: '#E4E7EC' }}>
 
+            {!selectedBlock && !showPreview && !showAI && <div className="flex h-full flex-col">
+              <div className="flex items-center justify-between border-b border-slate-200 p-4">
+                <div><p className="text-sm font-bold text-[#002050]">Inspecteur pédagogique</p><p className="text-[11px] text-slate-500">Paramètres contextuels</p></div>
+                <button type="button" onClick={() => setInspectorCollapsed(true)} className="rounded-lg border p-1.5 text-slate-500" title="Replier l'inspecteur" aria-label="Replier l'inspecteur"><ChevronRight size={16}/></button>
+              </div>
+              <div className="flex-1 space-y-3 overflow-y-auto p-4">
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-slate-700"><p className="font-semibold text-[#002050]">Sélectionnez un bloc</p><p className="mt-1">Utilisez l'engrenage d'un bloc pour accéder à ses réglages, ressources, activités et options pédagogiques.</p></div>
+                <button type="button" disabled={!currentLesson} onClick={() => setShowPreview(true)} className="flex w-full items-center justify-center gap-2 rounded-xl border border-slate-300 px-3 py-2 text-xs font-semibold text-[#002050] disabled:opacity-40"><Eye size={14}/> Aperçu réel de la leçon</button>
+                <p className="text-xs text-slate-500">{blocks.length} bloc(s) dans la leçon sélectionnée · 52 modèles disponibles</p>
+              </div>
+            </div>}
             {/* ── ASSISTANT IA ──────────────────────── */}
             {showAI && !selectedBlock && (
               <div className="flex flex-col h-full">
@@ -2139,7 +2217,7 @@ function PedagogicalEditor({ c, locked, onChange, kind, language = 'fr' }: { c: 
   const labels:Record<string,string>={objective:'Objectif pédagogique',example:'Exemple',summary:'Résumé',important:'Important',correction:'Correction'};
   return <div className="space-y-2 p-3 rounded-xl border" style={{borderColor:'#E4E7EC',background:'#FBFCFE'}}>
     <input className="w-full font-semibold bg-transparent border-none outline-none" style={{color:'#002050'}} value={c.title||labels[kind]||''} onChange={e=>onChange({...c,title:e.target.value})} disabled={locked} spellCheck lang={language}/>
-    <RichTextEditor value={c.html||c.content||c.text||''} locked={locked} language={language} placeholder="Saisissez le contenu pédagogique..." onChange={html=>onChange({...c,html})}/>
+    <RichTextEditor value={c.html ?? c.content ?? c.text ?? ''} locked={locked} language={language} placeholder="Saisissez le contenu pédagogique..." onChange={html=>onChange({...c,html,content:html,text:html})}/>
   </div>
 }
 
@@ -2710,6 +2788,7 @@ function BlockSettings({ block, locked, onUpdate, onAI, onRemoveResource, onBefo
         </div>
       )}
 
+      <StudioCollectionControls key={`${block.id}:collections`} blockType={block.block_type} content={c} locked={locked} onChange={content_json => onUpdate({ content_json })} />
       <PedagogicalLocalizationEditor block={block} locked={locked} onUpdate={onUpdate} />
 
       {/* Source image */}
