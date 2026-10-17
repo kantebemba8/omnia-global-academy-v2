@@ -11,6 +11,9 @@ import CourseAdvancedSettingsPanel from '../../components/CourseAdvancedSettings
 import BuilderImportDialog from '../../components/studio/BuilderImportDialog';
 import RichTextEditor from '../../components/studio/StudioRichTextEditor';
 import StudioCollectionControls from '../../components/studio/StudioCollectionControls';
+import StudioSortableBlock from '../../components/studio/StudioSortableBlock';
+import { DndContext, PointerSensor, TouchSensor, KeyboardSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
+import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { STUDIO_MEDIA_POLICY, checkStudioMediaFile, type StudioMediaKind } from '../../lib/studioMediaPolicy';
 import { reorderBlocksAtSlot, orderChanged } from '../../lib/studioBlockOrdering';
 import { CATEGORY_LABELS } from '../../lib/categories';
@@ -738,21 +741,19 @@ export default function StudioConceptionFormation() {
     showToast('Ressource retirée et nettoyage serveur effectué.', 'success');
   }
 
-  const dragBlockId = useRef<string | null>(null);
-  const isBlockDrag = (e: React.DragEvent) => e.dataTransfer.types.includes('application/x-omnia-existing-block');
-  function onDragStart(blockId: string, e: React.DragEvent) {
-    if (locked || reorderInFlight.current) { e.preventDefault(); return; }
-    dragBlockId.current = blockId;
-    e.dataTransfer.setData('application/x-omnia-existing-block', blockId);
-    e.dataTransfer.effectAllowed = 'move';
-  }
+  const dndSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 180, tolerance: 8 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+  // Native HTML5 drop remains only for copying a new palette block into a slot.
+  // Existing blocks are reordered through dnd-kit (pointer, touch and keyboard).
   function onDragOver(e: React.DragEvent, idx: number) {
-    if (locked || reorderInFlight.current || (!isBlockDrag(e) && !e.dataTransfer.types.includes('application/x-omnia-block'))) return;
+    if (locked || reorderInFlight.current || !e.dataTransfer.types.includes('application/x-omnia-block')) return;
     e.preventDefault(); e.stopPropagation();
     const bounds = e.currentTarget.getBoundingClientRect();
-    const slot = idx + (e.clientY >= bounds.top + bounds.height / 2 ? 1 : 0);
-    setDragOverSlot(slot);
-    e.dataTransfer.dropEffect = isBlockDrag(e) ? 'move' : 'copy';
+    setDragOverSlot(idx + (e.clientY >= bounds.top + bounds.height / 2 ? 1 : 0));
+    e.dataTransfer.dropEffect = 'copy';
   }
   async function persistBlockOrder(next: Block[], original: Block[], lessonId: string) {
     if (locked || reorderInFlight.current || next.length !== original.length || !orderChanged(original, next)) return;
@@ -767,27 +768,30 @@ export default function StudioConceptionFormation() {
       showToast(error instanceof Error ? error.message : 'Impossible de réordonner les blocs.', 'error');
     } finally {
       reorderInFlight.current = false;
-      dragBlockId.current = null;
       setDragOverSlot(null);
     }
   }
   async function onDrop(e: React.DragEvent, targetIdx: number) {
     const incomingType = e.dataTransfer.getData('application/x-omnia-block');
-    if (!incomingType && !isBlockDrag(e)) return;
+    if (!incomingType || locked || reorderInFlight.current) return;
     e.preventDefault(); e.stopPropagation();
     const bounds = e.currentTarget.getBoundingClientRect();
     const slot = targetIdx + (e.clientY >= bounds.top + bounds.height / 2 ? 1 : 0);
     setDragOverSlot(null);
-    if (incomingType) {
-      await addBlock(incomingType, slot);
-      return;
-    }
-    const sourceId = dragBlockId.current || e.dataTransfer.getData('application/x-omnia-existing-block');
-    dragBlockId.current = null;
-    if (locked || reorderInFlight.current || !currentLesson?.id || !sourceId) return;
+    await addBlock(incomingType, slot);
+  }
+
+  async function onDndReorder(event: DragEndEvent) {
+    if (locked || reorderInFlight.current || !currentLesson?.id || !event.over) return;
+    const sourceId = String(event.active.id);
+    const overId = String(event.over.id);
+    if (sourceId === overId) return;
+    const sourceIndex = blocks.findIndex(b => b.id === sourceId);
+    const overIndex = blocks.findIndex(b => b.id === overId);
+    if (sourceIndex < 0 || overIndex < 0) return;
+    const slot = sourceIndex < overIndex ? overIndex + 1 : overIndex;
     try {
-      const next = reorderBlocksAtSlot(blocks, sourceId, slot);
-      await persistBlockOrder(next, blocks, currentLesson.id);
+      await persistBlockOrder(reorderBlocksAtSlot(blocks, sourceId, slot), blocks, currentLesson.id);
     } catch (error) {
       showToast(error instanceof Error ? error.message : 'Déplacement refusé.', 'error');
     }
@@ -1771,16 +1775,17 @@ export default function StudioConceptionFormation() {
                 </div>}
                 {/* Blocs */}
                 <div className="space-y-3">
+                  <DndContext sensors={dndSensors} collisionDetection={closestCenter} onDragEnd={event => void onDndReorder(event)}>
+                    <SortableContext items={displayedBlocks.map(item => item.id)} strategy={verticalListSortingStrategy}>
                   {displayedBlocks.map((block) => {
                     const idx = blocks.findIndex(item => item.id === block.id);
                     const def = BLOCK_DEFS.find(d => d.type === block.block_type);
                     const isSelected = selectedBlock?.id === block.id;
                     return (
-                      <div key={block.id}
-                        onDragOver={e => onDragOver(e, idx)}
-                        onDrop={e => onDrop(e, idx)}
-                        className="relative group"
-                        style={{ opacity: dragBlockId.current === block.id ? 0.68 : 1 }}>
+                      <StudioSortableBlock key={block.id} id={block.id} disabled={locked || reorderInFlight.current}
+                        onPaletteDragOver={e => onDragOver(e, idx)}
+                        onPaletteDrop={e => onDrop(e, idx)}>
+                        {handle => <>
                         {(dragOverSlot === idx || insertionSlot === idx) && <div aria-hidden="true" className="absolute -top-1 inset-x-2 z-20 h-1 rounded-full bg-[#BF8813] shadow-md" />}
                         {(dragOverSlot === idx + 1 || insertionSlot === idx + 1) && <div aria-hidden="true" className="absolute -bottom-1 inset-x-2 z-20 h-1 rounded-full bg-[#BF8813] shadow-md" />}
                         <div className={`bg-white rounded-xl border transition-all ${isSelected ? 'ring-2' : ''}`}
@@ -1788,7 +1793,11 @@ export default function StudioConceptionFormation() {
                           {/* Header bloc */}
                           <div className="flex items-center justify-between px-4 py-2.5 border-b" style={{ borderColor: '#F3F4F6' }}>
                             <div className="flex items-center gap-2">
-                              <span draggable={!locked} onDragStart={e => onDragStart(block.id, e)} onDragEnd={() => { dragBlockId.current=null; setDragOverSlot(null); }} title="Déplacer le bloc" aria-label="Poignée de déplacement du bloc" className={`inline-flex select-none ${locked ? 'opacity-30' : 'cursor-grab'}`}><GripVertical size={15} style={{ color: '#6B7280' }} /></span>
+                              <button type="button" ref={handle.ref} {...handle.props} disabled={locked || reorderInFlight.current}
+                                title="Déplacer le bloc (souris, tactile ou clavier)" aria-label={`Déplacer le bloc ${def?.label || block.block_type}`}
+                                className={`inline-flex touch-none select-none rounded p-1 focus-visible:ring-2 focus-visible:ring-[#BF8813] ${locked ? 'opacity-30' : 'cursor-grab'}`}>
+                                <GripVertical size={15} style={{ color: '#6B7280' }} />
+                              </button>
                               {def && <def.icon size={14} style={{ color: def.color }} />}
                               <span className="text-xs font-semibold" style={{ color: '#6B7280' }}>{def?.label || block.block_type}</span>
                               {block.ai_generated && !block.ai_confirmed && (
@@ -1840,9 +1849,12 @@ export default function StudioConceptionFormation() {
                             </BuilderBlockBoundary>
                           </div>
                         </div>
-                      </div>
+                        </>}
+                      </StudioSortableBlock>
                     );
                   })}
+                    </SortableContext>
+                  </DndContext>
 
                   {!locked && (
                     <div className="rounded-xl border bg-white p-3" style={{ borderColor: '#E4E7EC' }}>

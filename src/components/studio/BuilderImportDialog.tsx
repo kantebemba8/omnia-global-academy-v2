@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import Uppy from '@uppy/core';
 import { FileUp, X } from 'lucide-react';
 import { edgeAuthHeaders } from '../../lib/edgeAuth';
 import { uploadCourseImportFile } from '../../lib/courseImportUpload';
@@ -20,6 +21,14 @@ function ext(name:string){return name.split('.').pop()?.toLowerCase().trim()||''
 export default function BuilderImportDialog({open,onClose,courseId,targetType,targetId,creatorContext,onApplied}:{
   open:boolean; onClose:()=>void; courseId:string; targetType:TargetType; targetId:string; creatorContext:'professeur'|'structure'|'admin'; onApplied:()=>void|Promise<void>;
 }){
+  // Uppy governs selection, deduplication and MIME/size restrictions. The
+  // actual upload still uses the established Supabase signed-token transport.
+  const uppy=useMemo(()=>new Uppy({
+    id:'oga-course-import',autoProceed:false,
+    restrictions:{maxNumberOfFiles:1,maxFileSize:MAX_IMPORT_BYTES,minFileSize:1,
+      allowedFileTypes:IMPORT_EXTENSIONS.map(extension=>'.'+extension)},
+  }),[]);
+  useEffect(()=>()=>{uppy.destroy();},[uppy]);
   const [file,setFile]=useState<File|null>(null);
   const [dragging,setDragging]=useState(false);
   const [mode,setMode]=useState<ImportMode>('structured');
@@ -39,8 +48,15 @@ export default function BuilderImportDialog({open,onClose,courseId,targetType,ta
   function selectDocument(next:File|null){
     if(busy) return;
     setDragging(false);setPreview(null);setAlreadyApplied(false);setError('');setStatus('');
+    uppy.getFiles().forEach(existing=>uppy.removeFile(existing.id));
     if(!next){setFile(null);return;}
-    try{validate(next);setFile(next);}catch(e){setFile(null);setError(e instanceof Error?e.message:'Fichier non pris en charge');}
+    try{
+      validate(next);
+      uppy.addFile({name:next.name,type:next.type||undefined,data:next,source:'oga-document-import'});
+      const queued=uppy.getFiles()[0];
+      if(!queued) throw new Error('Uppy n’a pas accepté ce document.');
+      setFile(queued.data as File);
+    }catch(e){setFile(null);setError(e instanceof Error?e.message:'Fichier non pris en charge');}
   }
   async function analyze(){
     if(busy || alreadyApplied) return;
