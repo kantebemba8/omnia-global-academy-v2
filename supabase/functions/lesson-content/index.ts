@@ -113,6 +113,10 @@ Deno.serve(async(req:Request)=>{
    const courseId=String(body.course_id||"").trim(),lessonId=String(body.lesson_id||"").trim(),blockId=String(body.block_id||"").trim();
    if(!courseId||!lessonId||!blockId)return json({error:"course_id + lesson_id + block_id requis"},400);
    const {data:enroll}=await sb.from("user_enrollments").select("id").eq("user_id",userId).eq("course_id",courseId).maybeSingle();if(!enroll)return json({error:"NOT_ENROLLED"},403);
+   // B3: aucun POST apprenant ne peut modifier les blocs d'un autre cours.
+   const {data:courseLesson,error:courseLessonError}=await sb.from("course_lessons").select("id").eq("id",lessonId).eq("course_id",courseId).maybeSingle();
+   if(courseLessonError)throw courseLessonError;
+   if(!courseLesson)return json({error:"LESSON_NOT_IN_COURSE"},403);
    const {data:block}=await sb.from("lesson_blocks").select("id,lesson_id,block_type,interaction_mode,is_required,training_passing_score,training_is_graded,content_json").eq("id",blockId).eq("lesson_id",lessonId).maybeSingle();if(!block)return json({error:"BLOCK_NOT_FOUND"},404);
    if(action==="prepare_training_upload"){
     if(block.interaction_mode!=="training")return json({error:"BLOCK_UPLOAD_NOT_ALLOWED"},409);

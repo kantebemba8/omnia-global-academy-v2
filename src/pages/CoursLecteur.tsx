@@ -532,6 +532,9 @@ export function CoursLecteur() {
   const [readerStarted, setReaderStarted] = useState(Boolean(routeLessonId));
   const [courseInfo, setCourseInfo] = useState<CourseInfoPayload | null>(null);
   const [lessonData, setLessonData] = useState<LessonDataPayload | null>(null);
+  // B3: sérialise les écritures de chaque bloc, sans perdre les modifications rapides.
+  const blockStateWritesRef = useRef<Map<string, Promise<void>>>(new Map());
+  const activeLessonIdRef = useRef<string | null>(routeLessonId ?? null);
   const [pedagogicalCurrency, setPedagogicalCurrency] = useState<string | null>(() => localStorage.getItem('oga_pedagogical_currency'));
   const [savingPedagogicalCurrency, setSavingPedagogicalCurrency] = useState(false);
 
@@ -1107,16 +1110,40 @@ export function CoursLecteur() {
     }
   }, [isPreview, isOnline, currentLessonId, courseId, sessionToken, previewQuery, loadProgress]);
 
-  const saveBlockState = useCallback(async (blockId: string, state: Record<string, any>, completed: boolean) => {
+  activeLessonIdRef.current = currentLessonId;
+  const saveBlockState = useCallback((blockId: string, state: Record<string, any>, completed: boolean) => {
     if (isPreview || !isOnline || !currentLessonId || !courseId || !sessionToken) return;
-    try {
-      await fetch(ENDPOINTS.lessonContent, {
+    const lessonIdAtRequest = currentLessonId;
+    const key = `${courseId}:${lessonIdAtRequest}:${blockId}`;
+    const previous = blockStateWritesRef.current.get(key) ?? Promise.resolve();
+    const next = previous.catch(() => undefined).then(async () => {
+      const response = await fetch(ENDPOINTS.lessonContent, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionToken}` },
-        body: JSON.stringify({ action: 'block_state_save', course_id: courseId, lesson_id: currentLessonId, block_id: blockId, state, completed }),
+        body: JSON.stringify({ action: 'block_state_save', course_id: courseId, lesson_id: lessonIdAtRequest, block_id: blockId, state, completed }),
       });
-    } catch (error) { console.error('block_state_save', error); }
-  }, [isOnline, currentLessonId, courseId, sessionToken, isPreview, previewQuery]);
+      if (!response.ok) throw new Error(`Sauvegarde du bloc refusée (${response.status}).`);
+      const result = await response.json();
+      if (result?.error || result?.success !== true) throw new Error(result?.message || result?.error || 'Sauvegarde du bloc non confirmée.');
+      // Ne pas injecter l'état d'une ancienne leçon dans la nouvelle leçon affichée.
+      if (activeLessonIdRef.current !== lessonIdAtRequest) return;
+      setLessonData(previousData => {
+        if (String(previousData?.lesson?.id || '') !== String(lessonIdAtRequest)) return previousData;
+        const existing = Array.isArray(previousData?.block_states) ? previousData.block_states : [];
+        const updated = existing.filter(item => String(item?.block_id) !== String(blockId));
+        return { ...previousData, block_states: [...updated, { block_id: blockId, state_json: state, completed }] };
+      });
+    });
+    blockStateWritesRef.current.set(key, next);
+    void next.catch(error => {
+      console.error('block_state_save', error);
+      if (activeLessonIdRef.current === lessonIdAtRequest) {
+        setResilientMessage(error instanceof Error ? error.message : 'Sauvegarde du bloc impossible.');
+      }
+    }).finally(() => {
+      if (blockStateWritesRef.current.get(key) === next) blockStateWritesRef.current.delete(key);
+    });
+  }, [isOnline, currentLessonId, courseId, sessionToken, isPreview]);
 
   // Les réponses lesson-content ont évolué au fil des versions. Une copie locale,
   // un cache ou une ancienne réponse preview peut contenir block_states/latest_attempts
@@ -1397,12 +1424,13 @@ export function CoursLecteur() {
                   <audio controls controlsList="nodownload" preload="metadata" className="w-full"><source src={lesson.audio_url} /></audio>
                 </div>
               )}
-             {lesson.content_type === 'text' && !lesson.has_blocks && lesson.text_content && (
+              {/* Les colonnes has_blocks historiques peuvent être désynchronisées de lesson_blocks. */}
+              {lesson.content_type === 'text' && (!Array.isArray(lessonData?.blocks) || lessonData.blocks.length === 0) && lesson.text_content && (
                 <div className="mx-auto max-w-5xl rounded-2xl p-4 mb-4" style={{ border: '1px solid #E4E7EC' }}>
                   <SimpleMarkdown text={lesson.text_content} />
                 </div>
               )}
-              {lesson.has_blocks && Array.isArray(lessonData?.blocks) && lessonData.blocks.length > 0 && (
+              {Array.isArray(lessonData?.blocks) && lessonData.blocks.length > 0 && (
                 <div className="mb-5">
                   <LessonBlocksRenderer
                     blocks={lessonData.blocks as any[]}

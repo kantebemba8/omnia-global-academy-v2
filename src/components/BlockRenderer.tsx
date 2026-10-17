@@ -105,6 +105,19 @@ function RichContent({ value, className = '' }: { value: any; className?: string
 
 
 
+// B3: Only web URLs and root-relative paths can be opened by learner resource links.
+// Reject javascript:, data:, file: and scheme-relative URLs (except signed HTTPS links).
+function safeExternalResourceUrl(value: unknown, allowContactLinks = false): string | null {
+  const raw = typeof value === 'string' ? value.trim() : '';
+  if (!raw || /[\u0000-\u001f]/.test(raw)) return null;
+  if (/^https?:\/\//i.test(raw)) return raw;
+  if (raw.startsWith('/') && !raw.startsWith('//')) return raw;
+  if (raw.startsWith('#') && /^#[a-z0-9_-]+$/i.test(raw)) return raw;
+  if (allowContactLinks && /^mailto:[^\s<>]+@[^\s<>]+$/i.test(raw)) return raw;
+  if (allowContactLinks && /^tel:[+0-9() .-]+$/i.test(raw)) return raw;
+  return null;
+}
+
 function resourceDisplayTitle(block: Block, fallback: string) {
   const c = block.content_json || {};
   const explicit = String(c.title || block.title || '').trim();
@@ -459,10 +472,14 @@ export function BlockRenderer({ block, onQuizAnswer, onTrainingResult, onFileTra
       return <pre className="overflow-x-auto rounded-lg bg-gray-950 p-4 text-xs text-gray-100"><code>{c.code || ''}</code></pre>;
     case 'checklist':
       return <div className="my-4">{c.title&&<p className="mb-2 font-bold text-[#002050]">{c.title}</p>}<ChecklistBlock items={c.items || []} initialState={learnerState || {}} onChange={(state,completed)=>{onStateChange?.(block.id,state,completed); if((block as any).interaction_mode==='training'){const total=(c.items||[]).filter((x:any)=>x.required!==false).length||1; const done=(c.items||[]).filter((x:any,i:number)=>x.required!==false&&state[String(x.id||i)]).length; const score=Math.round(done/total*100); onTrainingResult?.(block.id,score,state,completed);}}}/></div>;
-    case 'link_button':
-      return <a href={c.url || '#'} target={c.open_new_tab ? '_blank' : undefined} rel="noreferrer" className="inline-flex rounded-lg px-4 py-2 text-sm font-semibold text-white" style={{ background: '#002050' }}>{c.label || 'Ouvrir le lien'}</a>;
-    case 'embed':
-      return c.url ? <div className="overflow-hidden rounded-xl border"><iframe src={c.url} title={c.title || 'Contenu intégré'} className="h-80 w-full" loading="lazy" /></div> : <p className="text-sm text-gray-400">Aucun contenu intégré.</p>;
+    case 'link_button': {
+      const href = safeExternalResourceUrl(c.url, true);
+      return href ? <a href={href} target={c.open_new_tab ? '_blank' : undefined} rel="noopener noreferrer" className="inline-flex rounded-lg px-4 py-2 text-sm font-semibold text-white" style={{ background: '#002050' }}>{c.label || 'Ouvrir le lien'}</a> : <ResourceUnavailable block={block} label="Lien" />;
+    }
+    case 'embed': {
+      const src = safeExternalResourceUrl(c.url);
+      return src ? <div className="overflow-hidden rounded-xl border"><iframe src={src} title={c.title || 'Contenu intégré'} className="h-80 w-full" loading="lazy" referrerPolicy="strict-origin-when-cross-origin" /></div> : <ResourceUnavailable block={block} label="Contenu intégré" />;
+    }
     case 'gallery': {
       const images = (c.images || []).filter((img: any) => String(img?.url || '').trim());
       return images.length ? <div className="my-4">{c.title&&<p className="mb-2 font-bold text-[#002050]">{c.title}</p>}<div className="grid grid-cols-2 gap-3 md:grid-cols-3">{images.map((img: any, i: number) => <figure key={i}><img src={img.url} alt={img.alt || ''} className="h-auto w-full rounded-lg object-contain" />{img.caption && <figcaption className="mt-1 text-xs text-gray-500">{img.caption}</figcaption>}</figure>)}</div></div> : <ResourceUnavailable block={block} label="Galerie" />;
@@ -1025,7 +1042,7 @@ export function LessonBlocksRenderer({ blocks, contentText, onQuizAnswer, onTrai
           return (
             <div key={block.id} className={`mx-auto w-full ${widthClass}`}>
               {block.title && !titleHandledTypes.has(block.block_type) && <h4 className="mb-2 mt-4 text-base font-bold" style={{color:'#002050'}}>{block.title}</h4>}
-              <BlockRenderBoundary blockType={block.block_type}><BlockRenderer block={block} onQuizAnswer={onQuizAnswer} onTrainingResult={block.interaction_mode === 'training' ? onTrainingResult : undefined} onFileTrainingSubmit={block.interaction_mode === 'training' ? onFileTrainingSubmit : undefined} learnerState={learnerStateByBlock[block.id] || {}} onStateChange={onStateChange} isOnline={isOnline} pedagogicalCurrency={pedagogicalCurrency} pedagogicalLocale={pedagogicalLocale} /></BlockRenderBoundary>
+              <BlockRenderBoundary key={`${block.id}:${block.block_type}`} blockType={block.block_type}><BlockRenderer block={block} onQuizAnswer={onQuizAnswer} onTrainingResult={block.interaction_mode === 'training' ? onTrainingResult : undefined} onFileTrainingSubmit={block.interaction_mode === 'training' ? onFileTrainingSubmit : undefined} learnerState={learnerStateByBlock[block.id] || {}} onStateChange={onStateChange} isOnline={isOnline} pedagogicalCurrency={pedagogicalCurrency} pedagogicalLocale={pedagogicalLocale} /></BlockRenderBoundary>
             </div>
           );
         });
