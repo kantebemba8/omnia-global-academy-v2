@@ -393,7 +393,7 @@ export default function AdminDashboard() {
                         <CartesianGrid strokeDasharray="3 3" stroke="#EEF2F7" />
                         <XAxis dataKey="date" tick={{ fontSize: 11, fill: '#94A3B8' }} axisLine={false} tickLine={false} />
                         <YAxis tick={{ fontSize: 11, fill: '#94A3B8' }} axisLine={false} tickLine={false} />
-                        <Tooltip formatter={(value: number) => `${fmt(value)} XOF`} />
+                        <Tooltip formatter={(value) => `${fmt(Number(value ?? 0))} XOF`} />
                         <Area type="monotone" dataKey="amount_xof" stroke="#2368C4" fill="url(#adminSalesFill)" strokeWidth={2.5} />
                       </AreaChart>
                     </ResponsiveContainer>

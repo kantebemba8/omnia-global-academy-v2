@@ -1,8 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import {
-  ArrowRight, BarChart3, CalendarDays, CheckCircle2, Clapperboard, Clock3, Film, GraduationCap,
-  Mic2, PlayCircle, Radio, Sparkles, Ticket, UsersRound, Video,
-} from 'lucide-react';
+import { ArrowRight, BarChart3, CalendarDays, Clapperboard, Clock3, PlayCircle, Radio, Ticket, UsersRound } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 import OmniaLiveLayout from '../../components/omnia-live/OmniaLiveLayout';
 import { usePublicPageContent } from '../../hooks/usePublicPageContent';
@@ -12,6 +9,9 @@ import LiveRail from './LiveRail';
 import { liveApi, type LiveItem } from './liveApi';
 
 const BLUE='#002050', VIOLET='#5C55C8', GOLD='#BF8813';
+void BLUE;
+void VIOLET;
+void GOLD;
 function withPreview(path:string,params:URLSearchParams){if(params.get('preview')!=='true')return path;const u=new URLSearchParams();u.set('preview','true');const role=params.get('role');if(role)u.set('role',role);return `${path}?${u.toString()}`}
 function dateLabel(value?:string|null){if(!value)return 'Date à confirmer';try{return new Intl.DateTimeFormat('fr-FR',{weekday:'short',day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}).format(new Date(value))}catch{return 'Date à confirmer'}}
 

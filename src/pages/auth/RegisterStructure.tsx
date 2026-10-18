@@ -59,7 +59,7 @@ export function RegisterStructure() {
   const [selectedType, setSelectedType] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState(false);
+  const [success, _setSuccess] = useState(false);
   const [showPwd, setShowPwd] = useState(false);
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [justifFile, setJustifFile] = useState<File | null>(null);

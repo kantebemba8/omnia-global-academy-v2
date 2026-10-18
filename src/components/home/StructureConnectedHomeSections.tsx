@@ -1,24 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import {
-  ArrowRight,
-  BarChart3,
-  BookOpen,
-  Briefcase,
-  Building2,
-  CheckCircle2,
-  Clock3,
-  FileSignature,
-  FolderKanban,
-  MessageCircle,
-  Network,
-  Plus,
-  QrCode,
-  Radio,
-  ShieldCheck,
-  Users,
-  type LucideIcon,
-} from 'lucide-react';
+import { ArrowRight, BarChart3, BookOpen, Briefcase, Building2, FileSignature, FolderKanban, MessageCircle, Plus, QrCode, Radio, ShieldCheck, Users, type LucideIcon } from 'lucide-react';
 import { getOwnerProjects, type OmniaProject } from '../../lib/projectsApi';
 import { loadTalentDashboard, loadTalentInterviews, type TalentInterview } from '../../pages/talent/talentApi';
 
@@ -43,8 +25,11 @@ type Extra = { projects: OmniaProject[]; talentMetrics: { favorites: number; con
 type SpaceItem = { label: string; caption: string; path: string; accent: string; soft: string; icon: LucideIcon; signal?: string };
 
 const BLUE = '#002050';
+void BLUE;
 const TEAL = '#0B817A';
+void TEAL;
 const GOLD = '#BF8813';
+void GOLD;
 const EMPTY_EXTRA: Extra = { projects: [], talentMetrics: { favorites: 0, contacts: 0, upcoming_interviews: 0 }, interviews: [] };
 
 function withPreview(path: string, previewMode: boolean) {
@@ -87,7 +72,9 @@ function OrganizationHero({ data, previewMode, extra }: Props & { extra: Extra }
   const activeProjects = extra.projects.filter(project => ['published', 'selection', 'in_progress'].includes(project.status)).length;
 
   let actionTitle = 'Structurer votre organisation';
+void actionTitle;
   let actionText = 'Membres, formations, projets et recrutement apparaîtront ici à mesure que votre activité grandit.';
+void actionText;
   let actionPath = '/structure/membres';
   let actionLabel = 'Gérer les membres';
   if (!structure && !previewMode) { actionTitle = 'Finaliser votre espace Structure'; actionText = 'Votre compte ne possède pas encore d’organisation associée.'; actionPath = '/inscription/structure'; actionLabel = 'Inscrire la Structure'; }

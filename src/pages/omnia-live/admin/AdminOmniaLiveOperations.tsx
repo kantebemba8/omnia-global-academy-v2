@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { AlertCircle, Ban, CheckCircle2, RotateCcw, Search, ShieldAlert } from 'lucide-react';
+import { Ban, RotateCcw, Search, ShieldAlert } from 'lucide-react';
 import { liveApi } from '../liveApi';
 import { omniaDialog } from '../../../lib/omniaDialog';
 import AdminOmniaLiveShell from './AdminOmniaLiveShell';

@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { CalendarDays, MapPin, Users, Plus, Send, CheckCircle2, QrCode, Trash2, X, Save } from 'lucide-react';
+import { CalendarDays, MapPin, Users, Send, QrCode, Trash2, X, Save } from 'lucide-react';
 import { AdaptiveFormationsLayout } from '../components/formations/FormationsRoleLayout';
 import { ENDPOINTS } from '../lib/config';
 import { useAuth } from '../hooks/useAuth';

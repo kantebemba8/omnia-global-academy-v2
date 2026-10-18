@@ -6,6 +6,7 @@ import JaasMeetingFrame, { type JaasMeetingAccess } from '../../components/video
 import { CoachingGroupProgram, coachingRequest, formatCoachingDate } from '../../lib/coachingApi';
 
 const BLUE = '#002050';
+void BLUE;
 const GOLD = '#BF8813';
 const BORDER = '#E4E7EC';
 

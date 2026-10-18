@@ -249,7 +249,7 @@ export function CoursDetail() {
             <div className="flex items-center gap-1.5 text-xs mb-5 flex-wrap" style={{ color: 'rgba(255,255,255,0.55)' }}>
               <button onClick={() => navigate('/catalogue')} className="hover:text-white transition-colors">Catalogue</button>
               <ChevronRight size={12} />
-              {course.category && <button onClick={() => navigate(`/catalogue?categorie=${encodeURIComponent(String(course.category))}`)} className="hover:text-white transition-colors">{String(course.category)}</button>}
+              {Boolean(course.category) && <button onClick={() => navigate(`/catalogue?categorie=${encodeURIComponent(String(course.category))}`)} className="hover:text-white transition-colors">{String(course.category)}</button>}
               <ChevronRight size={12} />
               <span className="text-white truncate max-w-xs">{String(course.title)}</span>
             </div>
@@ -257,14 +257,14 @@ export function CoursDetail() {
             {/* Badges */}
             <div className="flex flex-wrap gap-2 mb-4">
               <span className="text-xs font-semibold px-2.5 py-1 rounded-full text-white" style={{ backgroundColor: levelColor }}>{String(course.level)}</span>
-              {course.cpd_accredited && <span className="text-xs font-bold px-2.5 py-1 rounded-full" style={{ backgroundColor: '#BF8813', color: '#FFF' }}>Reconnaissance ✓</span>}
-              {course.language && <span className="text-xs px-2.5 py-1 rounded-full" style={{ backgroundColor: 'rgba(255,255,255,0.15)', color: 'rgba(255,255,255,0.85)' }}>{String(course.language).toUpperCase()}</span>}
-              {course.niveau_cecrl && <span className="text-xs font-bold px-2.5 py-1 rounded-full" style={{ backgroundColor: '#1E3A6E', color: '#60A5FA', border: '1px solid rgba(96,165,250,0.35)' }}>CECRL {String(course.niveau_cecrl)}</span>}
-              {course.langue_enseignee && <span className="text-xs px-2.5 py-1 rounded-full" style={{ backgroundColor: 'rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.80)' }}>🌐 {String(course.langue_enseignee)}</span>}
+              {Boolean(course.cpd_accredited) && <span className="text-xs font-bold px-2.5 py-1 rounded-full" style={{ backgroundColor: '#BF8813', color: '#FFF' }}>Reconnaissance ✓</span>}
+              {Boolean(course.language) && <span className="text-xs px-2.5 py-1 rounded-full" style={{ backgroundColor: 'rgba(255,255,255,0.15)', color: 'rgba(255,255,255,0.85)' }}>{String(course.language).toUpperCase()}</span>}
+              {Boolean(course.niveau_cecrl) && <span className="text-xs font-bold px-2.5 py-1 rounded-full" style={{ backgroundColor: '#1E3A6E', color: '#60A5FA', border: '1px solid rgba(96,165,250,0.35)' }}>CECRL {String(course.niveau_cecrl)}</span>}
+              {Boolean(course.langue_enseignee) && <span className="text-xs px-2.5 py-1 rounded-full" style={{ backgroundColor: 'rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.80)' }}>🌐 {String(course.langue_enseignee)}</span>}
             </div>
 
             <h1 className="font-bold text-white mb-3" style={{ fontSize: 'clamp(22px,3vw,38px)', lineHeight: 1.15 }}>{String(course.title)}</h1>
-            {course.short_description && <p className="mb-4" style={{ color: '#BF8813', fontSize: '15px', lineHeight: 1.6 }}>{String(course.short_description)}</p>}
+            {Boolean(course.short_description) && <p className="mb-4" style={{ color: '#BF8813', fontSize: '15px', lineHeight: 1.6 }}>{String(course.short_description)}</p>}
 
             <div className="flex items-center gap-3 mb-3 flex-wrap">
               <Stars rating={averageRating} size={16} />
@@ -273,17 +273,17 @@ export function CoursDetail() {
               <span className="text-sm" style={{ color: 'rgba(255,255,255,0.60)' }}>· {totalStudents} élèves</span>
             </div>
 
-            {(platformCreator || creator.full_name || creator.school_name) && (
+            {(platformCreator || Boolean(creator.full_name) || Boolean(creator.school_name)) && (
               <div className="mt-5 flex items-center gap-3">
                 {((course.creator_type === 'plateforme' || course.creator_context === 'super_admin') || String(creator.full_name ?? creator.school_name ?? '').toLowerCase().includes('omnia global academy')) ? <img src="/omnia-sidebar-logo.png" alt="Omnia Global Academy" className="h-11 w-11 rounded-xl border border-white/30 bg-white p-1 object-contain" /> : (creator.avatar_url || creator.logo_url) ? <img src={String(creator.avatar_url || creator.logo_url)} alt="" className="h-11 w-11 rounded-full border-2 border-white/30 object-cover" /> : <Monogram name={String(creator.full_name || creator.school_name || 'Omnia')} size={44} />}
-                <div><p className="text-xs" style={{ color:'rgba(255,255,255,.55)' }}>Créé par</p><p className="text-sm font-bold text-white">{platformCreator ? 'Omnia Global Academy' : String(creator.full_name || creator.school_name)}</p>{!platformCreator && creator.expertise_domain&&<p className="text-xs" style={{color:'#E5BE5B'}}>{String(creator.expertise_domain)}</p>}</div>
+                <div><p className="text-xs" style={{ color:'rgba(255,255,255,.55)' }}>Créé par</p><p className="text-sm font-bold text-white">{platformCreator ? 'Omnia Global Academy' : String(creator.full_name || creator.school_name)}</p>{!platformCreator && Boolean(creator.expertise_domain) &&<p className="text-xs" style={{color:'#E5BE5B'}}>{String(creator.expertise_domain)}</p>}</div>
               </div>
             )}
-            {!platformCreator && creator.school_name && (
+            {!platformCreator && Boolean(creator.school_name) && (
               <p className="text-sm mb-2" style={{ color: 'rgba(255,255,255,0.70)' }}>École : <span>{String(creator.school_name)}</span></p>
             )}
             {estimatedDurationLabel && <p className="text-sm mt-2" style={{ color: 'rgba(255,255,255,0.70)' }}>⏱ Durée estimée · {estimatedDurationLabel}</p>}
-            {course.cpd_accredited && cpd > 0 && <p className="text-xs mt-1" style={{ color: 'rgba(255,255,255,0.58)' }}>Reconnaissance · {cpd} h</p>}
+            {Boolean(course.cpd_accredited) && cpd > 0 && <p className="text-xs mt-1" style={{ color: 'rgba(255,255,255,0.58)' }}>Reconnaissance · {cpd} h</p>}
           </div>
 
           {/* Purchase card */}
@@ -324,7 +324,7 @@ export function CoursDetail() {
       <div className="max-w-6xl mx-auto px-5 sm:px-6 py-10 sm:py-12 space-y-10">
 
         {/* Présentation visible avant achat */}
-        {course.long_description && (() => { const text=String(course.long_description); const isLong=text.length>900; const visible=!isLong||aboutOpen?text:`${text.slice(0,900).trim()}…`; return (
+        {Boolean(course.long_description) && (() => { const text=String(course.long_description); const isLong=text.length>900; const visible=!isLong||aboutOpen?text:`${text.slice(0,900).trim()}…`; return (
           <section className="rounded-[22px] border bg-white p-5 sm:p-7" style={{borderColor:'#E4E7EC'}}>
             <p className="text-xs font-black uppercase tracking-[.15em]" style={{color:'#BF8813'}}>Présentation</p>
             <h2 className="mt-1 font-black" style={{ color: '#002050', fontSize: '24px' }}>À propos de cette formation</h2>
@@ -333,7 +333,7 @@ export function CoursDetail() {
           </section>
         ); })()}
 
-        {course.target_audience && (
+        {Boolean(course.target_audience) && (
           <section>
             <h2 className="font-bold mb-4" style={{ color: '#002050', fontSize: '22px' }}>À qui s’adresse cette formation ?</h2>
             <div className="flex items-start gap-3 p-5 rounded-xl" style={{ border: '1px solid #E4E7EC', background: '#FFFBEB' }}>
@@ -449,7 +449,7 @@ export function CoursDetail() {
         )}
 
         {/* Language section */}
-        {course.niveau_cecrl && (() => {
+        {Boolean(course.niveau_cecrl) && (() => {
           const CECRL_DESCS: Record<string, string> = {
             A1: 'Débutant complet', A2: 'Élémentaire', B1: 'Intermédiaire',
             B2: 'Intermédiaire supérieur', C1: 'Avancé', C2: 'Maîtrise',
@@ -532,7 +532,7 @@ export function CoursDetail() {
         })()}
 
         {/* Prerequisites */}
-        {course.prerequisites && (
+        {Boolean(course.prerequisites) && (
           <section>
             <h2 className="font-bold mb-4" style={{ color: '#002050', fontSize: '20px' }}>Prérequis</h2>
             <ul className="space-y-2">
@@ -603,10 +603,10 @@ export function CoursDetail() {
                     </button>
                     {isOpen && (
                       <div style={{ borderTop: '1px solid #F0F0F0' }}>
-                        {mod.objective && sectionType === 'module' && (
+                        {Boolean(mod.objective) && sectionType === 'module' && (
                           <p className="px-5 py-3 text-xs" style={{ color: '#6B7280', backgroundColor: '#FAFAFA' }}>{String(mod.objective)}</p>
                         )}
-                        {displayLessons.map((lesson, li) => {
+                        {displayLessons.map((lesson, _li) => {
                           const isPreview = lesson.is_free_preview as boolean;
                           const sec = lesson.cpd_calculated_time_seconds as number ?? 0;
                           const mins = sec > 0 ? `${Math.ceil(sec / 60)} min` : '';
@@ -642,8 +642,8 @@ export function CoursDetail() {
               <p className="font-bold" style={{ color: '#002050', fontSize: '17px' }}>
                 {platformCreator ? 'Omnia Global Academy' : String(creator.full_name ?? creator.school_name ?? 'Omnia Global Academy')}
               </p>
-              {!platformCreator && creator.expertise_domain && <p className="text-sm mt-0.5" style={{ color: '#BF8813' }}>{String(creator.expertise_domain)}</p>}
-              {!platformCreator && creator.bio && <p className="text-sm mt-2" style={{ color: '#6B7280', lineHeight: 1.65 }}>{String(creator.bio)}</p>}
+              {!platformCreator && Boolean(creator.expertise_domain) && <p className="text-sm mt-0.5" style={{ color: '#BF8813' }}>{String(creator.expertise_domain)}</p>}
+              {!platformCreator && Boolean(creator.bio) && <p className="text-sm mt-2" style={{ color: '#6B7280', lineHeight: 1.65 }}>{String(creator.bio)}</p>}
               {(course.creator_type === 'plateforme' || course.creator_context === 'super_admin') && <p className="text-sm mt-2" style={{ color: '#6B7280' }}>Formation créée et publiée par Omnia Global Academy.</p>}
             </div>
           </div>
@@ -687,7 +687,7 @@ export function CoursDetail() {
                       <p className="text-xs" style={{ color: '#9CA3AF' }}>{new Date(r.created_at as string).toLocaleDateString('fr-FR')}</p>
                     </div>
                   </div>
-                  {r.comment && <p className="text-sm line-clamp-3" style={{ color: '#374151', lineHeight: 1.65 }}>{String(r.comment)}</p>}
+                  {Boolean(r.comment) && <p className="text-sm line-clamp-3" style={{ color: '#374151', lineHeight: 1.65 }}>{String(r.comment)}</p>}
                 </div>
               ))}
             </div>

@@ -99,6 +99,7 @@ function reflowText(layout: ManualLayout, blockId: string): ManualLayout {
       ? { ...block, y: block.y + delta } : block;
   }) };
 }
+void reflowText;
 
 
 function normalize(layout: ManualLayout): ManualLayout {

@@ -467,7 +467,7 @@ export function EcosystemConnectedShell({ ecosystem, audienceLabel, navigation, 
   );
 }
 
-export function EcosystemStandaloneNav({ ecosystem, audienceLabel, navigation }: StandaloneProps) {
+export function EcosystemStandaloneNav({ ecosystem, audienceLabel: _audienceLabel, navigation }: StandaloneProps) {
   const location = useLocation();
   const [params] = useSearchParams();
   const [mobileOpen, setMobileOpen] = useState(false);

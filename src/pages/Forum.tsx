@@ -2,27 +2,7 @@ import { getSessionToken } from '../lib/session';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import CommunityLayout from '../components/community/CommunityLayout';
-import {
-  Activity,
-  ArrowRight,
-  BookOpen,
-  CheckCircle2,
-  CircleDot,
-  Flag,
-  Globe2,
-  GraduationCap,
-  MessageCircle,
-  MessageSquare,
-  Mic2,
-  Network,
-  Orbit,
-  Radio,
-  ShieldCheck,
-  Sparkles,
-  Target,
-  UsersRound,
-  Waves,
-} from 'lucide-react';
+import { Activity, ArrowRight, BookOpen, CheckCircle2, Flag, Globe2, GraduationCap, MessageCircle, MessageSquare, Network, Orbit, Radio, ShieldCheck, Sparkles, Target, UsersRound } from 'lucide-react';
 import { ENDPOINTS } from '../lib/config';
 import { COUNTRIES as COUNTRY_OPTIONS } from '../lib/countries';
 import { edgeAuthHeaders, edgeGatewayHeaders } from '../lib/edgeAuth';
@@ -30,9 +10,12 @@ import { useAuth } from '../hooks/useAuth';
 import { resolveCommunityAudience, type CommunityAudience } from '../lib/communityNavigation';
 
 const BLUE = '#002050';
+void BLUE;
 const TEAL = '#0F766E';
+void TEAL;
 const GOLD = '#BF8813';
 const BORDER = '#DDEBE8';
+void BORDER;
 const COUNTRIES = COUNTRY_OPTIONS.map(country => ({ code: country.code, name: country.label }));
 
 type CommunityPost = {

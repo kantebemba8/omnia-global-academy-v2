@@ -1,27 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import {
-  ArrowRight,
-  BarChart3,
-  BookOpen,
-  Briefcase,
-  FolderKanban,
-  HeartHandshake,
-  CalendarDays,
-  CheckCircle2,
-  Clock3,
-  Film,
-  Megaphone,
-  MessageCircle,
-  PlayCircle,
-  Radio,
-  Star,
-  Ticket,
-  Users,
-  Video,
-  Wallet,
-  type LucideIcon,
-} from 'lucide-react';
+import { ArrowRight, BookOpen, Briefcase, FolderKanban, HeartHandshake, CalendarDays, CheckCircle2, Film, Megaphone, MessageCircle, PlayCircle, Radio, Star, Ticket, Users, Video, Wallet, type LucideIcon } from 'lucide-react';
 import { deliveryLabel, liveStatusLabel } from '../../lib/omniaLiveLabels';
 import { liveApi, type LiveItem } from '../../pages/omnia-live/liveApi';
 
@@ -31,6 +10,7 @@ type OrganizerSnapshot = { kpis: OrganizerKpis; recentEvents: LiveItem[] };
 type Space = { label:string; caption:string; path:string; accent:string; soft:string; icon:LucideIcon; signal?:string };
 const EMPTY_SNAPSHOT:OrganizerSnapshot={kpis:{},recentEvents:[]};
 const VIOLET='#6B5BD2', GOLD='#BF8813', BLUE='#002050';
+void BLUE;
 function withPreview(path:string,previewMode:boolean){if(!previewMode)return path;const[base,hash='']=path.split('#',2);return `${base}${base.includes('?')?'&':'?'}preview=true${hash?`#${hash}`:''}`}
 function count(value:unknown){const n=Number(value||0);return Number.isFinite(n)?n:0}
 function formatNumber(value:unknown){return count(value).toLocaleString('fr-FR')}

@@ -8,12 +8,7 @@ import OmniaBrandLockup from './OmniaBrandLockup';
 import { ADMIN_NAV_GROUPS, adminGroupHubPath, adminEcosystemGroupHubPath, adminNavItemMatchesPath, findAdminEcosystem, findAdminEcosystemItem } from '../lib/adminNavigation';
 import { PreviewReturnBar } from './PreviewReturnButton';
 import { getRoleTheme, type RoleThemeKey } from '../lib/roleTheme';
-import {
-  LayoutDashboard, BookOpen, Award, FileText, Users,
-  ChevronRight, ChevronDown, Sparkles, Wallet, BarChart2, MessageSquare, PlusCircle,
-  Building2, Briefcase, CreditCard, Gift, Search, ExternalLink,
-  UserRoundCheck, BadgeCheck, FileCheck2, ClipboardCheck, FolderKanban, Route, X,
-} from 'lucide-react';
+import { LayoutDashboard, BookOpen, FileText, Users, ChevronRight, ChevronDown, Wallet, MessageSquare, Building2, Briefcase, CreditCard, Gift, Search, ExternalLink, UserRoundCheck, BadgeCheck, FolderKanban, Route, X } from 'lucide-react';
 
 export interface NavItem { path: string; label: string; icon: React.ElementType; exact?: boolean; badge?: string }
 export interface NavGroup { id: string; label: string; icon: React.ElementType; items: NavItem[] }
@@ -512,6 +507,7 @@ export function DashboardLayout({
       )}
     </aside>
   );
+void adminSidebar;
 
   const mobileDrawer = (
     mobileNavigationOpen && (

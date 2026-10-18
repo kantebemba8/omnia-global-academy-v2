@@ -66,13 +66,14 @@ export default function AdminMesFormations() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; title: string } | null>(null);
-  const [previewTarget, setPreviewTarget] = useState<Formation | null>(null);
+  const [_previewTarget, _setPreviewTarget] = useState<Formation | null>(null);
   const [createMenuOpen, setCreateMenuOpen] = useState(false);
   const [statsTarget, setStatsTarget] = useState<Formation | null>(null);
   const [courseStats, setCourseStats] = useState<any>(null);
   const [statsLoading, setStatsLoading] = useState(false);
 
   const token = () => getSessionToken() || '';
+void token;
 
   function showToast(msg: string) {
     setToast(msg);
@@ -95,7 +96,7 @@ export default function AdminMesFormations() {
 
   useEffect(() => { load(); }, []);
 
-  async function deleteDraft(id: string, title: string) {
+  async function deleteDraft(id: string, _title: string) {
     setDeletingId(id);
     try {
       const res = await fetch(API, {
@@ -332,6 +333,7 @@ export default function AdminMesFormations() {
             {filtered.map(f => {
               const sc = STUDIO_STATUS[f.studio_status] || STUDIO_STATUS.draft;
               const StatusIcon = sc.icon;
+void StatusIcon;
               return (
                 <div key={f.id} className="bg-white rounded-2xl border p-5 transition-all hover:shadow-sm"
                   style={{ borderColor: '#E4E7EC' }}>

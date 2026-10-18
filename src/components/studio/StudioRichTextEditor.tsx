@@ -153,13 +153,17 @@ type RichTextProps = {
   placeholder: string;
   headingLevel?: 1 | 2;
   language?: string;
+  plainPage?: boolean;
+  onEditorBlur?: () => void;
 };
 
 export default function StudioRichTextEditor({
-  value, onChange, locked, placeholder, headingLevel, language = 'fr',
+  value, onChange, locked, placeholder, headingLevel, language = 'fr', plainPage = false, onEditorBlur,
 }: RichTextProps) {
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
+  const onBlurRef = useRef(onEditorBlur);
+  onBlurRef.current = onEditorBlur;
   const lastEmitted = useRef<string | null>(null);
   const lastExternal = useRef(String(value ?? ''));
   const [error, setError] = useState('');
@@ -208,7 +212,7 @@ export default function StudioRichTextEditor({
     },
     onSelectionUpdate: () => refreshToolbar(v => (v + 1) % 100000),
     onFocus: () => setToolbarOpen(true),
-    onBlur: () => { setToolbarOpen(false); setAdvancedToolbar(false); },
+    onBlur: () => { setToolbarOpen(false); setAdvancedToolbar(false); onBlurRef.current?.(); },
   });
 
   useEffect(() => {
@@ -282,7 +286,7 @@ export default function StudioRichTextEditor({
       onMouseDown={event => event.preventDefault()} onClick={action}>{text}</button>;
   }
 
-  return <div className="rounded-xl border border-slate-200 bg-white shadow-sm focus-within:ring-2 focus-within:ring-[#BF8813]/40">
+  return <div className={plainPage ? 'rounded-lg bg-white focus-within:ring-1 focus-within:ring-[#CBD5E1]' : 'rounded-xl border border-slate-200 bg-white shadow-sm focus-within:ring-2 focus-within:ring-[#BF8813]/40'}>
     {!locked && !headingLevel && toolbarOpen && <div className="flex flex-wrap items-center gap-1 border-b border-slate-200 bg-[#FAFBFD] px-3 py-2" role="toolbar" aria-label="Mise en forme du texte">
       {tool(labels.bold, 'G', () => editor?.chain().focus().toggleBold().run(), !!editor?.isActive('bold'))}
       {tool(labels.italic, 'I', () => editor?.chain().focus().toggleItalic().run(), !!editor?.isActive('italic'))}
@@ -291,9 +295,9 @@ export default function StudioRichTextEditor({
         className="rounded-md border border-slate-200 px-2.5 py-1.5 text-xs text-slate-700" aria-expanded={advancedToolbar}>
         {advancedToolbar ? 'Moins' : 'Plus de formats'}
       </button>
-      {advancedToolbar && tool(labels.strike, 'S', () => editor?.chain().focus().toggleStrike().run(), !!editor?.isActive('strike'))}
+      {tool(labels.strike, 'S', () => editor?.chain().focus().toggleStrike().run(), !!editor?.isActive('strike'))}
       <span aria-hidden="true" className="mx-1 h-5 border-l border-slate-200" />
-      {advancedToolbar && <>
+      <>
       {tool(labels.paragraph, '¶', () => editor?.chain().focus().setParagraph().run(), !!editor?.isActive('paragraph'))}
       {tool(`${labels.title} 2`, 'H2', () => editor?.chain().focus().toggleHeading({ level: 2 }).run(), !!editor?.isActive('heading', { level: 2 }))}
       {tool(`${labels.title} 3`, 'H3', () => editor?.chain().focus().toggleHeading({ level: 3 }).run(), !!editor?.isActive('heading', { level: 3 }))}
@@ -301,7 +305,7 @@ export default function StudioRichTextEditor({
       {tool(labels.ordered, '1. Liste', () => editor?.chain().focus().toggleOrderedList().run(), !!editor?.isActive('orderedList'))}
       {tool(labels.quote, '❝', () => editor?.chain().focus().toggleBlockquote().run(), !!editor?.isActive('blockquote'))}
       {tool(labels.code, '</>', () => editor?.chain().focus().toggleCodeBlock().run(), !!editor?.isActive('codeBlock'))}
-      </>}
+      </>
       {tool(labels.link, 'Lien', setHttpsLink, !!editor?.isActive('link'))}
       {advancedToolbar && <>
       {tool(labels.table, 'Tableau', () => editor?.chain().focus().insertTable({ rows: 2, cols: 2, withHeaderRow: true }).run())}
@@ -318,7 +322,7 @@ export default function StudioRichTextEditor({
     <div className={headingLevel === 1 ? '[&_.oga-tiptap-content]:text-xl [&_.oga-tiptap-content]:font-bold' : headingLevel === 2 ? '[&_.oga-tiptap-content]:text-lg [&_.oga-tiptap-content]:font-semibold' : ''}>
       <EditorContent editor={editor} />
     </div>
-    {!locked && !toolbarOpen && !editor?.getText().trim() && <p className="px-3 pb-1 text-xs text-slate-400">{placeholder}</p>}
+    {!locked && !editor?.getText().trim() && <p aria-hidden="true" className="pointer-events-none px-4 pb-2 text-xs text-slate-400">{placeholder}</p>}
     {error && <p className="border-t border-red-100 px-3 py-1 text-xs text-red-700" role="alert">{error}</p>}
   </div>;
 }

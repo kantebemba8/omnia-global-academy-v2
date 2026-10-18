@@ -180,7 +180,7 @@ export default function StructureJobs() {
         </div>
 
         <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
-          {[['Offres', stats.total, Briefcase], ['Publiées', stats.published, CheckCircle2], ['En attente', stats.pending, AlertCircle], ['Candidatures', stats.apps, Eye]].map(([label, value, Icon]) => (
+          {([{label:'Offres',value:stats.total,Icon:Briefcase},{label:'Publiées',value:stats.published,Icon:CheckCircle2},{label:'En attente',value:stats.pending,Icon:AlertCircle},{label:'Candidatures',value:stats.apps,Icon:Eye}]).map(({label,value,Icon}) => (
             <div key={String(label)} className="rounded-2xl border bg-white p-5 shadow-sm" style={{ borderColor: BORDER }}>
               <div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-xl" style={{ background: 'rgba(0,32,80,0.08)' }}><Icon size={18} color={OMNIA_BLUE} /></div><div><p className="text-xs font-medium" style={{ color: MUTED }}>{label as string}</p><p className="text-2xl font-semibold" style={{ color: OMNIA_BLUE }}>{value as number}</p></div></div>
             </div>

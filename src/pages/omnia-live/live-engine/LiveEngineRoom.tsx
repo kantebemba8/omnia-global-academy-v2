@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import OmniaLiveLayout from '../../../components/omnia-live/OmniaLiveLayout';
 import JaasMeetingFrame, { type JaasMeetingAccess } from '../../../components/video/JaasMeetingFrame';
 import { liveApi } from '../liveApi';
-import { liveStatusLabel } from '../../../lib/omniaLiveLabels';
+import '../../../lib/omniaLiveLabels';
 
 export default function LiveEngineRoom(){
  const {liveId}=useParams();const navigate=useNavigate();

@@ -3,7 +3,7 @@ import { AdminLayout } from '../../components/AdminLayout';
 import { ENDPOINTS } from '../../lib/config';
 import { getSessionToken } from '../../lib/session';
 import { CATEGORY_LABELS } from '../../lib/categories';
-import { Mail, Plus, RefreshCw, TicketPercent, Users } from 'lucide-react';
+import { Mail, Plus, RefreshCw, TicketPercent } from 'lucide-react';
 
 const BLUE='#002050', GOLD='#BF8813', BORDER='#E4E7EC';
 type Coupon={id:string;name?:string|null;code:string;discount_type:string;discount_value:number;max_uses:number|null;used_count:number;applicable_to:string;applicable_id?:string|null;distribution_mode?:string;expires_at:string|null;is_active:boolean};

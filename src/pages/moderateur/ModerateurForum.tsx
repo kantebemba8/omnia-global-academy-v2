@@ -34,6 +34,7 @@ interface ForumData {
 const BLUE = '#002050';
 const TEAL = '#0F766E';
 const BORDER = '#DDEBE8';
+void BORDER;
 
 function relativeDate(value: string) {
   const date = new Date(value);

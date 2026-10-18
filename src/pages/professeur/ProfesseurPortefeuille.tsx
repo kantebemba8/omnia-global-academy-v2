@@ -3,7 +3,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { DashboardLayout } from '../../components/DashboardLayout';
 import { edgeAuthHeaders } from '../../lib/edgeAuth';
-import { Wallet, TrendingUp, ArrowDownCircle, X, AlertTriangle, CheckCircle } from 'lucide-react';
+import { Wallet, ArrowDownCircle, X, AlertTriangle, CheckCircle } from 'lucide-react';
 
 interface WalletData {
   balance_xof: number; reserved_xof: number; total_earned_xof: number; total_withdrawn_xof: number;

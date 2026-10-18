@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { CheckCircle, Circle, PlayCircle, Volume2, FileText, ChevronDown, ChevronRight, X, Bot, ArrowLeft, ClipboardList, Trophy, Send, AlertCircle, ExternalLink, WifiOff, Database, ShieldCheck, Gauge, RefreshCw, Menu, Target, Clock3, Layers3, Sparkles, BookOpen } from 'lucide-react';
+import { CheckCircle, Circle, PlayCircle, Volume2, FileText, ChevronDown, ChevronRight, X, Bot, ArrowLeft, ClipboardList, Trophy, Send, AlertCircle, ExternalLink, Database, ShieldCheck, Gauge, Menu, Target, Clock3, Layers3, Sparkles, BookOpen } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { useCpdTimer } from '../hooks/useCpdTimer';
 import { ENDPOINTS } from '../lib/config';
@@ -34,6 +34,7 @@ interface ModuleItem {
   section_type?: 'introduction' | 'module' | 'conclusion' | 'final_exam';
 }
 interface LessonContent {
+  stage_type?: LessonItem['stage_type'];
   id: string; title: string; content_type: 'video' | 'audio' | 'text' | 'external';
   video_url?: string; audio_url?: string; text_content?: string;
   lesson_summary?: string; duration_seconds: number; cloudflare_stream_uid?: string;
@@ -536,7 +537,7 @@ export function CoursLecteur() {
   const blockStateWritesRef = useRef<Map<string, Promise<void>>>(new Map());
   const activeLessonIdRef = useRef<string | null>(routeLessonId ?? null);
   const [pedagogicalCurrency, setPedagogicalCurrency] = useState<string | null>(() => localStorage.getItem('oga_pedagogical_currency'));
-  const [savingPedagogicalCurrency, setSavingPedagogicalCurrency] = useState(false);
+  const [_savingPedagogicalCurrency, setSavingPedagogicalCurrency] = useState(false);
 
   const [progressLoading, setProgressLoading] = useState(true);
   const [progressError, setProgressError] = useState('');
@@ -556,9 +557,9 @@ export function CoursLecteur() {
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [dataSaver, setDataSaver] = useState(() => localStorage.getItem('omnia_data_saver') === '1');
   const [resilientMessage, setResilientMessage] = useState('');
-  const [resilientBusy, setResilientBusy] = useState(false);
-  const [usingLocalCopy, setUsingLocalCopy] = useState(false);
-  const [usingLocalProgram, setUsingLocalProgram] = useState(false);
+  const [_resilientBusy, setResilientBusy] = useState(false);
+  const [_usingLocalCopy, setUsingLocalCopy] = useState(false);
+  const [_usingLocalProgram, setUsingLocalProgram] = useState(false);
   const [offlineLessonIds, setOfflineLessonIds] = useState<string[]>([]);
   const [appActive, setAppActive] = useState(true);
   const videoTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -1056,6 +1057,7 @@ export function CoursLecteur() {
       setResilientMessage(error instanceof Error ? error.message : 'Enregistrement local impossible.');
     } finally { setResilientBusy(false); }
   }, [user?.id, courseId, currentLessonId, sessionToken, lessonData, isOnline]);
+void saveCurrentLessonForResilientAccess;
 
   const lesson = lessonData?.lesson;
   // Legacy lesson-level media remain a fallback for old courses. Ordered
@@ -1139,7 +1141,7 @@ export function CoursLecteur() {
       // Ne pas injecter l'état d'une ancienne leçon dans la nouvelle leçon affichée.
       if (activeLessonIdRef.current !== lessonIdAtRequest) return;
       setLessonData(previousData => {
-        if (String(previousData?.lesson?.id || '') !== String(lessonIdAtRequest)) return previousData;
+        if (!previousData || String(previousData.lesson.id) !== String(lessonIdAtRequest)) return previousData;
         const existing = Array.isArray(previousData?.block_states) ? previousData.block_states : [];
         const updated = existing.filter(item => String(item?.block_id) !== String(blockId));
         return { ...previousData, block_states: [...updated, { block_id: blockId, state_json: state, completed }] };
@@ -1172,6 +1174,7 @@ export function CoursLecteur() {
     setSavingPedagogicalCurrency(true);
     try { await updateUnifiedProfile({profile:{preferred_pedagogical_currency:code} as any}); } catch (error) { console.warn('pedagogical currency preference not persisted', error); } finally { setSavingPedagogicalCurrency(false); }
   }
+void choosePedagogicalCurrency;
 
   const safeBlockStates = useMemo(
     () => Array.isArray(lessonData?.block_states) ? lessonData.block_states : [],

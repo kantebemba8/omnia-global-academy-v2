@@ -1,4 +1,4 @@
-import {useEffect,useState} from 'react';
+import { useState } from 'react';
 import {liveApi} from '../liveApi';
 import AdminOmniaLiveShell from './AdminOmniaLiveShell';
 import {omniaDialog} from '../../../lib/omniaDialog';

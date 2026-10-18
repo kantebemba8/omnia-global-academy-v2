@@ -2,7 +2,7 @@ import { getSessionToken } from '../../lib/session';
 import { useEffect, useState } from 'react';
 import { ModeratorFormationsLayout } from '../../components/formations/FormationsRoleLayout';
 import { ENDPOINTS } from '../../lib/config';
-import { AlertTriangle, ChevronDown, ChevronUp, CheckCircle, XCircle, Send, DollarSign, BookOpen, Clock, Mic, ShieldCheck, ListChecks } from 'lucide-react';
+import { AlertTriangle, ChevronDown, ChevronUp, CheckCircle, XCircle, Send, DollarSign, BookOpen, Clock, Mic, ListChecks } from 'lucide-react';
 
 interface CourseItem {
   id: string; title: string; description: string; status: string;

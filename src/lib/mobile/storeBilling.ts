@@ -183,7 +183,8 @@ async function waitForAndroidPurchase(
     });
   } finally {
     window.clearTimeout(timer);
-    if (listener) await listener.remove().catch(() => undefined);
+    const activeListener = listener as PluginListenerHandle | null;
+    if (activeListener) await activeListener.remove().catch(() => undefined);
   }
 }
 
@@ -242,6 +243,14 @@ export async function startNativeStorePurchase(
         target_type: targetType,
         target_id: targetId,
       };
+    }
+
+    // Un statut d'annulation ou d'attente n'est jamais une preuve d'achat valide.
+    if (!('purchaseState' in purchaseOrStatus)) {
+      if (purchaseOrStatus.pending) {
+        return { completed: false, pending: true, target_type: targetType, target_id: targetId };
+      }
+      throw new Error('GOOGLE_PLAY_PURCHASE_NOT_VERIFIABLE');
     }
 
     if (purchaseOrStatus.purchaseState === 'pending') {

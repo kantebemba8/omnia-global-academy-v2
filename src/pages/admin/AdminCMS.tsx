@@ -24,6 +24,7 @@ const COMMISSION_KEYS = [
   { key: 'commission_assistee_sans_cpd', label: 'Assistée sans reconnaissance externe', row: 'Assistée', col: 'Sans reconnaissance' },
   { key: 'commission_assistee_avec_cpd', label: 'Assistée avec reconnaissance externe', row: 'Assistée', col: 'Avec reconnaissance' },
 ];
+void COMMISSION_KEYS;
 
 const CMS_EXCLUDED_KEYS = new Set([
   // Propriétés de Configuration Fintech : jamais sauvegardées par le CMS.

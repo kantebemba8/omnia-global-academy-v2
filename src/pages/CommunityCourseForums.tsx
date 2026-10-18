@@ -7,8 +7,11 @@ import { ENDPOINTS } from '../lib/config';
 import { edgeAuthHeaders } from '../lib/edgeAuth';
 
 const BLUE = '#002050';
+void BLUE;
 const TEAL = '#0F766E';
+void TEAL;
 const BORDER = '#DDEBE8';
+void BORDER;
 
 type AccessibleCourse = {
   id: string;

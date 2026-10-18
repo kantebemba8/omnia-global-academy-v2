@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, CalendarDays, CheckCircle2, Loader2, Video } from 'lucide-react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import CoachingHeader from '../../components/coaching/CoachingHeader';
-import { CoachOffer, CoachProfile, CoachingSlot, coachingRequest, formatCoachingDate, formatXof } from '../../lib/coachingApi';
+import { CoachProfile, CoachingSlot, coachingRequest, formatCoachingDate, formatXof } from '../../lib/coachingApi';
 
 const BLUE = '#002050';
 const GOLD = '#BF8813';

@@ -1,12 +1,7 @@
 import type { ReactNode } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import {
-  LayoutDashboard, BookOpen, PlusCircle, Users, QrCode,
-  BarChart2, Building2, UserCheck, Shield, Briefcase, Search,
-  CalendarDays, Heart, MessageSquare, UserRoundSearch, Radio, Layers3,
-  ClipboardCheck, CreditCard, FolderKanban, FileSignature, Network, LineChart, ShieldCheck,
-} from 'lucide-react';
+import { LayoutDashboard, BookOpen, Users, QrCode, BarChart2, Building2, UserCheck, Shield, Briefcase, Search, CalendarDays, Heart, MessageSquare, UserRoundSearch, Radio, Layers3, CreditCard, FolderKanban, FileSignature, Network, LineChart, ShieldCheck } from 'lucide-react';
 import { DashboardLayout, type NavGroup } from './DashboardLayout';
 import { getStoredUser } from '../lib/session';
 import { edgeAuthHeaders } from '../lib/edgeAuth';

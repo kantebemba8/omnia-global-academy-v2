@@ -72,7 +72,7 @@ async function loadSentryRuntime(): Promise<SentryRuntime | null> {
           // @sentry/capacitor réexporte les APIs de scope/capture compatibles
           // avec le SDK JavaScript frère. Le cast reste local à ce pont runtime.
           module: CapacitorSentry as unknown as SentryModule,
-          initialize: async (options) => {
+          initialize: async (options: Parameters<typeof ReactSentry.init>[0]) => {
             await CapacitorSentry.init(options, ReactSentry.init);
           },
           runtimeTag: `capacitor-native:${Capacitor.getPlatform()}`,
@@ -81,7 +81,7 @@ async function loadSentryRuntime(): Promise<SentryRuntime | null> {
 
       return {
         module: ReactSentry,
-        initialize: async (options) => {
+        initialize: async (options: Parameters<typeof ReactSentry.init>[0]) => {
           ReactSentry.init(options);
         },
         runtimeTag: 'web',

@@ -1,23 +1,6 @@
 import { useEffect, useMemo, useState, type ComponentProps } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import {
-  ArrowRight,
-  BadgeCheck,
-  BarChart3,
-  CalendarDays,
-  CheckCircle2,
-  CircleDot,
-  Compass,
-  HeartHandshake,
-  Layers3,
-  MessageCircle,
-  Network,
-  Route,
-  ShieldCheck,
-  Sparkles,
-  Target,
-  Users,
-} from 'lucide-react';
+import { ArrowRight, BadgeCheck, CalendarDays, CircleDot, Compass, HeartHandshake, MessageCircle, Network, Route, ShieldCheck, Sparkles, Target, Users } from 'lucide-react';
 import CoachingLayout from '../../components/coaching/CoachingLayout';
 import { useAuth } from '../../hooks/useAuth';
 import { resolveCoachingAudience, type CoachingAudience } from '../../lib/coachingNavigation';
@@ -32,9 +15,13 @@ import {
 } from '../../lib/coachingApi';
 
 const BLUE = '#002050';
+void BLUE;
 const PETROL = '#667A3D';
+void PETROL;
 const GOLD = '#BF8813';
+void GOLD;
 const BORDER = '#DFE4C9';
+void BORDER;
 
 type Bootstrap = { success: true; coaches: CoachProfile[]; domains: CoachingDomain[]; levels: CoachingLevel[] };
 type Advanced = { success: true; groups: CoachingGroupProgram[]; domains: CoachingDomain[] };

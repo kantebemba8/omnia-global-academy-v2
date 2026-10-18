@@ -4,12 +4,13 @@ import { Component, useState, useEffect, useCallback, useRef, useMemo, type Reac
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { AssessmentPolicyPanel } from '../../components/AssessmentPolicyPanel';
 import { edgeAuthHeaders } from '../../lib/edgeAuth';
-import { COURSE_LANGUAGE_OPTIONS, COURSE_LEVEL_OPTIONS, BLOCK_SEARCH_ALIASES, ESSENTIAL_BLOCK_TYPES, TRAINING_CAPABLE_BLOCKS, ASSESSMENT_CAPABLE_BLOCKS, canonicalizeBlockContent, emptyBlockContent } from '../../lib/courseBuilderV3';
+import { COURSE_LANGUAGE_OPTIONS, COURSE_LEVEL_OPTIONS, BLOCK_SEARCH_ALIASES, ESSENTIAL_BLOCK_TYPES, TRAINING_CAPABLE_BLOCKS, ASSESSMENT_CAPABLE_BLOCKS, emptyBlockContent } from '../../lib/courseBuilderV3';
 import StudioCommercialCertificationPanel from '../../components/StudioCommercialCertificationPanel';
 import StudioQualityStatusPanel from '../../components/StudioQualityStatusPanel';
 import CourseAdvancedSettingsPanel from '../../components/CourseAdvancedSettingsPanel';
 import BuilderImportDialog from '../../components/studio/BuilderImportDialog';
 import RichTextEditor from '../../components/studio/StudioRichTextEditor';
+import StudioBlankPageComposer from '../../components/studio/StudioBlankPageComposer';
 import StudioCollectionControls from '../../components/studio/StudioCollectionControls';
 import StudioSortableBlock from '../../components/studio/StudioSortableBlock';
 import Uppy from '@uppy/core';
@@ -20,15 +21,7 @@ import { STUDIO_MEDIA_POLICY, checkStudioMediaFile, type StudioMediaKind } from 
 import { reorderBlocksAtSlot, orderChanged } from '../../lib/studioBlockOrdering';
 import { CATEGORY_LABELS } from '../../lib/categories';
 import { LessonBlocksRenderer } from '../../components/BlockRenderer';
-import {
-  ChevronLeft, ChevronRight, Save, Eye, EyeOff, Send, History,
-  Plus, Trash2, Copy, GripVertical, Settings, Sparkles, X, Check,
-  AlertCircle, CheckCircle, Clock, FileText, Image, Video, Music,
-  File, Table, HelpCircle, BookOpen, Lightbulb, Star, Minus,
-  AlignLeft, Heading1, Heading2, Download, Layers, ToggleLeft,
-  ChevronDown, ChevronUp, Zap, AlertTriangle, Info, BarChart2, ShieldCheck, Monitor, Users, UserCheck,
-  Layout, RefreshCw, MoreVertical, Move, List, ListOrdered, Quote, Code2, CheckSquare, Link2, GalleryHorizontal, Sigma, BarChart3, UploadCloud, ClipboardCheck, Headphones
-} from 'lucide-react';
+import { ChevronLeft, ChevronRight, Save, Eye, Send, History, Plus, Trash2, Copy, GripVertical, Settings, Sparkles, X, Check, AlertCircle, CheckCircle, Clock, FileText, Image, Video, Music, Table, HelpCircle, BookOpen, Lightbulb, Star, Minus, AlignLeft, Heading1, Heading2, Download, Layers, ToggleLeft, ChevronDown, ChevronUp, AlertTriangle, Info, BarChart2, ShieldCheck, Monitor, Users, Layout, RefreshCw, List, ListOrdered, Quote, Code2, CheckSquare, Link2, GalleryHorizontal, Sigma, BarChart3, UploadCloud, ClipboardCheck, Headphones } from 'lucide-react';
 
 const SB = import.meta.env.VITE_SUPABASE_URL;
 const API = `${SB}/functions/v1/studio-unified`;
@@ -57,6 +50,7 @@ interface Block {
   file_mime?: string;
   source_type?: string;
   ai_generated?: boolean;
+  ai_confirmed?: boolean;
 }
 
 interface Lesson { id: string; title: string; position: number; has_blocks: boolean; block_count: number; is_required?: boolean; is_intro?: boolean; is_module_intro?: boolean; is_conclusion?: boolean; is_final_exam?: boolean; is_free_preview?: boolean; stage_type?: 'introduction'|'module_presentation'|'lesson'|'module_summary'|'conclusion'|'final_exam'; }
@@ -67,6 +61,7 @@ interface Course {
   objectives?: string[]; cover_image_url?: string; cover_image_prompt?: string;
   target_audience?: string; learning_outcomes?: string[]; course_intro_title?: string;
   course_intro_summary?: string; studio_status: string;
+  creator_context?: string;
   studio_mode?: string; word_count?: number; estimated_read_min?: number; calculated_duration_minutes?: number;
   last_autosave_at?: string; admin_comment?: string; template_used?: string;
   sale_mode?: 'free'|'paid'; desired_price_amount?: number|string; sale_currency?: string; promotion_price_amount?: number|string;
@@ -194,6 +189,7 @@ const STATUS_CFG: Record<string, { label: string; color: string; bg: string; dot
 };
 
 function uid() { return Math.random().toString(36).slice(2, 10); }
+void uid;
 function normalizeCourseCode(value: string) { return value.toUpperCase().replace(/[^A-Z0-9._-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 32); }
 async function api(action: string, body: Record<string, any> = {}) {
   const res = await fetch(API, {
@@ -215,17 +211,25 @@ class BuilderBlockBoundary extends Component<{ children: ReactNode; blockType: s
   }
   render() {
     if (this.state.failed) {
-      // A browser-side Tiptap failure must not destroy or lock the author's content.
-      // This is an explicit recovery editor, not a silent success: diagnostics stay visible.
+      // A real runtime fault is reported, not hidden or turned into a raw HTML editor.
+      // Content is kept untouched; authors can still recover via a deliberate text edit.
       const raw = this.props.block.content_json || {};
       const field = ['html','content','text','question','title'].find(key => typeof raw[key] === 'string') || 'html';
-      return <div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-slate-700">
-        <p className="font-semibold">Édition de secours : une erreur du composant a été détectée.</p>
-        <p className="mt-1 text-xs">Le contenu existant est conservé. Le détail technique est disponible dans la console du navigateur.</p>
-        <textarea aria-label="Éditer le contenu en mode de secours" disabled={this.props.locked}
-          className="mt-3 min-h-[130px] w-full rounded-lg border border-slate-200 bg-white p-3 text-sm"
-          value={String(raw[field] ?? '')} onChange={event => this.props.onFallbackChange({ ...raw, [field]: event.target.value })}/>
-        <button type="button" onClick={() => this.setState({ failed: false })} className="mt-2 rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-semibold">Réessayer l’éditeur Tiptap</button>
+      const html = String(raw[field] ?? '');
+      const readable = typeof document === 'undefined' ? html.replace(/<[^>]*>/g, '') : (() => {
+        const element = document.createElement('div'); element.innerHTML = html;
+        return element.textContent || '';
+      })();
+      return <div role="alert" className="rounded-lg border border-red-200 bg-white px-4 py-3 text-sm text-slate-700">
+        <p className="font-medium text-red-700">L’éditeur de ce bloc a rencontré une erreur. Son contenu est conservé.</p>
+        <p className="mt-1 text-xs text-slate-500">Détail disponible dans la console du navigateur. Modifier le texte ci-dessous n’altère pas les autres champs du bloc.</p>
+        <textarea aria-label="Éditer le texte du bloc en secours" disabled={this.props.locked}
+          className="mt-3 min-h-[110px] w-full rounded-lg border border-slate-200 bg-white p-3 text-sm"
+          value={readable} onChange={event => {
+            const escaped = event.target.value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            const nextHtml = `<p>${escaped.replace(/\n/g, '<br>')}</p>`;
+            this.props.onFallbackChange({ ...raw, [field]: nextHtml, ...(field === 'html' ? {text: event.target.value, content: nextHtml} : {}) });
+          }}/>
       </div>;
     }
     return this.props.children;
@@ -257,6 +261,18 @@ export default function StudioConceptionFormation() {
   const [selectedBlock, setSelectedBlock] = useState<Block | null>(null);
   const [selectedBlockDef, setSelectedBlockDef] = useState<typeof BLOCK_DEFS[0] | null>(null);
   const [assessmentWorkspace, setAssessmentWorkspace] = useState<{ scope: 'lesson'|'module'|'final'; lessonId: string; moduleId: string } | null>(null);
+  const [stageMenuId, setStageMenuId] = useState<string | null>(null);
+  const [curriculumOpen, setCurriculumOpen] = useState(false);
+  useEffect(() => {
+    if (!stageMenuId) return;
+    const closeOutside = (event: PointerEvent) => {
+      if (!(event.target instanceof Element) || !event.target.closest('[data-oga-stage-menu]')) setStageMenuId(null);
+    };
+    const closeEscape = (event: KeyboardEvent) => { if (event.key === 'Escape') setStageMenuId(null); };
+    document.addEventListener('pointerdown', closeOutside);
+    document.addEventListener('keydown', closeEscape);
+    return () => { document.removeEventListener('pointerdown', closeOutside); document.removeEventListener('keydown', closeEscape); };
+  }, [stageMenuId]);
 
   // UI
   const [loading, setLoading] = useState(true);
@@ -289,7 +305,7 @@ export default function StudioConceptionFormation() {
   const [wordCount, setWordCount] = useState(0);
 
   // Qualité
-  const [checklist, setChecklist] = useState<{ valid: boolean; errors: string[]; warnings: string[]; issues?: Array<{severity:'error'|'warning';message:string;target?:string;lesson_id?:string;module_id?:string}> } | null>(null);
+  const [checklist, setChecklist] = useState<{ valid: boolean; errors: string[]; warnings: string[]; issues?: Array<{severity:'error'|'warning';message:string;target?:string;lesson_id?:string;module_id?:string;block_id?:string}> } | null>(null);
   const [qualityWritingLoading, setQualityWritingLoading] = useState(false);
   const [qualityWritingSuggestions, setQualityWritingSuggestions] = useState<any[]>([]);
 
@@ -551,7 +567,7 @@ export default function StudioConceptionFormation() {
 
   // ─── Sélection leçon ──────────────────────────────────────
   async function selectLesson(mod: Module, lesson: Lesson): Promise<boolean> {
-    if (currentLesson?.id === lesson.id) { setAssessmentWorkspace(null); setCurrentModule(mod); return true; }
+    if (currentLesson?.id === lesson.id) { setAssessmentWorkspace(null); setCurrentModule(mod); setCurriculumOpen(false); return true; }
     try { await flushBlockUpdates(); }
     catch { showToast('Sauvegarde incomplète : changement de leçon annulé.', 'error'); return false; }
     const loaded = await loadBlocks(lesson.id);
@@ -560,6 +576,7 @@ export default function StudioConceptionFormation() {
     setCurrentModule(mod);
     setCurrentLesson(lesson);
     setSelectedBlock(null);
+    setCurriculumOpen(false);
     return true;
   }
 
@@ -573,6 +590,10 @@ export default function StudioConceptionFormation() {
 
   const sectionTypeOf = (m: Module) => m.is_intro ? 'introduction' : m.is_conclusion ? 'conclusion' : m.is_final_exam ? 'final_exam' : (m.section_type || 'module');
   const stageTypeOf = (l: Lesson) => l.is_intro ? 'introduction' : l.is_module_intro ? 'module_presentation' : l.is_conclusion ? 'conclusion' : l.is_final_exam ? 'final_exam' : (l.stage_type || 'lesson');
+  const hasModuleStage = (mod: Module, kind: 'module_presentation' | 'module_summary') => (mod.lessons || []).some((l, index) =>
+    stageTypeOf(l) === kind || (kind === 'module_presentation' && index === 0 && /^(pr[ée]sentation(?: du module)?)$/i.test(l.title.trim())) ||
+    (kind === 'module_summary' && /^(synth[èe]se|bilan du module)$/i.test(l.title.trim()))
+  );
   const moduleRank = (m: Module) => sectionTypeOf(m) === 'introduction' ? -100000 : sectionTypeOf(m) === 'conclusion' ? 100000 : sectionTypeOf(m) === 'final_exam' ? 200000 : Number(m.position || 0);
   const orderedModules = [...modules].sort((a, b) => moduleRank(a) - moduleRank(b));
   const builderModules = orderedModules.filter(m => sectionTypeOf(m) !== 'conclusion' && sectionTypeOf(m) !== 'final_exam');
@@ -654,6 +675,7 @@ export default function StudioConceptionFormation() {
     }
     await selectAssessmentWorkspace(nextModule, summary, 'module');
   }
+void openModuleAssessment;
 
   async function deleteLesson(mod: Module, lesson: Lesson) {
     if (!course?.id || locked) return;
@@ -708,6 +730,26 @@ export default function StudioConceptionFormation() {
     } else {
       showToast(data.message || data.error || 'Impossible de créer le bloc.', 'error');
     }
+  }
+
+  // Direct writing creates an ordinary legacy-compatible text block, preserving
+  // the existing lesson_blocks API and its historical HTML storage contract.
+  async function commitPageParagraph(html: string): Promise<boolean> {
+    if (locked || !currentLesson?.id || !currentModule?.id || !course?.id) return false;
+    if (!stripHtml(html).trim() && !/<img\b/i.test(html)) return false;
+    try { await flushBlockUpdates(); }
+    catch { showToast('Enregistrez les changements précédents avant d’ajouter ce texte.', 'error'); return false; }
+    const lessonId = currentLesson.id;
+    const data = await api('create_block', {
+      course_id: course.id, module_id: currentModule.id, lesson_id: lessonId,
+      block_type: 'text', content_json: { html, content: html, text: stripHtml(html) }, settings_json: {},
+    });
+    if (!data.success) { showToast(data.message || data.error || 'Écriture non enregistrée.', 'error'); return false; }
+    const refreshed = await loadBlocks(lessonId);
+    // The server write already succeeded. Returning false would preserve the draft
+    // and create a second copy when the creator retries after a transient read error.
+    if (!refreshed) showToast('Texte enregistré ; actualisez la leçon pour le voir.', 'info');
+    return true;
   }
 
   function getDefaultContent(type: string): Record<string, any> {
@@ -1217,6 +1259,7 @@ export default function StudioConceptionFormation() {
           <div className="absolute right-0 z-40 mt-2 min-w-[210px] space-y-1 rounded-xl border border-slate-200 bg-white p-2 shadow-xl">
             <button type="button" onClick={() => void changeStudioMode(false)} className="w-full rounded-lg px-3 py-2 text-left text-xs text-slate-700 hover:bg-slate-50">Réglages essentiels {advancedMode ? '' : '✓'}</button>
             <button type="button" onClick={() => void changeStudioMode(true)} className="w-full rounded-lg px-3 py-2 text-left text-xs text-slate-700 hover:bg-slate-50">Réglages avancés {advancedMode ? '✓' : ''}</button>
+            <button type="button" onClick={() => setHeaderCollapsedPersisted(!headerCollapsed)} className="w-full rounded-lg px-3 py-2 text-left text-xs text-slate-700 hover:bg-slate-50">{headerCollapsed ? 'Afficher les détails' : 'Masquer les détails'}</button>
           </div>
         </details>}
 
@@ -1229,13 +1272,14 @@ export default function StudioConceptionFormation() {
 
         {/* Actions */}
         <div className="flex items-center gap-2 flex-shrink-0">
+          <button type="button" onClick={() => setCurriculumOpen(value => !value)} aria-expanded={curriculumOpen}
+            className={`flex items-center gap-1 rounded-lg border px-3 py-1.5 text-xs font-semibold ${curriculumOpen ? 'border-[#BF8813] bg-amber-50 text-[#002050]' : 'border-slate-200 text-[#002050]'}`}>
+            <Layers size={14} /> Plan
+          </button>
           {!headerCollapsed && <button onClick={loadHistory} className="hidden md:flex items-center gap-1 px-3 py-1.5 rounded-lg border text-xs font-medium" style={{ borderColor: '#E4E7EC', color: '#6B7280' }}>
             <History size={13} /> Historique
           </button>}
           {inspectorCollapsed && <button type="button" onClick={() => setInspectorCollapsed(false)} className="hidden md:flex items-center gap-1 rounded-lg border border-amber-300 px-3 py-1.5 text-xs font-semibold text-[#002050]"><Settings size={13}/> Inspecteur</button>}
-          <button type="button" onClick={() => setHeaderCollapsedPersisted(!headerCollapsed)} className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border text-xs font-medium" style={{ borderColor: '#E4E7EC', color: '#6B7280' }} title={headerCollapsed ? 'Afficher les paramètres du Builder' : 'Réduire les paramètres du Builder'}>
-            {headerCollapsed ? <ChevronDown size={13} /> : <ChevronUp size={13} />}<span className="hidden lg:inline">{headerCollapsed ? 'Afficher' : 'Réduire'}</span>
-          </button>
           <button onClick={() => { if (!course.id) { showToast('Enregistrez d’abord le brouillon.', 'error'); return; } setShowRolePreview(true); }} className="flex items-center gap-1 px-3 py-1.5 rounded-lg border text-xs font-medium" style={{ borderColor: '#E4E7EC', color: '#6B7280' }}>
             <Eye size={13} /><span className="hidden sm:inline">Prévisualiser</span>
           </button>
@@ -1275,7 +1319,6 @@ export default function StudioConceptionFormation() {
             {activeLibTab === 'blocs' && (
               <div>
                 {insertionSlot !== null && <div className="mb-3 flex items-center justify-between rounded-lg border border-amber-300 bg-amber-50 px-2 py-2 text-xs text-amber-900" role="status"><span>Insérer le prochain bloc à l'emplacement {insertionSlot + 1}</span><button type="button" onClick={() => setInsertionSlot(null)} aria-label="Annuler la position d'insertion" className="rounded p-1 hover:bg-amber-100"><X size={13}/></button></div>}
-                <p className="mb-3 text-xs leading-relaxed text-slate-500">Choisissez un bloc ou recherchez son nom. Glissez-le dans la page pour le placer précisément.</p>
                 <input type="search" value={blockLibrarySearch} onChange={event => setBlockLibrarySearch(event.target.value)} placeholder="Rechercher un bloc, une fonction ou un format…" aria-label="Rechercher un bloc pédagogique" className="mb-3 w-full rounded-lg border px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-amber-400" style={{borderColor:'#E4E7EC'}} />
                 {['structure', 'pedagogique', 'media', 'evaluation', 'langues', 'avance'].map(group => {
                   const query = blockLibrarySearch.trim().toLocaleLowerCase();
@@ -1398,10 +1441,14 @@ export default function StudioConceptionFormation() {
           </div>
 
           {/* Navigation programme: clear hierarchy, no destructive action beside evaluations. */}
-          {!headerCollapsed && (
-            <nav aria-label="Plan de la formation" className="shrink-0 border-b border-slate-200 bg-white px-4 py-3 sm:px-7">
+          {curriculumOpen && (
+            <nav aria-label="Plan de la formation" className="absolute inset-x-0 top-0 z-40 max-h-[52vh] overflow-y-auto border-b border-slate-200 bg-white px-4 py-3 shadow-xl sm:px-7">
+              <div className="mb-2 flex items-center justify-between gap-2 border-b border-slate-100 pb-2">
+                <span className="text-xs font-bold uppercase tracking-wide text-[#002050]">Structure de la formation</span>
+                <button type="button" onClick={() => setCurriculumOpen(false)} className="rounded-lg border border-slate-200 p-1.5 text-slate-500" aria-label="Fermer le plan"><X size={16}/></button>
+              </div>
               <div className="mb-3 flex items-center gap-2 overflow-x-auto pb-1">
-                <button type="button" onClick={() => { setShowFinalization(false); setCurrentModule(null); setCurrentLesson(null); setBlocks([]); setSelectedBlock(null); setAssessmentWorkspace(null); }}
+                <button type="button" onClick={() => { setShowFinalization(false); setCurrentModule(null); setCurrentLesson(null); setBlocks([]); setSelectedBlock(null); setAssessmentWorkspace(null); setCurriculumOpen(false); }}
                   className={`shrink-0 rounded-lg px-3 py-2 text-sm font-semibold ${!currentModule && !showFinalization ? 'bg-[#002050] text-white' : 'text-slate-600 hover:bg-slate-100'}`}>
                   Formation
                 </button>
@@ -1421,7 +1468,7 @@ export default function StudioConceptionFormation() {
                 {!endingSections.some(mod => sectionTypeOf(mod) === 'final_exam') && !locked &&
                   <button type="button" onClick={async () => { if (!course.id) { const created = await ensureCourseCreated(); if (!created) return; } const d = await api('ensure_special_sections', { course_id: courseRef.current.id, include_final_exam: true }); if (d.success) { await reloadCourse(courseRef.current.id); showToast('Examen final ajouté'); } else showToast(d.message || d.error || 'Création impossible', 'error'); }} className="shrink-0 rounded-lg border border-dashed border-amber-300 px-3 py-2 text-sm font-semibold text-amber-800"><Plus size={14} className="mr-1 inline"/>Examen final</button>}
                 <button type="button" onClick={runQualityCheck} className="ml-auto shrink-0 rounded-lg border px-3 py-2 text-sm font-medium text-emerald-700"><CheckCircle size={14} className="mr-1 inline"/>Qualité</button>
-                <button type="button" onClick={() => { setShowFinalization(true); setCurrentModule(null); setCurrentLesson(null); setBlocks([]); setSelectedBlock(null); setAssessmentWorkspace(null); }} className={`shrink-0 rounded-lg px-3 py-2 text-sm font-semibold ${showFinalization ? 'bg-[#002050] text-white' : 'border text-[#002050]'}`}><ShieldCheck size={14} className="mr-1 inline"/>Publication</button>
+                <button type="button" onClick={() => { setShowFinalization(true); setCurrentModule(null); setCurrentLesson(null); setBlocks([]); setSelectedBlock(null); setAssessmentWorkspace(null); setCurriculumOpen(false); }} className={`shrink-0 rounded-lg px-3 py-2 text-sm font-semibold ${showFinalization ? 'bg-[#002050] text-white' : 'border text-[#002050]'}`}><ShieldCheck size={14} className="mr-1 inline"/>Publication</button>
               </div>
               {currentModule && !showFinalization && (() => {
                 const mod = modules.find(m => m.id === currentModule.id) || currentModule;
@@ -1432,9 +1479,9 @@ export default function StudioConceptionFormation() {
                       onChange={event => { const title = event.target.value; setModules(ms => ms.map(m => m.id === mod.id ? { ...m, title } : m)); setCurrentModule(m => m?.id === mod.id ? { ...m, title } : m); }}
                       onBlur={async event => { const title = event.target.value.trim() || mod.title; const result = await api('update_module', { course_id: course.id, module_id: mod.id, title }); if (!result.success) { showToast(result.message || result.error || 'Titre non enregistré', 'error'); await reloadCourse(course.id); } }} />
                     {stage === 'module' && <>
-                      <button type="button" disabled={locked} onClick={() => void addModuleStage(mod, 'module_presentation')} className="rounded-lg border px-3 py-1.5 text-xs font-semibold text-slate-700">Présentation</button>
-                      <button type="button" disabled={locked} onClick={() => void addModuleStage(mod, 'module_summary')} className="rounded-lg border px-3 py-1.5 text-xs font-semibold text-amber-800">Synthèse</button>
-                      <button type="button" disabled={locked} onClick={() => void openModuleAssessment(mod)} className="rounded-lg border border-purple-200 px-3 py-1.5 text-xs font-semibold text-purple-700">Évaluation</button>
+                      {!hasModuleStage(mod, 'module_presentation') && <button type="button" disabled={locked} onClick={() => void addModuleStage(mod, 'module_presentation')} className="rounded-lg border px-3 py-1.5 text-xs font-semibold text-slate-700">+ Présentation</button>}
+                      {!hasModuleStage(mod, 'module_summary') && <button type="button" disabled={locked} onClick={() => void addModuleStage(mod, 'module_summary')} className="rounded-lg border px-3 py-1.5 text-xs font-semibold text-amber-800">+ Synthèse</button>}
+                      {/* The only assessment entry is in the contextual toolbar above the document. */}
                       <button type="button" disabled={locked || !course.id} onClick={() => setBuilderImportTarget({ type:'module', id:mod.id })} className="rounded-lg border px-3 py-1.5 text-xs text-slate-700"><UploadCloud size={13} className="mr-1 inline"/>Importer</button>
                       <button type="button" disabled={locked} onClick={() => void addLesson(mod)} className="rounded-lg bg-[#002050] px-3 py-1.5 text-xs font-semibold text-white"><Plus size={13} className="mr-1 inline"/>Leçon</button>
                       {!locked && <details className="group/actions relative ml-auto"><summary className="cursor-pointer list-none rounded-lg border border-slate-200 px-3 py-1.5 text-xs text-slate-600">Gérer le module <ChevronDown size={13} className="ml-1 inline"/></summary>
@@ -1445,10 +1492,22 @@ export default function StudioConceptionFormation() {
                   <div className="flex flex-wrap items-center gap-2">
                     {(mod.lessons || []).map(lesson => <div key={lesson.id} className="inline-flex items-center rounded-lg border border-slate-200 bg-white p-0.5">
                       <button type="button" onClick={() => { setShowFinalization(false); void selectLesson(mod, lesson); }} className={`rounded-md px-3 py-2 text-sm ${currentLesson?.id === lesson.id && !assessmentWorkspace ? 'bg-[#002050] font-semibold text-white' : 'font-medium text-slate-700 hover:bg-slate-50'}`}>{stageTypeOf(lesson) === 'module_summary' ? 'Synthèse' : lesson.title}</button>
-                      {stageTypeOf(lesson) === 'lesson' && <button type="button" disabled={locked} onClick={() => void selectAssessmentWorkspace(mod, lesson, 'lesson')} className={`rounded-md px-2.5 py-2 text-xs font-semibold ${assessmentWorkspace?.lessonId === lesson.id && assessmentWorkspace.scope === 'lesson' ? 'bg-purple-700 text-white' : 'text-purple-700 hover:bg-purple-50'}`} aria-label={`Évaluation de ${lesson.title}`}>Évaluation</button>}
-
-                      {stageTypeOf(lesson) === 'final_exam' && <button type="button" disabled={locked} onClick={() => void selectAssessmentWorkspace(mod, lesson, 'final')} className="rounded-md px-2.5 py-2 text-xs font-semibold text-purple-700 hover:bg-purple-50">Évaluation</button>}
-                      {stage === 'module' && !locked && <details className="group/actions relative"><summary title={`Actions de la leçon ${lesson.title}`} aria-label={`Actions de la leçon ${lesson.title}`} className="cursor-pointer list-none rounded-md px-1.5 py-2 text-slate-400 hover:bg-slate-100">•••</summary><div className="absolute right-0 z-30 mt-2 w-56 rounded-xl border border-slate-200 bg-white p-2 shadow-xl"><button type="button" onClick={() => void deleteLesson(mod, lesson)} className="w-full rounded-lg px-3 py-2 text-left text-sm text-red-700 hover:bg-red-50">Supprimer cette étape…</button></div></details>}
+                      {/* No redundant Évaluation chip beside each lesson. */}
+                      {stage === 'module' && !locked && <div className="relative" data-oga-stage-menu>
+                        <button type="button" aria-label={`Actions de ${lesson.title}`} aria-haspopup="menu" aria-expanded={stageMenuId === lesson.id}
+                          onClick={() => setStageMenuId(previous => previous === lesson.id ? null : lesson.id)}
+                          className="rounded-md px-2 py-2 text-slate-500 hover:bg-slate-100">•••</button>
+                        {stageMenuId === lesson.id && <div role="menu" className="absolute right-0 z-40 mt-1 w-56 rounded-xl border border-slate-200 bg-white p-2 shadow-xl">
+                          <button type="button" role="menuitem" onClick={() => {setStageMenuId(null);void selectLesson(mod,lesson).then(() => document.getElementById('oga-current-stage-title')?.focus());}}
+                            className="w-full rounded-lg px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50">Renommer la leçon</button>
+                          <button type="button" role="menuitem" onClick={() => {setStageMenuId(null);void selectLesson(mod,lesson);setBuilderImportTarget({type:'lesson',id:lesson.id});}}
+                            className="w-full rounded-lg px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50">Importer des ressources</button>
+                          {stageTypeOf(lesson) === 'lesson' && <button type="button" role="menuitem" onClick={() => {setStageMenuId(null);void selectLesson(mod,lesson);}}
+                            className="w-full rounded-lg px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50">Ouvrir la leçon</button>}
+                          {stageTypeOf(lesson) === 'lesson' && <button type="button" role="menuitem" onClick={() => {setStageMenuId(null);void deleteLesson(mod,lesson);}}
+                            className="mt-1 w-full rounded-lg border-t border-slate-100 px-3 py-2 text-left text-sm text-red-700 hover:bg-red-50">Supprimer la leçon…</button>}
+                        </div>}
+                      </div>}
                     </div>)}
                   </div>
                 </div>;
@@ -1457,7 +1516,7 @@ export default function StudioConceptionFormation() {
           )}
 
           {/* Canevas */}
-          <div className="flex-1 overflow-y-auto px-3 py-5 sm:px-7 sm:py-8 lg:px-10" style={{ background: '#F7F8FA' }} onDragOver={(e) => { if (e.dataTransfer.types.includes('application/x-omnia-block')) e.preventDefault(); }} onDrop={async (e) => { const bt = e.dataTransfer.getData('application/x-omnia-block'); if (bt) { e.preventDefault(); setDragOverSlot(null); await addBlock(bt); } }}>
+          <div className="flex-1 overflow-y-auto px-2 py-4 sm:px-5 sm:py-6 lg:px-8" style={{ background: '#F1F4F8' }} onDragOver={(e) => { if (e.dataTransfer.types.includes('application/x-omnia-block')) e.preventDefault(); }} onDrop={async (e) => { const bt = e.dataTransfer.getData('application/x-omnia-block'); if (bt) { e.preventDefault(); setDragOverSlot(null); await addBlock(bt); } }}>
 
             {/* ── VUE INFOS FORMATION ──────────────────── */}
             {!currentModule && !showFinalization && (
@@ -1638,10 +1697,10 @@ export default function StudioConceptionFormation() {
 
             {/* ── VUE LEÇON + BLOCS ────────────────────── */}
             {currentLesson && (
-              <div className="mx-auto w-full max-w-[1040px]">
+              <div className="mx-auto w-full max-w-[1080px] rounded-2xl border border-slate-200 bg-white px-4 py-6 shadow-sm sm:px-9 sm:py-9 lg:px-12">
                 {/* Header leçon */}
-                <div className="bg-white rounded-xl border p-4 mb-4" style={{ borderColor: '#E4E7EC' }}>
-                  <input className="text-xl font-bold bg-transparent border-none outline-none w-full"
+                <div className="mb-5 border-b border-slate-100 pb-5">
+                  <input id="oga-current-stage-title" className="text-xl font-bold bg-transparent border-none outline-none w-full"
                     style={{ color: '#002050' }}
                     value={stageTypeOf(currentLesson) === 'module_summary' && /^Bilan du module$/i.test(currentLesson.title) ? 'Synthèse' : currentLesson.title}
                     onChange={e => {
@@ -1666,6 +1725,16 @@ export default function StudioConceptionFormation() {
                       }
                     }}
                     disabled={locked} spellCheck lang={course?.instruction_language || course?.language || 'fr'} />
+                  {/* One assessment control bound to the selected lesson, synthesis or final exam. */}
+                  {currentModule && !['introduction', 'module_presentation','conclusion'].includes(stageTypeOf(currentLesson)) && <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3">
+                    <button type="button" disabled={locked} onClick={() => {
+                      if (assessmentWorkspace) { setAssessmentWorkspace(null); return; }
+                      const scope = stageTypeOf(currentLesson) === 'module_summary' ? 'module' : stageTypeOf(currentLesson) === 'final_exam' ? 'final' : 'lesson';
+                      void selectAssessmentWorkspace(currentModule, currentLesson, scope);
+                    }} className={`rounded-lg px-4 py-2 text-sm font-semibold ${assessmentWorkspace ? 'bg-purple-700 text-white' : 'border border-purple-200 text-purple-700 hover:bg-purple-50'}`}>Évaluation</button>
+                    <span className="text-xs text-slate-500">{assessmentWorkspace ? `Édition de l’évaluation ${assessmentWorkspace.scope === 'lesson' ? 'de la leçon' : assessmentWorkspace.scope === 'module' ? 'du module' : 'finale'}` : stageTypeOf(currentLesson) === 'module_summary' ? 'Du module' : stageTypeOf(currentLesson) === 'final_exam' ? 'Examen final' : 'De la leçon'}</span>
+                    {assessmentWorkspace && <button type="button" onClick={() => setAssessmentWorkspace(null)} className="ml-auto rounded-lg px-3 py-2 text-xs text-slate-700 hover:bg-slate-100">Retour au contenu</button>}
+                  </div>}
                   {assessmentWorkspace && (
                     <div className="mt-3 rounded-xl border px-3 py-2" style={{borderColor:'#DDD6FE',background:'#F5F3FF'}}>
                       <p className="text-xs font-bold" style={{color:'#6D28D9'}}>{assessmentWorkspace.scope==='lesson'?'Sous-espace · Évaluation de la leçon':assessmentWorkspace.scope==='module'?'Sous-espace · Évaluation du module':'Sous-espace · Épreuve officielle finale'}</p>
@@ -1726,10 +1795,10 @@ export default function StudioConceptionFormation() {
                         {handle => <>
                         {(dragOverSlot === idx || insertionSlot === idx) && <div aria-hidden="true" className="absolute -top-1 inset-x-2 z-20 h-1 rounded-full bg-[#BF8813] shadow-md" />}
                         {(dragOverSlot === idx + 1 || insertionSlot === idx + 1) && <div aria-hidden="true" className="absolute -bottom-1 inset-x-2 z-20 h-1 rounded-full bg-[#BF8813] shadow-md" />}
-                        <div className={`group rounded-xl border bg-white transition-all hover:shadow-sm ${isSelected ? 'ring-1 shadow-sm' : ''}`}
-                          style={{ borderColor: isSelected ? '#002050' : '#E4E7EC', ringColor: '#002050' }}>
+                        <div className={`group relative rounded-xl border bg-white transition-all hover:shadow-sm ${isSelected ? 'ring-1 ring-blue-100' : ''}`}
+                          style={{ borderColor: isSelected ? '#CBD5E1' : 'transparent' }}>
                           {/* Header bloc */}
-                          <div className="flex items-center justify-between px-5 py-2 border-b" style={{ borderColor: '#F3F4F6' }}>
+                          <div className="flex items-center justify-between px-2 py-1 opacity-50 transition-opacity hover:opacity-100 group-focus-within:opacity-100" style={{ borderColor: '#F3F4F6' }}>
                             <div className="flex items-center gap-2">
                               <button type="button" ref={handle.ref} {...handle.props} disabled={locked || reorderInFlight.current}
                                 title="Déplacer le bloc (souris, tactile ou clavier)" aria-label={`Déplacer le bloc ${def?.label || block.block_type}`}
@@ -1767,7 +1836,7 @@ export default function StudioConceptionFormation() {
                           </div>
 
                           {/* Contenu du bloc */}
-                          <div className="px-5 py-4 sm:px-7 sm:py-5" style={{ fontFamily: String(block.settings_json?.font_family || 'Inter, system-ui, sans-serif'), fontSize: block.settings_json?.font_scale === 'small' ? '0.875rem' : block.settings_json?.font_scale === 'large' ? '1.075rem' : undefined, textAlign: (block.settings_json?.text_align || 'left') as any }}>
+                          <div className="px-2 pb-4 pt-1 sm:px-3 sm:pb-5" style={{ fontFamily: String(block.settings_json?.font_family || 'Inter, system-ui, sans-serif'), fontSize: block.settings_json?.font_scale === 'small' ? '0.875rem' : block.settings_json?.font_scale === 'large' ? '1.075rem' : undefined, textAlign: (block.settings_json?.text_align || 'left') as any }}>
                             <BuilderBlockBoundary blockType={block.block_type} block={block} locked={locked} onFallbackChange={content_json => {
                               setBlocks(bs => bs.map(b => b.id === block.id ? { ...b, content_json } : b));
                               if (isSelected) setSelectedBlock(b => b ? { ...b, content_json } : b);
@@ -1801,8 +1870,18 @@ export default function StudioConceptionFormation() {
                     </SortableContext>
                   </DndContext>
 
+                  {!locked && !assessmentWorkspace && (
+                    <StudioBlankPageComposer
+                      key={currentLesson.id}
+                      draftKey={currentLesson.id}
+                      onCommit={commitPageParagraph}
+                      onInsertBlock={async type => { await addBlock(type, insertionSlot ?? undefined); setInsertionSlot(null); }}
+                      choices={visibleBlocks.map(def => ({ type: def.type, label: def.label }))}
+                      language={course?.instruction_language || course?.language || 'fr'}
+                    />
+                  )}
                   {!locked && (
-                    <div className="rounded-xl border bg-white p-3" style={{ borderColor: '#E4E7EC' }}>
+                    <div className="rounded-xl border border-transparent bg-white px-2 py-2">
                       <div className="flex items-center gap-2">
                         <Plus size={16} style={{ color: '#9CA3AF' }} />
                         <input
@@ -2046,8 +2125,8 @@ export default function StudioConceptionFormation() {
                 </div>
               )}
               {(checklist.issues || [
-                ...checklist.errors.map(message => ({ severity: 'error' as const, message })),
-                ...checklist.warnings.map(message => ({ severity: 'warning' as const, message })),
+                ...checklist.errors.map(message => ({ severity: 'error' as const, message, target: undefined as string | undefined })),
+                ...checklist.warnings.map(message => ({ severity: 'warning' as const, message, target: undefined as string | undefined })),
               ]).map((issue, i) => {
                 const isError = issue.severity === 'error';
                 return <div key={`${issue.severity}-${i}`} className="flex items-start gap-2 p-3 rounded-xl" style={{ background: isError ? '#FEE2E2' : '#FEF3C7' }}>
@@ -2174,7 +2253,7 @@ function PedagogicalEditor({ c, locked, onChange, kind, language = 'fr' }: { c: 
   const labels:Record<string,string>={objective:'Objectif pédagogique',example:'Exemple',summary:'Résumé',important:'Important',correction:'Correction'};
   return <div className="space-y-2 p-3 rounded-xl border" style={{borderColor:'#E4E7EC',background:'#FBFCFE'}}>
     <input className="w-full font-semibold bg-transparent border-none outline-none" style={{color:'#002050'}} value={c.title||labels[kind]||''} onChange={e=>onChange({...c,title:e.target.value})} disabled={locked} spellCheck lang={language}/>
-    <RichTextEditor value={c.html ?? c.content ?? c.text ?? ''} locked={locked} language={language} placeholder="Saisissez le contenu pédagogique..." onChange={html=>onChange({...c,html,content:html,text:html})}/>
+    <RichTextEditor value={c.html ?? c.content ?? c.text ?? ''} locked={locked} language={language} placeholder="Saisissez le contenu pédagogique..." onChange={html=>onChange({...c,html,content:html,text:stripHtml(html)})}/>
   </div>
 }
 
@@ -2241,7 +2320,7 @@ function SubmissionModeEditor({ c, locked, onChange, allowPerQuestion = false }:
 }
 
 // ─── Aperçu inline du bloc (éditable) ────────────────────────
-function BlockPreview({ block, def, locked, onChange, onGenerateTts, onGenerateSubtitles, mediaAiBusy, defaultLanguage = 'fr' }: {
+function BlockPreview({ block, locked, onChange, onGenerateTts, onGenerateSubtitles, mediaAiBusy, defaultLanguage = 'fr' }: {
   block: Block; def: typeof BLOCK_DEFS[0] | undefined; locked: boolean;
   onChange: (content: Record<string, any>) => void;
   onGenerateTts?: (text: string, targetPath: string) => void;

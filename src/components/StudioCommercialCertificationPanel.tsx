@@ -33,6 +33,7 @@ const emptyCert:CertDraft={registry_key:'custom',type:'other',organization_id:''
 
 export default function StudioCommercialCertificationPanel({course,locked=false,advancedMode=false,onPatch,onSaved}:Props){
   const isProfessor = typeof window !== 'undefined' && window.location.pathname.includes('/professeur/');
+void isProfessor;
   const [saving,setSaving]=useState(false);
   const [rules,setRules]=useState<any>(null);
   const [certifications,setCertifications]=useState<any[]>([]);
@@ -80,6 +81,7 @@ export default function StudioCommercialCertificationPanel({course,locked=false,
     if(action==='structure_revision'&&!pricingComment.trim()) return onSaved?.('Indiquez la raison de la révision tarifaire.');
     setSaving(true);try{const res=await fetch(PRICING_API,{method:'POST',headers:edgeAuthHeaders(),body:JSON.stringify({course_id:course.id,action,comment:pricingComment.trim()||undefined,desired_price_amount:Number(course.desired_price_amount||0)})});const d=await res.json().catch(()=>({}));if(!res.ok||d.error)throw new Error(d.message||d.error||'Action tarifaire impossible');onPatch({pricing_status:d.pricing_status,price_xof:d.price_xof??course.price_xof});setPricingComment('');onSaved?.(action==='structure_accept'?'Nouveau prix accepté par la Structure.':'Révision tarifaire demandée à Omnia.');}catch(e:any){onSaved?.(e.message)}finally{setSaving(false)}
   }
+void structurePricingAction;
 
   async function addLiveLink(){
     if(!course.id||!linkTarget) return onSaved?.('Choisissez un Live ou un Replay à relier.');

@@ -54,4 +54,4 @@ export default function AdminEmployabilityIntegration() {
 
 function Metric({icon,label,value}:{icon:ReactNode;label:string;value:number}){return <div className="border bg-white p-5"><span style={{color:GOLD}}>{icon}</span><p className="mt-3 text-3xl font-black" style={{color:BLUE}}>{value}</p><p className="text-sm text-gray-500">{label}</p></div>}
 function Th({children}:{children:ReactNode}){return <th className="p-3 font-bold" style={{color:BLUE}}>{children}</th>}
-function Td({children}:{children:ReactNode}){return <td className="p-3 align-top">{children}</td>}
+function Td({children,className=""}:{children:ReactNode;className?:string}){return <td className={`p-3 align-top ${className}`}>{children}</td>}

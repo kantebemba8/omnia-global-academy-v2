@@ -5,24 +5,7 @@ import { mergeCareerTemplateCatalog, DEFAULT_COLORS } from '../../lib/careerStud
 import { edgeAuthHeaders } from '../../lib/edgeAuth';
 import CareerTokenGovernancePanel, { type CareerTokenGlobalRule, type CareerTokenRuleConfig } from '../../components/career/CareerTokenGovernancePanel';
 import { AdminLayout } from '../../components/AdminLayout';
-import {
-  AlertCircle,
-  BarChart2,
-  Check,
-  Coins,
-  Download,
-  FileText,
-  Mail,
-  MessageSquare,
-  Plus,
-  RefreshCw,
-  Save,
-  Settings,
-  ShieldCheck,
-  Sparkles,
-  X,
-  ExternalLink,
-} from 'lucide-react';
+import { AlertCircle, BarChart2, Check, Coins, Download, FileText, Mail, MessageSquare, Plus, RefreshCw, Save, Settings, Sparkles, X, ExternalLink } from 'lucide-react';
 
 type SubTab = 'dashboard' | 'rules' | 'packs' | 'cv_templates' | 'lm_templates' | 'ai' | 'question_bank' | 'exports' | 'stats';
 
@@ -519,7 +502,7 @@ export default function AdminCareerStudio() {
           <div className="col-span-1 text-center">ATS</div>
           <div className="col-span-2 text-right">Action</div>
         </div>
-        {items.map((template, index) => (
+        {items.map((template, _index) => (
           <div key={template.template_key} className="grid grid-cols-12 items-center gap-4 border-b px-5 py-4 text-sm last:border-b-0" style={{ borderColor: BORDER, opacity: template.is_active ? 1 : .58 }}>
             <div className="col-span-1">
               <input
@@ -696,7 +679,10 @@ export default function AdminCareerStudio() {
               saving={saving}
               onChange={setTokenConfig}
               onGlobalRulesChange={(globalRules) => setRules(current => current.map(rule =>
-                globalRules.find(globalRule => globalRule.rule_key === rule.rule_key) || rule
+                (() => {
+                  const updated = globalRules.find(globalRule => globalRule.rule_key === rule.rule_key);
+                  return updated ? { ...rule, value_json: updated.value_json, is_active: updated.is_active } : rule;
+                })()
               ))}
               onSave={saveTokenCosts}
             />

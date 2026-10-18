@@ -1,8 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  AlertCircle, CalendarClock, CheckCircle2, FileCheck2, FileText, Loader2,
-  RotateCcw, ShieldAlert, SlidersHorizontal, Upload, XCircle, type LucideIcon,
-} from 'lucide-react';
+import { AlertCircle, CalendarClock, CheckCircle2, FileCheck2, Loader2, RotateCcw, ShieldAlert, SlidersHorizontal, Upload, XCircle, type LucideIcon } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { LearnerFormationsLayout } from '../../components/formations/FormationsRoleLayout';
 import { edgeAuthHeaders } from '../../lib/edgeAuth';

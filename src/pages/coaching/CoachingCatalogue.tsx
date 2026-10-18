@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ComponentProps } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { ArrowRight, BadgeCheck, CalendarClock, Languages, SlidersHorizontal, Star, UserRoundCheck } from 'lucide-react';
+import { ArrowRight, BadgeCheck, CalendarClock, Languages, SlidersHorizontal, Star } from 'lucide-react';
 import CoachingLayout from '../../components/coaching/CoachingLayout';
 import { CoachProfile, CoachingDomain, CoachingLevel, coachingRequest, formatXof } from '../../lib/coachingApi';
 

@@ -1,12 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import {
-  Award, Briefcase, Camera, ChevronDown, ChevronRight, Clock, Download,
-  Eye, FileText, Mail, MessageSquare, Mic, Paperclip, Play, Search, Sparkles, Target,
-  Upload, UserRound, Video, X
-} from 'lucide-react';
-import TemplateLiveCard from './TemplateLiveCard';
+import { useEffect, useRef, useState } from 'react';
+import { Briefcase, ChevronRight, Download, FileText, Mail, MessageSquare, Paperclip, Search, Sparkles, Target, Upload } from 'lucide-react';
+import './TemplateLiveCard';
 import type { CareerTemplateMeta } from '../../lib/careerStudioData';
-import { dashboardGreeting } from '../../lib/dashboardGreeting';
+import '../../lib/dashboardGreeting';
 import { isNativeApp, saveOrShareText } from '../../lib/mobile';
 import {
   createCareerManualApplication,
@@ -31,6 +27,7 @@ function Empty({text}:{text:string}){return <div className="rounded-2xl border b
 function Stat({label,value,icon:Icon,onClick}:{label:string;value:string|number;icon:any;onClick?:()=>void}){
   return <button onClick={onClick} className="rounded-2xl border bg-white p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md" style={{borderColor:BORDER}}><div className="flex items-center justify-between"><div><div className="text-sm" style={{color:MUTED}}>{label}</div><div className="mt-1 text-3xl font-semibold" style={{color:BLUE}}>{value}</div></div><div className="flex h-11 w-11 items-center justify-center rounded-xl" style={{background:'rgba(0,32,80,.08)'}}><Icon size={20} color={BLUE}/></div></div></button>;
 }
+void Stat;
 function readJson<T>(key:string,fallback:T):T{try{return JSON.parse(localStorage.getItem(key)||'') as T}catch{return fallback}}
 function saveJson(key:string,value:any){localStorage.setItem(key,JSON.stringify(value))}
 export function EnhancedDashboard({displayName,loading,cvDocs,lmDocs,cvTemplates,lmTemplates,onView,onCreate,onOpen,previewMode=false}:{

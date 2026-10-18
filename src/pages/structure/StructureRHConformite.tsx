@@ -56,7 +56,7 @@ export default function StructureRHConformite() {
   function exportCsv() {
     const rows = members.map((m: any) => [m.full_name, m.email, m.department_name, m.group_name, `${m.progress_percent}%`, m.average_score, m.training_hours, m.cpd_hours, m.certificates, m.badges, `${m.compliance_percent}%`, m.overdue_assignments]);
     const header = ['Nom','E-mail','Département','Groupe','Progression','Score moyen','Heures reconnues','Heures reconnues','Certificats','Badges','Conformité','Retards'];
-    const csv = [header, ...rows].map(row => row.map(value => `"${String(value ?? '').replace(/"/g, '""')}"`).join(';')).join('\n');
+    const csv = [header, ...rows].map(row => row.map((value: unknown) => `"${String(value ?? '').replace(/"/g, '""')}"`).join(';')).join('\n');
     const url = URL.createObjectURL(new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' }));
     const link = document.createElement('a'); link.href = url; link.download = `rapport-rh-structure-${new Date().toISOString().slice(0,10)}.csv`; link.click(); URL.revokeObjectURL(url);
   }

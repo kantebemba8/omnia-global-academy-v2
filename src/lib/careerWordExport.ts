@@ -92,6 +92,7 @@ function sectionWord(section: CareerContentSection, primary: string, accent: str
 function buildLetter(lm: LmData, visible: (id: string) => boolean, primary: string, accent: string, pageWidth: number, profilePlacement?: string): string {
   const sender = lm.sender || { name: '', address: '', phone: '', email: '', city: '', date: '' };
   const recipient = lm.recipient || { name: '', company: '', address: '' };
+void recipient;
   const senderDetails = [sender.email, sender.phone, sender.address].filter(Boolean).join(' · ');
   const header = para(sender.name, { size: 55, color: primary, bold: true, after: 60, keepNext: true })
     + para(senderDetails, { size: 18, color: '64748B', after: 120, border: accent });

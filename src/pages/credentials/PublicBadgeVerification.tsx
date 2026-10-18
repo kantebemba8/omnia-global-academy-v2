@@ -35,7 +35,7 @@ export default function PublicBadgeVerification() {
       await downloadOrShareRemoteFile(credentialAssetUrl(badge.verification_code, format), {
         fileName: `badge-${badge.verification_code}.${extension}`,
         mimeType,
-        title: `Badge ${badge.title}`,
+        title: `Badge ${badge.template?.name || badge.credential_uuid}`,
       });
     } catch (cause) {
       window.alert(cause instanceof Error ? cause.message : 'Export du badge impossible.');

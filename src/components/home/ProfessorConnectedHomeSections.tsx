@@ -1,24 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import {
-  AlertCircle,
-  ArrowRight,
-  BarChart3,
-  BookOpen,
-  Briefcase,
-  CheckCircle2,
-  ClipboardCheck,
-  FolderKanban,
-  GraduationCap,
-  Heart,
-  MessageSquare,
-  Plus,
-  Radio,
-  Star,
-  Users,
-  UsersRound,
-  type LucideIcon,
-} from 'lucide-react';
+import { AlertCircle, ArrowRight, BarChart3, BookOpen, Briefcase, ClipboardCheck, FolderKanban, Heart, MessageSquare, Plus, Radio, Star, UsersRound, type LucideIcon } from 'lucide-react';
 import { getOwnerProjects, type OmniaProject } from '../../lib/projectsApi';
 
 export type ProfessorConnectedHomeData = {
@@ -49,8 +31,10 @@ type ProfessorFormation = NonNullable<ProfessorConnectedHomeData['formations']>[
 type SpaceItem = { label: string; caption: string; path: string; accent: string; soft: string; icon: LucideIcon; signal?: string };
 
 const INDIGO = '#4657C8';
+void INDIGO;
 const GOLD = '#BF8813';
 const BLUE = '#002050';
+void BLUE;
 
 const STATUS: Record<string, { label: string; accent: string; soft: string }> = {
   draft: { label: 'Brouillon', accent: '#64748B', soft: '#F1F5F9' }, brouillon: { label: 'Brouillon', accent: '#64748B', soft: '#F1F5F9' },

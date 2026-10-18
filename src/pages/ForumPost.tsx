@@ -8,6 +8,7 @@ import { edgeAuthHeaders, edgeGatewayHeaders } from '../lib/edgeAuth';
 import { Ban, CheckCircle, Flag, MessageSquare, Pin, Send, ThumbsUp, X } from 'lucide-react';
 
 const BLUE = '#002050';
+void BLUE;
 const TEAL = '#0F766E';
 const GOLD = '#BF8813';
 const BORDER = '#DDEBE8';

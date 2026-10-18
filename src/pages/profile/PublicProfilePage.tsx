@@ -259,7 +259,7 @@ function StructureSummary({ profile }: { profile: PublicProfile }) {
           : <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#002050]/5 text-[#002050]"><Users size={20} /></div>}
         <div className="min-w-0">
           <p className="truncate font-extrabold text-[#002050]">{name}</p>
-          {structure.type && <p className="text-xs text-slate-500">{String(structure.type)}</p>}
+          {Boolean(structure.type) && <p className="text-xs text-slate-500">{String(structure.type)}</p>}
           {location && <p className="mt-0.5 text-xs text-slate-500">{location}</p>}
         </div>
       </div>

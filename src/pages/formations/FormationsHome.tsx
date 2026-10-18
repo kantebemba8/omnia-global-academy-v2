@@ -1,25 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, Navigate, useSearchParams } from 'react-router-dom';
-import {
-  ArrowRight,
-  Award,
-  BarChart3,
-  BookOpen,
-  CheckCircle2,
-  ClipboardCheck,
-  Clock3,
-  Compass,
-  FileCheck2,
-  GraduationCap,
-  Layers3,
-  Plus,
-  Search,
-  ShieldCheck,
-  Sparkles,
-  Target,
-  Users,
-  type LucideIcon,
-} from 'lucide-react';
+import { ArrowRight, Award, BarChart3, BookOpen, CheckCircle2, ClipboardCheck, Clock3, Compass, FileCheck2, GraduationCap, Layers3, Search, ShieldCheck, Sparkles, Target, Users, type LucideIcon } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { ENDPOINTS } from '../../lib/config';
 import { edgeAuthHeaders } from '../../lib/edgeAuth';
@@ -35,6 +16,7 @@ import {
 import { resolveFormationsAudience, type FormationsAudience } from '../../lib/formationsNavigation';
 
 const BLUE = '#002050';
+void BLUE;
 const GOLD = '#BF8813';
 const ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 

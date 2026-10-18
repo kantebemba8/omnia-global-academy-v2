@@ -1,16 +1,4 @@
-import {
-  Briefcase,
-  ClipboardList,
-  Compass,
-  FileCheck2,
-  FolderKanban,
-  LayoutGrid,
-  ShieldCheck,
-  Sparkles,
-  Target,
-  Users,
-  type LucideIcon,
-} from 'lucide-react';
+import { Briefcase, ClipboardList, Compass, FileCheck2, FolderKanban, LayoutGrid, Sparkles, Target, Users, type LucideIcon } from 'lucide-react';
 import { normalizePlatformRoles, type CanonicalPlatformRole } from './session';
 
 export type ProjectsAudience = 'public' | 'apprenant' | 'professeur' | 'structure' | 'moderateur' | 'recruteur' | 'organisateur' | 'coach' | 'super_admin';

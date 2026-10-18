@@ -35,20 +35,7 @@ import {
 } from 'lucide-react';
 import { CvPreview, type DesignOptions, type DocData } from '../../components/career/CvTemplates';
 import { LmPreview, type LmData, type LmDesign } from '../../components/career/LmTemplates';
-import {
-  CAREER_PALETTES,
-  CareerDocType,
-  CareerDocumentFull,
-  CareerTemplateMeta,
-  DEFAULT_COLORS,
-  createDefaultData,
-  createDefaultDesign,
-  getDefaultDocTitle,
-  getDefaultTemplateKey,
-  getCareerTemplates,
-  getTemplateMeta,
-  normalizeTemplateKey,
-} from '../../lib/careerStudioData';
+import { CareerDocType, CareerDocumentFull, CareerTemplateMeta, DEFAULT_COLORS, createDefaultData, createDefaultDesign, getDefaultDocTitle, getCareerTemplates, getTemplateMeta, normalizeTemplateKey } from '../../lib/careerStudioData';
 import { consumeCareerTokenAction, deleteCareerDocument, fetchCareerTemplateCatalog, getCareerDocument, listCareerDocuments, prepareCareerPdfExport, renameCareerDocument, runCareerAiAction, saveCareerDocument } from '../../lib/careerStudioApi';
 import { downloadPreparedCareerPdf, renderCareerPdfBeforeAuthorization } from '../../lib/careerPdfExport';
 import { exportCareerWord } from '../../lib/careerWordExport';
@@ -60,16 +47,7 @@ import CareerDesignPanel, { type AdvancedCareerDesign } from '../../components/c
 import CareerQualityPanel from '../../components/career/CareerQualityPanel';
 import CareerVersionPanel from '../../components/career/CareerVersionPanel';
 import CareerDocumentSurface, { getCareerSurfaceMetrics } from '../../components/career/CareerDocumentSurface';
-import {
-  analyzeCareerDocument,
-  createLinkedLetterFromCv,
-  getCareerMeta,
-  hasCareerQualityStarted,
-  markCareerDocumentModified,
-  normalizeCareerDocument,
-  withCareerMeta,
-  type CareerSourceProfile,
-} from '../../lib/careerBuilderV2';
+import { analyzeCareerDocument, createLinkedLetterFromCv, getCareerMeta, hasCareerQualityStarted, markCareerDocumentModified, normalizeCareerDocument, type CareerSourceProfile } from '../../lib/careerBuilderV2';
 import { isLearnerPreviewMode, withLearnerPreview } from '../../lib/learnerPreview';
 import MobileBuilderAdvice from '../../components/MobileBuilderAdvice';
 import { createCareerHistory, recordCareerEdit, undoCareerEdit, redoCareerEdit, moveCareerEntry, type CareerHistory } from '../../lib/careerEditingHistory';
@@ -77,6 +55,7 @@ import { appendVerifiedCareerSkills, buildSpecializedCareerCv, isCareerAiProposa
 
 const BLUE = '#002050';
 const GOLD = '#bf8813';
+void GOLD;
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
 type AiSuggestionMode = 'cv_summary' | 'cv_experience' | 'cv_skills' | 'lm_full' | 'lm_section' | 'cv_personalize' | 'lm_personalize' | 'analysis';
@@ -2035,6 +2014,7 @@ function TemplatePanel({
 function getTemplateMockup(template: CareerTemplateMeta, _docType: CareerDocType) {
   return template.thumbnail_url || (template.is_custom ? '/career-templates/generated/custom.svg' : `/career-templates/generated/${template.template_key}.svg`);
 }
+void getTemplateMockup;
 
 function TemplatePreviewCard({
   template,

@@ -23,7 +23,7 @@ export default function ModerateurSupport() {
   const [statusFilter, setStatusFilter] = useState('open');
   const [selected, setSelected] = useState<Ticket | null>(null);
   const [response, setResponse] = useState('');
-  const [resolveAction, setResolveAction] = useState<'resolve' | 'keep_open' | null>(null);
+  const [_resolveAction, setResolveAction] = useState<'resolve' | 'keep_open' | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [toast, setToast] = useState('');
 

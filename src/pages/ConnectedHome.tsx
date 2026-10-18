@@ -1,34 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import UnifiedProfilePage from './profile/UnifiedProfilePage';
-import {
-  ArrowRight,
-  Award,
-  BadgeCheck,
-  BarChart3,
-  BookOpen,
-  Briefcase,
-  Building2,
-  CalendarDays,
-  ClipboardCheck,
-  CreditCard,
-  FileText,
-  FolderKanban,
-  GraduationCap,
-  Heart,
-  Landmark,
-  LayoutDashboard,
-  MessageCircle,
-  Radio,
-  Search,
-  Settings,
-  ShieldCheck,
-  UserCheck,
-  Users,
-  Video,
-  Wallet,
-  type LucideIcon,
-} from 'lucide-react';
+import { ArrowRight, Award, BadgeCheck, BarChart3, BookOpen, Briefcase, Building2, CalendarDays, ClipboardCheck, CreditCard, FileText, FolderKanban, GraduationCap, Heart, Landmark, LayoutDashboard, MessageCircle, Radio, Search, ShieldCheck, UserCheck, Users, Video, Wallet, type LucideIcon } from 'lucide-react';
 import UserAccountMenu from '../components/UserAccountMenu';
 import LearnerConnectedHomeSections, { type LearnerConnectedHomeData } from '../components/home/LearnerConnectedHomeSections';
 import ProfessorConnectedHomeSections, { type ProfessorConnectedHomeData } from '../components/home/ProfessorConnectedHomeSections';
@@ -46,7 +19,7 @@ import { useAuth } from '../hooks/useAuth';
 import { ENDPOINTS } from '../lib/config';
 import { edgeAuthHeaders } from '../lib/edgeAuth';
 import { ADMIN_NAV_GROUPS } from '../lib/adminNavigation';
-import { getActivePlatformRole, getDashboardPathForRoles, getSessionToken, normalizePlatformRoles, setActivePlatformRole, type CanonicalPlatformRole } from '../lib/session';
+import { getActivePlatformRole, getSessionToken, normalizePlatformRoles, setActivePlatformRole, type CanonicalPlatformRole } from '../lib/session';
 import { normalizeModeratorPermissions, type ModeratorPermissions } from '../lib/moderatorPermissions';
 
 const BLUE = '#002050';
@@ -580,7 +553,7 @@ export default function ConnectedHome() {
     pushUnique(config.secondaryAction);
 
     if (audience === 'super_admin') {
-      ADMIN_NAV_GROUPS.forEach(group => group.items.forEach(item => pushUnique(LINK(item.label, `Accès ${group.label.toLowerCase()} de la plateforme.`, item.path, item.icon))));
+      ADMIN_NAV_GROUPS.forEach(group => group.items.forEach(item => pushUnique(LINK(item.label, `Accès ${group.label.toLowerCase()} de la plateforme.`, item.path, item.icon as LucideIcon))));
     } else {
       groups.forEach(group => group.items.forEach(pushUnique));
       config.ecosystem.forEach(pushUnique);
@@ -883,7 +856,7 @@ export default function ConnectedHome() {
           <LearnerConnectedHomeSections data={learnerData} previewMode={previewMode} />
         )}
 
-        {audience === 'super_admin' ? (
+        {isSuperAdmin && !previewMode ? (
           <section className="bg-white">
             <div className="mx-auto max-w-7xl px-5 py-14 sm:px-6 lg:px-8">
               <div className="grid gap-8 lg:grid-cols-[0.55fr_1.45fr]">

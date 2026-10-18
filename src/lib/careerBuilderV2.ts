@@ -166,7 +166,7 @@ export function getCareerMeta(data: DocData | LmData, docType: CareerDocType): C
   };
 }
 
-export function withCareerMeta<T extends DocData | LmData>(data: T, docType: CareerDocType, next: CareerDocumentMeta): T {
+export function withCareerMeta<T extends DocData | LmData>(data: T, _docType: CareerDocType, next: CareerDocumentMeta): T {
   return { ...data, career_meta: { ...next, schema_version: 2 } } as T;
 }
 

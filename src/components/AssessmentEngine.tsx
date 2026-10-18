@@ -507,7 +507,7 @@ export function AssessmentEngine({
 
               {question.question_type === 'qcm' && (
                 <div className="space-y-2">
-                  {(question.options || []).map((option, optionIndex) => (
+                  {(question.options || []).map((option: string, optionIndex: number) => (
                     <label key={optionIndex} className="flex gap-2 text-sm">
                       <input type="radio" name={question.id} checked={answers[question.id] === optionIndex} onChange={() => setAnswers(current => ({ ...current, [question.id]: optionIndex }))} />
                       {option}

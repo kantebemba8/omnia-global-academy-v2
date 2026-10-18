@@ -1,0 +1,48 @@
+/** Studio V4 Tiptap-first regression contract — source/syntax only, NOT browser E2E. */
+const fs = require('node:fs');
+const path = require('node:path');
+const assert = require('node:assert/strict');
+const ROOT = path.resolve(__dirname, '../..');
+const read = (name) => fs.readFileSync(path.join(ROOT, name), 'utf8');
+const builder = read('src/pages/studio/StudioConceptionFormation.tsx');
+const editor = read('src/components/studio/StudioRichTextEditor.tsx');
+const composer = read('src/components/studio/StudioBlankPageComposer.tsx');
+const backend = read('supabase/functions/studio-unified/index.ts');
+const lock = JSON.parse(read('package-lock.json'));
+let passed = 0;
+function check(name, predicate) { assert.ok(predicate, name); console.log('PASS', name); passed++; }
+check('52 existing block definitions preserved', (builder.match(/\{ type: '[^']+',\s*label:/g) || []).length === 52);
+check('Direct writing is a real Tiptap editor component', composer.includes('<StudioRichTextEditor') && composer.includes('onCommit(draft)'));
+check('Slash commands use registered block IDs', composer.includes('onInsertBlock(type)') && composer.includes('role="listbox"'));
+check('Plain writer uses the existing create_block endpoint', builder.includes("block_type: 'text', content_json: { html, content: html, text: stripHtml(html) }"));
+check('Unsaved text retained in session storage', composer.includes('sessionStorage.setItem(storageKey') && composer.includes('sessionStorage.getItem(storageKey'));
+check('No data schema change to legacy blocks', builder.includes("settings_json: {},") && backend.includes('if(action==="create_block")'));
+check('Blank page canvas dominates', builder.includes('max-w-[1080px]') && builder.includes('bg-white px-4 py-6'));
+check('Full plan is an optional accessible overlay', builder.includes('curriculumOpen && (') && builder.includes('aria-label="Plan de la formation"'));
+check('Essential actions remain in header', builder.includes('Prévisualiser') && builder.includes('Enregistrer') && builder.includes('Soumettre'));
+check('Presentation and synthesis buttons hidden when stage exists', builder.includes("!hasModuleStage(mod, 'module_presentation')") && builder.includes("!hasModuleStage(mod, 'module_summary')"));
+check('Historic stage titles protected against duplicates', builder.includes('bilan du module') && builder.includes('pr[ée]sentation'));
+check('Module summary legacy technical stage retained', builder.includes("stage_type: 'module_summary'"));
+check('Evaluation entry is contextual rather than repeated on lessons', builder.includes("const scope = stageTypeOf(currentLesson) === 'module_summary'") && !builder.includes('aria-label={`Évaluation de ${lesson.title}`}'));
+check('Lessons and module evaluations remain separate', builder.includes("selectAssessmentWorkspace(currentModule, currentLesson, scope)") && builder.includes('openModuleAssessment'));
+check('Official exam remains short optional action', builder.includes('Examen final</button>') && !builder.includes('Ajouter un examen final (facultatif)'));
+check('Context menu has renaming and imported resources', builder.includes('Renommer la leçon') && builder.includes('Importer des ressources'));
+check('Context menu closes outside and on Escape', builder.includes("document.addEventListener('pointerdown', closeOutside)") && builder.includes("document.addEventListener('keydown', closeEscape)"));
+check('Structural deletion is named and separate from evaluations', builder.includes('Supprimer la leçon…') && !builder.includes('Supprimer cette étape…'));
+check('No boilerplate choose a block text', !builder.includes('Choisissez un bloc ou recherchez son nom.'));
+check('No raw HTML text in old yellow fallback', !builder.includes('Édition de secours') && !builder.includes('Réessayer l’éditeur Tiptap') && builder.includes('L’éditeur de ce bloc a rencontré une erreur'));
+check('Tiptap uses StarterKit, tables, images and safe paste', editor.includes('StarterKit.configure') && editor.includes('TableKit') && editor.includes('Image.configure') && editor.includes('ogaSafePaste'));
+check('Tiptap editor exports legacy sanitized HTML', editor.includes('cleanStudioRichHtml(current.getHTML())'));
+check('Collection and Supabase functionality retained', builder.includes('StudioCollectionControls') && builder.includes('queueBlockUpdate'));
+check('dnd-kit and Uppy preserved', builder.includes("from '@dnd-kit/core'") && builder.includes("from '@uppy/core'"));
+check('Existing assessment RPC SQL is not removed', backend.includes('oga_studio_v4_193_apply_policy') && read('supabase/migrations/20261017205000_193_oga_studio_v4_assessments_atomic.sql').includes('CREATE OR REPLACE FUNCTION'));
+const ts = (() => { try { return require('typescript'); } catch { return null; } })();
+for (const f of ['src/pages/studio/StudioConceptionFormation.tsx', 'src/components/studio/StudioRichTextEditor.tsx','src/components/studio/StudioBlankPageComposer.tsx']) {
+ if (ts) { const sf = ts.createSourceFile(f, read(f), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX); check('TypeScript parse ' + f, sf.parseDiagnostics.length === 0); } else console.warn('WARN TypeScript parser unavailable for ' + f);
+}
+const core = lock.packages?.['node_modules/@tiptap/core']?.version;
+const react = lock.packages?.['node_modules/@tiptap/react']?.version;
+check('Pinned Tiptap core and react aligned', core === react && core === '3.30.3');
+const optional = ['@tiptap/extension-bubble-menu','@tiptap/extension-floating-menu'].map(n => lock.packages?.['node_modules/'+n]?.version);
+if (optional.some(v => v && v !== core)) console.warn('WARNING TIPTAP_OPTIONAL_VERSION_MISMATCH: ' + optional.join(',') + '. Check npm dependencies in the browser runtime before declaring success.');
+console.log(`OGA_V4_TIPTAP_FIRST_STATIC_SUCCESS: ${passed} contracts. This does NOT certify browser, TS type-check, build or Supabase.`);

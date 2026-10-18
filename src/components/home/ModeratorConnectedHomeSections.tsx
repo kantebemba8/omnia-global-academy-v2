@@ -46,6 +46,7 @@ type Workspace = { label: string; description: string; path: string; icon: Lucid
 type Action = { title: string; description: string; path: string; label: string; icon: LucideIcon; accent: string };
 
 const BLUE = '#002050';
+void BLUE;
 const SLATE = '#26384D';
 const AMBER = '#C66A22';
 const GREEN = '#1E7A52';

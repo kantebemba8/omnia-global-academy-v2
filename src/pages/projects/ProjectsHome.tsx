@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useSearchParams } from 'react-router-dom';
-import { ArrowRight, Briefcase, CheckCircle2, ClipboardList, Compass, FileCheck2, Filter, FolderKanban, Layers3, Network, ShieldCheck, Target, Users } from 'lucide-react';
+import { ArrowRight, Briefcase, Compass, Filter, FolderKanban, Layers3, Network, ShieldCheck, Target, Users } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { getMyProjectsWorkspace, getOwnerProjects, getProjectsContext, listProjects, OmniaProject, PROJECT_TYPE_LABELS, ProjectContext, ProjectType } from '../../lib/projectsApi';
 import { resolveProjectsAudience, type ProjectsAudience } from '../../lib/projectsNavigation';

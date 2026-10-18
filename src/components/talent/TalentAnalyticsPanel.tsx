@@ -22,4 +22,4 @@ export default function TalentAnalyticsPanel({analytics,loading=false,mode='recr
     <section className="rounded-2xl border bg-white p-5 shadow-sm" style={{borderColor:BORDER}}><div className="flex items-center gap-2"><Activity size={18} color={GOLD}/><h3 className="font-semibold" style={{color:BLUE}}>Activité récente</h3></div>{!analytics?.recent_activity?.length?<p className="mt-5 text-sm text-gray-500">Aucune activité enregistrée.</p>:<div className="mt-4 divide-y">{analytics.recent_activity.slice(0,10).map(item=><div key={item.id} className="py-3"><p className="text-sm font-medium" style={{color:BLUE}}>{humanize(item.action)}</p><p className="mt-1 text-xs text-gray-400">{new Date(item.created_at).toLocaleString('fr-FR')}</p></div>)}</div>}</section>
   </div>;
 }
-function humanize(value:string){return value.replaceAll('_',' ').replace(/^./,c=>c.toUpperCase())}
+function humanize(value:string){return value.replaceAll('_',' ').replace(/^./,(c: string)=>c.toUpperCase())}

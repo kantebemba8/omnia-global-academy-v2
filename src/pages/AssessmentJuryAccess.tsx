@@ -25,7 +25,7 @@ async function publicCall<T = any>(action: string, payload: Record<string, unkno
   return data as T;
 }
 
-function readableAnswer(value: unknown) {
+function readableAnswer(value: unknown): string {
   if (value === null || value === undefined || value === '') return 'Aucune réponse';
   if (typeof value === 'string') return value;
   if (Array.isArray(value)) return value.join(', ');

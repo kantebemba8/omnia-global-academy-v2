@@ -1,21 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import {
-  ArrowRight,
-  Award,
-  BookOpen,
-  Briefcase,
-  CalendarCheck,
-  FileBadge,
-  FolderKanban,
-  Heart,
-  MessageSquare,
-  Radio,
-  Sparkles,
-  Target,
-  UsersRound,
-  type LucideIcon,
-} from 'lucide-react';
+import { ArrowRight, Award, BookOpen, Briefcase, FileBadge, FolderKanban, Heart, MessageSquare, Radio, Sparkles, Target, UsersRound, type LucideIcon } from 'lucide-react';
 import { ENDPOINTS } from '../../lib/config';
 import { edgeAuthHeaders } from '../../lib/edgeAuth';
 import { getMyProjectsWorkspace } from '../../lib/projectsApi';
@@ -23,6 +8,7 @@ import { coachingRequest } from '../../lib/coachingApi';
 import { liveApi } from '../../pages/omnia-live/liveApi';
 
 const BLUE = '#002050';
+void BLUE;
 const CYAN = '#0F7699';
 const GOLD = '#BF8813';
 

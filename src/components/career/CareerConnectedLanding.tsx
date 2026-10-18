@@ -1,4 +1,4 @@
-import { ArrowRight, Briefcase, Building2, GraduationCap, HeartHandshake, MessageSquare, Radio, ShieldCheck, Sparkles, Target, UsersRound, type LucideIcon } from 'lucide-react';
+import { ArrowRight, Briefcase, GraduationCap, HeartHandshake, MessageSquare, Radio, ShieldCheck, Sparkles, Target, UsersRound, type LucideIcon } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import type { CareerAudience } from '../../lib/careerNavigation';
 

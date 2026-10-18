@@ -1,24 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import {
-  ArrowRight,
-  Briefcase,
-  BookOpen,
-  FolderKanban,
-  CalendarDays,
-  CheckCircle2,
-  Clock3,
-  Heart,
-  Mail,
-  MessageCircle,
-  Plus,
-  Radio,
-  Search,
-  Target,
-  UserRound,
-  Users,
-  type LucideIcon,
-} from 'lucide-react';
+import { ArrowRight, Briefcase, BookOpen, FolderKanban, CalendarDays, Heart, MessageCircle, Plus, Radio, Search, Target, Users, type LucideIcon } from 'lucide-react';
 import { ENDPOINTS } from '../../lib/config';
 import { edgeAuthHeaders } from '../../lib/edgeAuth';
 import {
@@ -40,6 +22,7 @@ type Snapshot = { jobs: RecruiterJob[]; applications: RecruiterApplication[]; fa
 type Space = { label: string; caption: string; path: string; accent: string; soft: string; icon: LucideIcon; signal?: string };
 
 const BLUE = '#002050';
+void BLUE;
 const GOLD = '#BF8813';
 const PLUM = '#96466D';
 const EMPTY_SNAPSHOT: Snapshot = { jobs: [], applications: [], favorites: [], interviews: [], conversations: [], metrics: { favorites: 0, contacts: 0, upcoming_interviews: 0 } };

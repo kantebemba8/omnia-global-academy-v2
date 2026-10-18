@@ -7,9 +7,11 @@ import { edgeAuthHeaders } from '../lib/edgeAuth';
 import { ArrowRight, Award, BookOpen, CheckCircle, MessageCircle, MessageSquare, Pin, Plus, ThumbsUp, X } from 'lucide-react';
 
 const BLUE = '#002050';
+void BLUE;
 const TEAL = '#0F766E';
 const GOLD = '#BF8813';
 const BORDER = '#DDEBE8';
+void BORDER;
 type SortMode = 'recent' | 'popular' | 'unsolved';
 
 interface Post {

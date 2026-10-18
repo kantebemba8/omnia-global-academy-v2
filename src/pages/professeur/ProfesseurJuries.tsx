@@ -1,8 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type ElementType, type ReactNode } from 'react';
-import {
-  AlertCircle, CheckCircle2, FileText, Loader2, Plus, Save, Send, ShieldCheck,
-  Upload, Users, XCircle,
-} from 'lucide-react';
+import { AlertCircle, CheckCircle2, FileText, Loader2, Plus, Save, Send, ShieldCheck, Upload, Users } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 import { ProfessorFormationsLayout, StructureFormationsLayout } from '../../components/formations/FormationsRoleLayout';
 import { assessmentGovernanceCall, uploadAssessmentGovernanceFile } from '../../lib/assessmentGovernanceApi';

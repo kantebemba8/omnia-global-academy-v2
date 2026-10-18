@@ -48,6 +48,7 @@ function fmtSize(bytes?: number) {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} Ko`;
   return `${(bytes / 1024 / 1024).toFixed(1)} Mo`;
 }
+void fmtSize;
 
 function escapeHtml(value: string) {
   return String(value || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
@@ -142,7 +143,7 @@ function resourceDisplayTitle(block: Block, fallback: string) {
   return explicit;
 }
 
-function ResourceUnavailable({ block, label }: { block: Block; label: string }) {
+function ResourceUnavailable({ block: _block, label }: { block: Block; label: string }) {
   return (
     <div className="my-4 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
       <WifiOff size={18} className="mt-0.5 shrink-0 text-amber-700" />
@@ -549,7 +550,7 @@ function SelfAssessedOralTraining({title,prompt,audios,threshold,graded=true,onR
 
 function ClozeBlock({c,threshold,graded=true,onResult}:{c:Record<string,any>;threshold:number;graded?:boolean;onResult?:(score:number,answer:any,passed:boolean)=>void}){
   const parts=Array.isArray(c.blanks)?c.blanks:[];const [answers,setAnswers]=useState<Record<string,string>>({});const [score,setScore]=useState<number|null>(null);
-  const verify=()=>{const expected=parts.length?parts.map((x:any,i:number)=>String(x.answer??x.value??'')):[];if(!expected.length)return;let good=0;expected.forEach((exp:string,i:number)=>{if(normAnswer(answers[String(i)]||'')===normAnswer(exp))good++});const s=Math.round(good/expected.length*100);setScore(s);onResult?.(s,{answers},s>=threshold)};
+  const verify=()=>{const expected=parts.length?parts.map((x:any,_i:number)=>String(x.answer??x.value??'')):[];if(!expected.length)return;let good=0;expected.forEach((exp:string,i:number)=>{if(normAnswer(answers[String(i)]||'')===normAnswer(exp))good++});const s=Math.round(good/expected.length*100);setScore(s);onResult?.(s,{answers},s>=threshold)};
   const text=String(c.text||c.sentence||'');
   return <div className="my-4 rounded-xl border p-4" style={{borderColor:'#E4E7EC'}}><p className="font-semibold text-[#002050]">{c.title||'Texte à trous'}</p>{text&&<p className="mt-2 text-sm text-slate-600">{text}</p>}<div className="mt-3 grid gap-2">{parts.map((x:any,i:number)=><label key={i} className="text-xs font-semibold text-slate-600">{x.label||`Réponse ${i+1}`}<input value={answers[String(i)]||''} onChange={e=>{setAnswers(v=>({...v,[String(i)]:e.target.value}));setScore(null)}} className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"/></label>)}</div><button type="button" onClick={verify} disabled={!parts.length} className="mt-3 rounded-lg bg-[#002050] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40">Vérifier</button>{score!==null&&(graded?<p className={`mt-2 text-xs font-semibold ${score>=threshold?'text-emerald-700':'text-red-700'}`}>{score}% · {score>=threshold?'Seuil atteint':'À retravailler'}</p>:<p className="mt-2 text-xs font-semibold text-emerald-700">Réponse enregistrée.</p>)}</div>
 }
@@ -568,21 +569,21 @@ function ListeningTraining({c,threshold,graded=true,onResult}:{c:Record<string,a
   const verify=()=>{if(!questions.length)return;let gradable=0,good=0;questions.forEach((q:any,i:number)=>{const exp=q.correct_answer??q.answer;if(exp!==undefined&&String(exp)!==''){gradable++;if(normAnswer(answers[String(i)]||'')===normAnswer(String(exp)))good++}});const s=gradable?Math.round(good/gradable*100):0;setScore(s);onResult?.(s,{answers},graded&&gradable>0?s>=threshold:true)};
   return <div className="my-4 rounded-xl border p-4" style={{borderColor:'#E4E7EC'}}><p className="font-semibold text-[#002050]">{c.title||'Compréhension orale'}</p>{c.audio_url&&<audio className="mt-3 w-full" controls src={c.audio_url}/>}<div className="mt-3 space-y-3">{questions.map((q:any,i:number)=><label key={i} className="block text-xs font-semibold text-slate-600">{q.question||`Question ${i+1}`}<input value={answers[String(i)]||''} onChange={e=>{setAnswers(v=>({...v,[String(i)]:e.target.value}));setScore(null)}} className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"/></label>)}</div><button type="button" onClick={verify} disabled={!questions.length} className="mt-3 rounded-lg bg-[#002050] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40">Valider</button>{score!==null&&(graded?<p className={`mt-2 text-xs font-semibold ${score>=threshold?'text-emerald-700':'text-red-700'}`}>{score}%</p>:<p className="mt-2 text-xs font-semibold text-emerald-700">Entraînement réalisé.</p>)}</div>
 }
-function WrittenTraining({c,threshold,graded=true,onResult}:{c:Record<string,any>;threshold:number;graded?:boolean;onResult?:TrainingLocalResultHandler}){
+function WrittenTraining({c,threshold: _threshold,graded=true,onResult}:{c:Record<string,any>;threshold:number;graded?:boolean;onResult?:TrainingLocalResultHandler}){
   const [text,setText]=useState('');const [result,setResult]=useState<TrainingServerResult|null>(null);const [busy,setBusy]=useState(false);const min=Math.max(1,Number(c.min_words||1));const words=text.trim()?text.trim().split(/\s+/).length:0;
   const submit=async()=>{if(!text.trim()||busy)return;setBusy(true);setResult(null);try{const server=await onResult?.(0,{text,word_count:words},false);if(server&&typeof server==='object')setResult(server as TrainingServerResult);else if(!graded)setResult({graded:false,passed:true});}finally{setBusy(false)}};
   return <div className="my-3 rounded-xl border p-4" style={{borderColor:'#E4E7EC'}}><p className="font-semibold text-[#002050]">{c.title||'Expression écrite'}</p>{c.prompt&&<p className="mt-1 text-sm text-slate-600">{c.prompt}</p>}<textarea value={text} onChange={e=>{setText(e.target.value);setResult(null)}} rows={6} className="mt-3 w-full rounded-lg border p-3 text-sm" placeholder="Rédigez votre réponse…"/><div className="mt-2 flex items-center justify-between text-xs text-slate-500"><span>{words} mot(s){min>1?` · minimum ${min}`:''}</span><button type="button" onClick={()=>void submit()} disabled={!text.trim()||busy} className="rounded-lg bg-[#002050] px-3 py-1.5 font-semibold text-white disabled:opacity-40">{busy?'Correction IA…':'Terminer l’entraînement'}</button></div>{result&&(result.graded!==false&&typeof result.score==='number'?<><p className={`mt-2 text-xs font-semibold ${result.passed?'text-emerald-700':'text-red-700'}`}>{result.score}% · {result.passed?'Seuil atteint':'À retravailler'}</p>{result.feedback&&<p className="mt-1 text-xs text-slate-600">{result.feedback}</p>}</>:<p className="mt-2 text-xs font-semibold text-emerald-700">Réponse enregistrée.</p>)}</div>
 }
-function OpenQuestionTraining({c,threshold,graded=true,onResult}:{c:Record<string,any>;threshold:number;graded?:boolean;onResult?:TrainingLocalResultHandler}){
+function OpenQuestionTraining({c,threshold: _threshold,graded=true,onResult}:{c:Record<string,any>;threshold:number;graded?:boolean;onResult?:TrainingLocalResultHandler}){
   const [text,setText]=useState('');const [result,setResult]=useState<TrainingServerResult|null>(null);const [busy,setBusy]=useState(false);
   const verify=async()=>{if(!text.trim()||busy)return;setBusy(true);setResult(null);try{const server=await onResult?.(0,{text},false);if(server&&typeof server==='object')setResult(server as TrainingServerResult);else if(!graded)setResult({graded:false,passed:true});}finally{setBusy(false)}};
   return <div className="my-3 rounded-xl border p-4" style={{borderColor:'#E4E7EC'}}>{c.title&&<p className="mb-2 font-bold text-[#002050]">{c.title}</p>}<RichContent value={c.question||'Question ouverte'} className="font-semibold text-[#002050]"/>{c.guidance&&<RichContent value={c.guidance} className="mt-1 text-xs text-slate-500"/>}<textarea value={text} onChange={e=>{setText(e.target.value);setResult(null)}} rows={5} className="mt-3 w-full rounded-lg border p-3 text-sm"/><button type="button" onClick={()=>void verify()} disabled={!text.trim()||busy} className="mt-3 rounded-lg bg-[#002050] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40">{busy?'Correction IA…':'Terminer l’entraînement'}</button>{result&&(result.graded!==false&&typeof result.score==='number'?<><p className={`mt-2 text-xs font-semibold ${result.passed?'text-emerald-700':'text-red-700'}`}>{result.score}% · {result.passed?'Seuil atteint':'À retravailler'}</p>{result.feedback&&<p className="mt-1 text-xs text-slate-600">{result.feedback}</p>}</>:<p className="mt-2 text-xs font-semibold text-emerald-700">Réponse enregistrée.</p>)}</div>
 }
 function ChecklistBlock({items,initialState,onChange}:{items:any[];initialState:Record<string,any>;onChange?:(state:Record<string,any>,completed:boolean)=>void}){
-  const [state,setState]=useState<Record<string,any>>(initialState||{});const update=(key:string,val:boolean)=>{const next={...state,[key]:val};setState(next);const required=items.filter(x=>x.required!==false);const completed=required.every((x:any,i:number)=>Boolean(next[String(x.id||items.indexOf(x))]));onChange?.(next,completed)};
+  const [state,setState]=useState<Record<string,any>>(initialState||{});const update=(key:string,val:boolean)=>{const next={...state,[key]:val};setState(next);const required=items.filter(x=>x.required!==false);const completed=required.every((x:any,_i:number)=>Boolean(next[String(x.id||items.indexOf(x))]));onChange?.(next,completed)};
   return <div className="my-4 rounded-xl border p-4" style={{borderColor:'#E4E7EC'}}><div className="space-y-2">{items.map((item:any,i:number)=>{const key=String(item.id||i);return <label key={key} className="flex items-start gap-3 rounded-lg px-2 py-2 hover:bg-slate-50"><input type="checkbox" checked={Boolean(state[key])} onChange={e=>update(key,e.target.checked)} className="mt-0.5"/><span className="text-sm text-slate-700">{item.text||item.label||String(item)}{item.required===false&&<span className="ml-2 text-[10px] text-slate-400">facultatif</span>}</span></label>})}</div></div>
 }
-function CaseStudyTraining({c,training,threshold,graded=true,onResult,onFileSubmit}:{c:Record<string,any>;training:boolean;threshold:number;graded?:boolean;onResult?:TrainingLocalResultHandler;onFileSubmit?:(file:File,answer?:Record<string,any>)=>Promise<boolean>}){
+function CaseStudyTraining({c,training,threshold: _threshold,graded=true,onResult,onFileSubmit}:{c:Record<string,any>;training:boolean;threshold:number;graded?:boolean;onResult?:TrainingLocalResultHandler;onFileSubmit?:(file:File,answer?:Record<string,any>)=>Promise<boolean>}){
   const qs=(Array.isArray(c.questions)?c.questions:[]).map((q:any)=>typeof q==='string'?q:String(q?.question||q?.text||'')).filter(Boolean);const responseMode=String(c.response_mode||'text');const responseLayout=String(c.response_layout||'per_question');const needsText=responseMode==='text'||responseMode==='text_file';const needsFile=responseMode==='file'||responseMode==='text_file';const [answers,setAnswers]=useState<Record<string,string>>({});const [globalText,setGlobalText]=useState('');const [file,setFile]=useState<File|null>(null);const [busy,setBusy]=useState(false);const [status,setStatus]=useState('');const [result,setResult]=useState<TrainingServerResult|null>(null);
   const textComplete=!needsText||(responseLayout==='single'?globalText.trim().length>0:(qs.length>0?qs.every((_:string,i:number)=>String(answers[String(i)]||'').trim().length>0):globalText.trim().length>0));const fileComplete=!needsFile||Boolean(file);const canSubmit=textComplete&&fileComplete;const answerPayload=()=>responseLayout==='single'?{text:globalText,response_layout:'single'}:{answers,response_layout:'per_question'};
   const submit=async()=>{if(!canSubmit||busy)return;setBusy(true);setStatus('');setResult(null);const payload=answerPayload();try{if(needsFile&&file&&onFileSubmit){const ok=await onFileSubmit(file,payload);setStatus(ok?'Étude de cas remise.':'Échec de la remise.');}else{const server=await onResult?.(0,payload,false);if(server&&typeof server==='object')setResult(server as TrainingServerResult);else if(!graded)setResult({graded:false,passed:true});}}finally{setBusy(false)}};
@@ -698,6 +699,7 @@ function ExcelBlock({ block }: { block: Block }) {
   const headers: string[] = c.headers || [];
   const rows: string[][] = c.preview_rows || [];
   const url = block.file_url || c.url || '';
+void url;
 
   return (
     <div className="my-4 rounded-xl overflow-hidden border" style={{ borderColor: '#E4E7EC' }}>
@@ -821,7 +823,7 @@ function QcmBlock({ block, onAnswer }: { block: Block; onAnswer?: (id: string, a
                 style={{ borderColor: isCorrect ? '#1E7A52' : isWrong ? '#DC2626' : isSelected ? '#002050' : '#D1D5DB', background: (isCorrect || isWrong || isSelected) ? 'currentColor' : 'transparent' }}>
                 {isCorrect ? <Check size={12} color="white" /> : isWrong ? <X size={12} color="white" /> : String.fromCharCode(65 + i)}
               </span>
-              {opt}
+              {typeof opt === 'string' || typeof opt === 'number' ? opt : String(opt ?? '')}
             </button>
           );
         })}

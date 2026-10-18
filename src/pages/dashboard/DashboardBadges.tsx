@@ -33,7 +33,7 @@ export default function DashboardBadges() {
       await downloadOrShareRemoteFile(credentialAssetUrl(badge.verification_code, 'jwt'), {
         fileName: `badge-${badge.verification_code}.jwt`,
         mimeType: 'application/vc+jwt',
-        title: `Badge ${badge.title}`,
+        title: `Badge ${badge.template?.name || badge.credential_uuid}`,
       });
       setNotice(nativeApp ? 'Badge prêt à enregistrer ou partager.' : 'Badge téléchargé.');
     } catch (cause) {

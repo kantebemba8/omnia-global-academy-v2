@@ -1,25 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import {
-  ArrowRight,
-  BookOpen,
-  FolderKanban,
-  CalendarDays,
-  CheckCircle2,
-  Clock3,
-  HeartHandshake,
-  MessageCircle,
-  NotebookPen,
-  Package,
-  Radio,
-  Sparkles,
-  Star,
-  UserRound,
-  Users,
-  Video,
-  Wallet,
-  type LucideIcon,
-} from 'lucide-react';
+import { ArrowRight, BookOpen, FolderKanban, CalendarDays, CheckCircle2, HeartHandshake, MessageCircle, NotebookPen, Package, Radio, Star, UserRound, Users, Video, Wallet, type LucideIcon } from 'lucide-react';
 import {
   type CoachOffer,
   type CoachProfile,
@@ -54,6 +35,7 @@ type HomeAction = {
 };
 
 const BLUE = '#002050';
+void BLUE;
 const PETROL = '#0B746C';
 const GOLD = '#BF8813';
 
@@ -287,6 +269,7 @@ function SpacesRail({ data, previewMode }: { data: DashboardData; previewMode: b
   const metrics = data.metrics || {};
   const offers = data.offers || [];
   const activeOffers = offers.filter(item => item.status === 'active').length;
+void activeOffers;
   const spaces = [
     { label: 'Formations', caption: 'Parcours et ressources pédagogiques', path: '/formations', accent: '#0F7699', soft: '#E9F7FB', icon: BookOpen },
     { label: 'Omnia Career', caption: 'Trajectoires et préparation professionnelle', path: '/career-studio', accent: '#BF8813', soft: '#FBF5E9', icon: NotebookPen },

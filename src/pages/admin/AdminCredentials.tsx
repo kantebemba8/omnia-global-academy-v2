@@ -341,12 +341,13 @@ function TemplateModal({ draft, issuers, categories, levels, onClose, onDone }: 
     event.preventDefault(); setSaving(true); setError('');
     try {
       const sourceTypes = String(form.source_types_text || '').split(',').map(value => value.trim()).filter(Boolean);
-      const cleanMetadata = { ...metadata,
+      const cleanMetadata: Record<string, unknown> = { ...metadata,
         course_ids: String(metadata.course_ids_text || '').split(',').map(value => value.trim()).filter(Boolean),
         categories: String(metadata.categories_text || '').split(',').map(value => value.trim()).filter(Boolean),
         levels: String(metadata.levels_text || '').split(',').map(value => value.trim()).filter(Boolean),
         certification_types: String(metadata.certification_types_text || '').split(',').map(value => value.trim()).filter(Boolean),
       };
+      
       delete cleanMetadata['course_ids_text']; delete cleanMetadata['categories_text']; delete cleanMetadata['levels_text']; delete cleanMetadata['certification_types_text'];
       await credentialsRequest('admin_save_template', { ...form, source_types: sourceTypes, metadata: cleanMetadata, image_url: designMode === 'automatic' ? null : form.image_url });
       onDone(form.id ? 'Modèle modifié.' : 'Modèle créé.');

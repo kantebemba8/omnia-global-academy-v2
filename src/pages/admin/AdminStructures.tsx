@@ -417,7 +417,7 @@ export default function AdminStructures() {
                     </div>
                     {(detail.governance?.team?.length ?? 0) > 0 && (
                       <div className="space-y-2 pt-2 border-t" style={{ borderColor: '#F3F4F6' }}>
-                        {detail.governance.team.slice(0, 5).map((member: any) => (
+                        {detail.governance!.team.slice(0, 5).map((member: any) => (
                           <div key={member.id} className="flex items-center justify-between gap-3 text-xs">
                             <div className="min-w-0">
                               <p className="font-semibold truncate" style={{ color: '#002050' }}>{member.user?.full_name || member.user?.email || 'Membre de la Structure'}</p>
@@ -456,7 +456,7 @@ export default function AdminStructures() {
                         ].map(item => (
                           <button key={item.decision}
                             disabled={actionLoading === `profile:${item.decision}`}
-                            onClick={() => handleProfileDecision(detail.structure.id, detail.governance.pending_profile_change.id, item.decision)}
+                            onClick={() => handleProfileDecision(detail.structure.id, detail.governance!.pending_profile_change.id, item.decision)}
                             className="rounded-xl px-3 py-2 text-xs font-bold text-white disabled:opacity-50"
                             style={{ background: item.bg }}>
                             {actionLoading === `profile:${item.decision}` ? '...' : item.label}
@@ -470,7 +470,7 @@ export default function AdminStructures() {
                     <div>
                       <p className="text-xs font-semibold mb-2" style={{ color: '#9CA3AF' }}>Historique récent</p>
                       <div className="space-y-2">
-                        {detail.governance.audit.slice(0, 6).map((entry: any) => (
+                        {detail.governance!.audit.slice(0, 6).map((entry: any) => (
                           <div key={entry.id} className="flex items-start justify-between gap-3 rounded-lg p-2 text-xs" style={{ background: '#F8F9FA' }}>
                             <div>
                               <p className="font-semibold" style={{ color: '#002050' }}>{String(entry.event_type || '').replaceAll('_', ' ')}</p>

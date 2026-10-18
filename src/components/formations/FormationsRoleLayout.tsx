@@ -63,7 +63,7 @@ export function AdaptiveFormationsLayout({ children }: { children: ReactNode }) 
   }
   const preview = params.get('preview') === 'true' && Boolean(user?.roles?.includes('super_admin'));
   const audience = resolveFormationsAudience(user?.roles, preview ? params.get('role') : null);
-  if (audience === 'super_admin' && !preview) return <PublicFormationsLayout audience="super_admin">{children}</PublicFormationsLayout>;
+  if (audience === 'super_admin') return <PublicFormationsLayout audience="super_admin">{children}</PublicFormationsLayout>;
   if (audience === 'public') return <PublicFormationsLayout audience="public">{children}</PublicFormationsLayout>;
   return <ConnectedFrame audience={audience}>{children}</ConnectedFrame>;
 }

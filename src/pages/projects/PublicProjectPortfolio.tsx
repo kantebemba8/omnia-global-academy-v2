@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { Briefcase as BriefcaseBusiness, ShieldCheck, Star } from 'lucide-react';
 import { projectPortfolioRequest } from '../../lib/projectPortfolioApi';
 import { PublicProjectsLayout } from '../../components/projects/ProjectsRoleLayout';
