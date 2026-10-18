@@ -163,6 +163,8 @@ export default function StudioRichTextEditor({
   const lastEmitted = useRef<string | null>(null);
   const lastExternal = useRef(String(value ?? ''));
   const [error, setError] = useState('');
+  const [toolbarOpen, setToolbarOpen] = useState(false);
+  const [advancedToolbar, setAdvancedToolbar] = useState(false);
   const [, refreshToolbar] = useState(0);
   const labels = translations[language.slice(0, 2).toLowerCase()] || translations.fr;
   const initialValue = useRef(normalizeInput(String(value ?? '')));
@@ -174,10 +176,11 @@ export default function StudioRichTextEditor({
     content: initialValue.current,
     editable: !locked,
     immediatelyRender: false,
+    shouldRerenderOnTransaction: false,
     // Tiptap controls input/history/selection; never mutate the DOM manually.
     editorProps: {
       attributes: {
-        class: `oga-tiptap-content rich-editor min-h-[88px] px-3 py-3 outline-none text-slate-700 text-sm
+        class: `oga-tiptap-content rich-editor min-h-[110px] px-4 py-3 outline-none text-slate-700 text-sm
           [&_p]:my-2 [&_h1]:text-xl [&_h1]:font-bold [&_h2]:text-lg [&_h2]:font-semibold
           [&_h3]:font-semibold [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6
           [&_li]:my-1 [&_a]:text-blue-700 [&_a]:underline [&_blockquote]:border-l-4
@@ -204,7 +207,8 @@ export default function StudioRichTextEditor({
       onChangeRef.current(html);
     },
     onSelectionUpdate: () => refreshToolbar(v => (v + 1) % 100000),
-    onTransaction: () => refreshToolbar(v => (v + 1) % 100000),
+    onFocus: () => setToolbarOpen(true),
+    onBlur: () => { setToolbarOpen(false); setAdvancedToolbar(false); },
   });
 
   useEffect(() => {
@@ -279,12 +283,17 @@ export default function StudioRichTextEditor({
   }
 
   return <div className="rounded-xl border border-slate-200 bg-white shadow-sm focus-within:ring-2 focus-within:ring-[#BF8813]/40">
-    {!locked && !headingLevel && <div className="flex flex-wrap items-center gap-1 border-b border-slate-200 bg-slate-50 px-2 py-2" role="toolbar" aria-label="Mise en forme du texte">
+    {!locked && !headingLevel && toolbarOpen && <div className="flex flex-wrap items-center gap-1 border-b border-slate-200 bg-[#FAFBFD] px-3 py-2" role="toolbar" aria-label="Mise en forme du texte">
       {tool(labels.bold, 'G', () => editor?.chain().focus().toggleBold().run(), !!editor?.isActive('bold'))}
       {tool(labels.italic, 'I', () => editor?.chain().focus().toggleItalic().run(), !!editor?.isActive('italic'))}
       {tool(labels.underline, 'S', () => editor?.chain().focus().toggleUnderline().run(), !!editor?.isActive('underline'))}
-      {tool(labels.strike, '̶A̶', () => editor?.chain().focus().toggleStrike().run(), !!editor?.isActive('strike'))}
+      <button type="button" onMouseDown={event => event.preventDefault()} onClick={() => setAdvancedToolbar(value => !value)}
+        className="rounded-md border border-slate-200 px-2.5 py-1.5 text-xs text-slate-700" aria-expanded={advancedToolbar}>
+        {advancedToolbar ? 'Moins' : 'Plus de formats'}
+      </button>
+      {advancedToolbar && tool(labels.strike, 'S', () => editor?.chain().focus().toggleStrike().run(), !!editor?.isActive('strike'))}
       <span aria-hidden="true" className="mx-1 h-5 border-l border-slate-200" />
+      {advancedToolbar && <>
       {tool(labels.paragraph, '¶', () => editor?.chain().focus().setParagraph().run(), !!editor?.isActive('paragraph'))}
       {tool(`${labels.title} 2`, 'H2', () => editor?.chain().focus().toggleHeading({ level: 2 }).run(), !!editor?.isActive('heading', { level: 2 }))}
       {tool(`${labels.title} 3`, 'H3', () => editor?.chain().focus().toggleHeading({ level: 3 }).run(), !!editor?.isActive('heading', { level: 3 }))}
@@ -292,9 +301,12 @@ export default function StudioRichTextEditor({
       {tool(labels.ordered, '1. Liste', () => editor?.chain().focus().toggleOrderedList().run(), !!editor?.isActive('orderedList'))}
       {tool(labels.quote, '❝', () => editor?.chain().focus().toggleBlockquote().run(), !!editor?.isActive('blockquote'))}
       {tool(labels.code, '</>', () => editor?.chain().focus().toggleCodeBlock().run(), !!editor?.isActive('codeBlock'))}
+      </>}
       {tool(labels.link, 'Lien', setHttpsLink, !!editor?.isActive('link'))}
+      {advancedToolbar && <>
       {tool(labels.table, 'Tableau', () => editor?.chain().focus().insertTable({ rows: 2, cols: 2, withHeaderRow: true }).run())}
       {tool(labels.image, 'Image', insertHttpsImage)}
+      </>}
       {editor?.isActive('table') && <>
         {tool(labels.tableAdd, '+ Ligne', () => editor?.chain().focus().addRowAfter().run())}
         {tool(labels.tableRemove, '× Tableau', () => editor?.chain().focus().deleteTable().run())}
@@ -306,7 +318,7 @@ export default function StudioRichTextEditor({
     <div className={headingLevel === 1 ? '[&_.oga-tiptap-content]:text-xl [&_.oga-tiptap-content]:font-bold' : headingLevel === 2 ? '[&_.oga-tiptap-content]:text-lg [&_.oga-tiptap-content]:font-semibold' : ''}>
       <EditorContent editor={editor} />
     </div>
-    {!locked && <p className="px-3 pb-1 text-[10px] text-slate-500">{placeholder}</p>}
+    {!locked && !toolbarOpen && !editor?.getText().trim() && <p className="px-3 pb-1 text-xs text-slate-400">{placeholder}</p>}
     {error && <p className="border-t border-red-100 px-3 py-1 text-xs text-red-700" role="alert">{error}</p>}
   </div>;
 }

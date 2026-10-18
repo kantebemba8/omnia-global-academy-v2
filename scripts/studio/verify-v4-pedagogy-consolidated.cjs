@@ -12,7 +12,7 @@ let pass=0;
 function check(label,condition){assert.ok(condition,label);pass++;console.log('PASS',label)}
 check('Programme intro sans examen officiel',studio.includes('OFFICIAL_ASSESSMENT_NOT_ALLOWED_ON_STAGE')&&lesson.includes('is_intro'));
 check('Bilan de module rattachement dédié',builder.includes('async function openModuleAssessment')&&builder.includes("stage_type: 'module_summary'"));
-check('Evaluation de leçon explicitement facultative',builder.includes('Évaluation facultative · configurer'));
+check('Évaluation de leçon configurée explicitement, sans l’imposer',builder.includes("stageTypeOf(lesson) === 'lesson'") && builder.includes("selectAssessmentWorkspace(mod, lesson, 'lesson')"));
 check('Examen final optionnel et révocable en brouillon',studio.includes('FINAL_EXAM_ONLY_REMOVABLE_IN_DRAFT')&&studio.includes('FINAL_EXAM_HAS_ATTEMPTS'));
 check('Contrôle des scopes non destructif',studio.includes('ASSESSMENT_SCOPE_CONFLICT')&&studio.includes('ASSESSMENT_SCOPE_REQUIRES_EXPLICIT_MIGRATION'));
 check('Synchronisation ne supprime pas les anciennes questions',!studio.slice(studio.indexOf('if(action==="ensure_assessments")'),studio.indexOf('if(action==="assessment_policy_get")')).includes('assessment_questions").delete()'));
