@@ -13,6 +13,32 @@ import { dispatchOmniaInAppNotification } from "../_shared/notifications.ts";
 const cors = {"Access-Control-Allow-Origin":"*","Access-Control-Allow-Headers":"authorization, x-client-info, apikey, content-type, x-omnia-session-token","Access-Control-Allow-Methods":"POST, OPTIONS"};
 const json=(d:unknown,s=200)=>new Response(JSON.stringify(d),{status:s,headers:{...cors,"Content-Type":"application/json"}});
 
+// Short-lived authenticated receipt for undoing a non-destructive block removal.
+// It is deliberately NOT a general client-controlled block insertion endpoint.
+const historyEncoder=new TextEncoder();
+const historyB64=(bytes:Uint8Array)=>btoa(String.fromCharCode(...bytes)).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/g,"");
+function historyBytes(text:string){return Uint8Array.from(atob(text.replace(/-/g,"+").replace(/_/g,"/")),c=>c.charCodeAt(0));}
+async function historyKey(){const secret=Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");if(!secret)throw new Error("HISTORY_SIGNING_SECRET_UNAVAILABLE");return await crypto.subtle.importKey("raw",historyEncoder.encode(secret),{name:"HMAC",hash:"SHA-256"},false,["sign","verify"]);}
+async function signBlockHistory(payload:any){
+ const raw=historyEncoder.encode(JSON.stringify(payload));
+ if(raw.length>48000)throw new Error("HISTORY_RECEIPT_TOO_LARGE");
+ const body=historyB64(raw);const signature=new Uint8Array(await crypto.subtle.sign("HMAC",await historyKey(),historyEncoder.encode(body)));
+ return `${body}.${historyB64(signature)}`;
+}
+async function verifyBlockHistory(token:unknown){
+ const [body,signature,...extra]=String(token||"").split(".");
+ if(!body||!signature||extra.length||body.length>70000)return null;
+ try{
+  const valid=await crypto.subtle.verify("HMAC",await historyKey(),historyBytes(signature),historyEncoder.encode(body));
+  if(!valid)return null;
+  const decoded=JSON.parse(new TextDecoder().decode(historyBytes(body)));
+  if(!decoded||decoded.v!==1||!Number.isFinite(decoded.until)||decoded.until<Date.now())return null;
+  return decoded;
+ }catch{return null;}
+}
+const HISTORY_RESTORE_FIELDS=["id","course_id","module_id","lesson_id","block_type","position","title","content_json","settings_json","interaction_mode","assessment_scope","is_required","training_passing_score","training_is_graded","rag_enabled","preview_allowed","ai_generated","ai_confirmed","created_by","source_type","source_provenance"];
+function restorableBlockRow(block:any){const row:any={};for(const k of HISTORY_RESTORE_FIELDS)if(block[k]!==undefined)row[k]=block[k];return row;}
+
 const STUDIO_UPLOAD_BUCKETS=new Set<string>(["course-images",...PRIVATE_COURSE_BUCKET_SET]);
 // B2: validate file metadata *before* issuing signed object-upload links.
 // Keep unbound cover/assisted uploads unchanged: those use the same action without block_id.
@@ -220,7 +246,7 @@ async function sessionUser(sb:any, req:Request, bodyToken=""){
 }
 async function roles(sb:any,userId:string){const {data}=await sb.from("user_roles").select("role").eq("user_id",userId);return (data||[]).map((r:any)=>r.role)}
 async function owns(sb:any,userId:string,courseId:string,permission="can_edit_courses"){const {data}=await sb.from("courses").select("creator_id,creator_context,structure_id").eq("id",courseId).maybeSingle();if(!data)return false;const rs=await roles(sb,userId);if(rs.includes("super_admin"))return true;if(String(data.creator_context||"")==="structure"){if(!data.structure_id)return false;const access=await validatedStructureAccess(sb,userId,String(data.structure_id));return hasStructurePermission(access,permission)}return String(data.creator_id)===userId}
-function coursePermissionForAction(action:string){if(action==="submit_course")return "can_submit_courses";if(["create_module","update_module","delete_module","create_lesson","update_lesson","delete_lesson","create_module_stage","create_block","update_block","delete_block","duplicate_block","remove_block_resource","reorder_blocks","ensure_special_sections","remove_final_exam","ensure_assessments","assessment_policy_update","assessment_policy_confirm_review","assessment_composition_get","assessment_section_create","assessment_section_update","assessment_section_delete","assessment_question_design_update","assessment_set_active","assessment_clear_questions"].includes(action))return "can_manage_lessons";if(["prepare_upload","upload_block_file","prepare_assessment_correction_upload"].includes(action))return "can_upload_files";return "can_edit_courses"}
+function coursePermissionForAction(action:string){if(action==="submit_course")return "can_submit_courses";if(["create_module","update_module","delete_module","create_lesson","update_lesson","delete_lesson","create_module_stage","create_block","update_block","delete_block","history_remove_block","history_restore_block","duplicate_block","remove_block_resource","reorder_blocks","ensure_special_sections","remove_final_exam","ensure_assessments","assessment_policy_update","assessment_policy_confirm_review","assessment_composition_get","assessment_section_create","assessment_section_update","assessment_section_delete","assessment_question_design_update","assessment_set_active","assessment_clear_questions"].includes(action))return "can_manage_lessons";if(["prepare_upload","upload_block_file","prepare_assessment_correction_upload"].includes(action))return "can_upload_files";return "can_edit_courses"}
 async function log(sb:any,courseId:string,userId:string,action:string,details:any={}){await Promise.allSettled([sb.from("course_studio_logs").insert({course_id:courseId,user_id:userId,action,details}),sb.from("course_audit_log").insert({course_id:courseId,actor_id:userId,action,entity_type:"course",metadata:details})])}
 
 
@@ -1330,7 +1356,7 @@ Deno.serve(async(req)=>{
   if(courseId && !["learner_get_assessment","learner_submit_assessment","prepare_assessment_submission_upload","learner_complete_remediation"].includes(action) && !(await owns(sb,userId,courseId,coursePermissionForAction(action))))return json({success:false,error:"FORBIDDEN"},403);
   // V4/A: a published pedagogical version is immutable, including for super-admin.
   // Minor public metadata edits remain possible through update_course/autosave.
-  const immutableActions=new Set(["create_module","update_module","delete_module","create_lesson","update_lesson","delete_lesson","create_module_stage","create_block","update_block","delete_block","duplicate_block","remove_block_resource","reorder_blocks","ensure_special_sections","remove_final_exam","ensure_assessments","assessment_policy_update","assessment_policy_confirm_review","assessment_section_create","assessment_section_update","assessment_section_delete","assessment_question_design_update","assessment_add_training_blocks","question_bank_add_to_assessment","ai_course_blueprint_apply","resource_rag_update","upload_block_file","apply_template","apply_course_import","reorder_lessons","reorder_modules"]);
+  const immutableActions=new Set(["create_module","update_module","delete_module","create_lesson","update_lesson","delete_lesson","create_module_stage","create_block","update_block","delete_block","history_remove_block","history_restore_block","duplicate_block","remove_block_resource","reorder_blocks","ensure_special_sections","remove_final_exam","ensure_assessments","assessment_policy_update","assessment_policy_confirm_review","assessment_section_create","assessment_section_update","assessment_section_delete","assessment_question_design_update","assessment_add_training_blocks","question_bank_add_to_assessment","ai_course_blueprint_apply","resource_rag_update","upload_block_file","apply_template","apply_course_import","reorder_lessons","reorder_modules"]);
   if(courseId&&immutableActions.has(action)){
    const {data:state,error:stateError}=await sb.from("courses").select("is_published,studio_status").eq("id",courseId).maybeSingle();
    if(stateError)throw stateError;
@@ -1493,6 +1519,77 @@ Deno.serve(async(req)=>{
    await recalculateCourseDuration(sb,String(mod.course_id));await log(sb,String(mod.course_id),userId,"module_deleted",{module_id:moduleId});return json({success:true});
   }
   if(action==="get_blocks"){const {data,error}=await sb.from("lesson_blocks").select("*").eq("lesson_id",b.lesson_id).order("position");if(error)throw error;const ids=(data||[]).map((x:any)=>String(x.id));const sourceIds=(data||[]).filter((x:any)=>relationTypeForBlock(String(x.block_type))).map((x:any)=>String(x.id));const linkMap=new Map<string,string[]>();const rubricIncoming=new Map<string,string[]>();const correctionIncoming=new Map<string,string[]>();if(ids.length){const {data:links,error:linkError}=await sb.from("lesson_block_links").select("source_block_id,target_block_id,relation_type").or(`source_block_id.in.(${ids.join(",")}),target_block_id.in.(${ids.join(",")})`);if(linkError)throw linkError;for(const link of links||[]){const source=String(link.source_block_id),target=String(link.target_block_id),relation=String(link.relation_type);if(sourceIds.includes(source))linkMap.set(source,[...(linkMap.get(source)||[]),target]);if(relation==="rubric_for")rubricIncoming.set(target,[...(rubricIncoming.get(target)||[]),source]);if(relation==="correction_for")correctionIncoming.set(target,[...(correctionIncoming.get(target)||[]),source]);}}const blocks=await Promise.all((data||[]).map(async(row:any)=>({...await decorateStudioBlock(sb,row),linked_block_ids:linkMap.get(String(row.id))||[],rubric_block_ids:rubricIncoming.get(String(row.id))||[],correction_block_ids:correctionIncoming.get(String(row.id))||[]})));return json({success:true,blocks})}
+  if(action==="history_remove_block"){
+   const blockId=String(b.block_id||"");
+   const {data:block,error:readError}=await sb.from("lesson_blocks").select("*").eq("id",blockId).eq("course_id",courseId).maybeSingle();
+   if(readError)throw readError;
+   if(!block)return json({success:false,error:"BLOCK_NOT_FOUND"},404);
+   // A reversible removal cannot destroy Cloudflare/Storage media, official
+   // assessment results, relationships, or any object with uploaded resources.
+   const content=block.content_json||{};
+   if(block.storage_path||block.bucket_name||block.file_url||block.file_name||content?.cloudflare_stream_uid||content?.url||
+      String(block.interaction_mode)==="assessment")
+    return json({success:false,error:"BLOCK_NOT_REVERSIBLE",message:"Ce bloc contient une ressource ou une évaluation : suppression classique avec confirmation nécessaire."},409);
+   const expected=b.expected_content_json;
+   if(expected!==undefined&&JSON.stringify(content)!==JSON.stringify(expected))
+    return json({success:false,error:"BLOCK_CONTENT_STALE",message:"Contenu modifié ailleurs : rechargez avant d'annuler."},409);
+   const {data:links,error:linksError}=await sb.from("lesson_block_links").select("id").or(`source_block_id.eq.${blockId},target_block_id.eq.${blockId}`).limit(1);
+   if(linksError)throw linksError;
+   if(links?.length)return json({success:false,error:"BLOCK_NOT_REVERSIBLE",message:"Un autre bloc dépend de ce bloc : suppression non annulable."},409);
+   await ensureOfficialQuestionHistoryEditable(sb,blockId);
+   const {data:all,error:allError}=await sb.from("lesson_blocks").select("id,position").eq("lesson_id",block.lesson_id).order("position").order("id");
+   if(allError)throw allError;
+   const remaining=(all||[]).map((item:any)=>String(item.id)).filter((id:string)=>id!==blockId);
+   // Sign BEFORE deleting. If signing fails, no data is removed.
+   const receipt=await signBlockHistory({v:1,until:Date.now()+20*60*1000,userId,courseId:String(courseId),
+    block:restorableBlockRow(block),remaining});
+   const {data:removed,error:removeError}=await sb.from("lesson_blocks").delete().eq("id",blockId).eq("course_id",courseId).select("id").single();
+   if(removeError)throw removeError;
+   if(!removed)return json({success:false,error:"BLOCK_DELETE_NOT_CONFIRMED"},409);
+   await recalculateCourseDuration(sb,String(courseId));
+   await log(sb,String(courseId),userId,"history_block_removed",{block_id:blockId});
+   return json({success:true,restore_receipt:receipt});
+  }
+  if(action==="history_restore_block"){
+   const receipt=await verifyBlockHistory(b.restore_receipt);
+   if(!receipt||receipt.userId!==userId||String(receipt.courseId)!==String(courseId))
+    return json({success:false,error:"HISTORY_RECEIPT_INVALID",message:"Le reçu a expiré ou ne correspond pas à votre session."},409);
+   const block=receipt.block;
+   if(!block||String(block.course_id)!==String(courseId)||!String(block.id||"").match(/^[a-f0-9-]{36}$/i)||
+      !String(block.lesson_id||"").match(/^[a-f0-9-]{36}$/i))return json({success:false,error:"HISTORY_BLOCK_INVALID"},400);
+   const {data:lesson,error:lessonError}=await sb.from("course_lessons").select("id,module_id,course_id").eq("id",block.lesson_id).maybeSingle();
+   if(lessonError)throw lessonError;
+   if(!lesson||String(lesson.course_id)!==String(courseId)||String(lesson.module_id)!==String(block.module_id))
+    return json({success:false,error:"HISTORY_DESTINATION_INVALID"},403);
+   const {data:existing,error:readError}=await sb.from("lesson_blocks").select("id,position").eq("lesson_id",block.lesson_id).order("position").order("id");
+   if(readError)throw readError;
+   const ids=(existing||[]).map((row:any)=>String(row.id));
+   if(ids.length!==receipt.remaining?.length||ids.some((id:string,i:number)=>id!==receipt.remaining[i]))
+    return json({success:false,error:"HISTORY_ORDER_CHANGED",message:"Leçon modifiée entre-temps : rechargez avant de restaurer."},409);
+   const {data:conflict,error:conflictError}=await sb.from("lesson_blocks").select("id").eq("id",block.id).maybeSingle();
+   if(conflictError)throw conflictError;
+   if(conflict)return json({success:false,error:"HISTORY_BLOCK_ALREADY_EXISTS"},409);
+   const row=restorableBlockRow(block);
+   const index=Math.max(0,Math.min(ids.length,Number(block.position)||0));
+   row.position=ids.length; // Insert outside the old order before reindexing.
+   const {error:insertError}=await sb.from("lesson_blocks").insert(row);
+   if(insertError)throw insertError;
+   const next=[...ids];next.splice(index,0,String(block.id));
+   try{
+    for(let i=0;i<next.length;i++){
+     const {error}=await sb.from("lesson_blocks").update({position:i,updated_at:new Date().toISOString()}).eq("id",next[i]).eq("lesson_id",block.lesson_id);
+     if(error)throw error;
+    }
+   }catch(error){
+    // Best-effort rollback. Never signal success for a partially written order.
+    await sb.from("lesson_blocks").delete().eq("id",block.id);
+    for(const original of existing||[])await sb.from("lesson_blocks").update({position:original.position}).eq("id",original.id);
+    return json({success:false,error:"HISTORY_RESTORE_WRITE_FAILED",message:"Restauration interrompue : rechargez la leçon."},409);
+   }
+   await recalculateCourseDuration(sb,String(courseId));
+   await log(sb,String(courseId),userId,"history_block_restored",{block_id:block.id});
+   return json({success:true,block_id:block.id});
+  }
   if(action==="create_block"){
    const [{data:existingBlocks,error:existingBlocksError},{data:courseMeta},{data:targetLesson,error:targetLessonError}]=await Promise.all([sb.from("lesson_blocks").select("id,position").eq("lesson_id",b.lesson_id).order("position").order("created_at"),sb.from("courses").select("language").eq("id",courseId).maybeSingle(),sb.from("course_lessons").select("id,course_id,module_id,stage_type,is_intro,is_module_intro,is_conclusion").eq("id",b.lesson_id).maybeSingle()]);
    if(existingBlocksError)throw existingBlocksError;

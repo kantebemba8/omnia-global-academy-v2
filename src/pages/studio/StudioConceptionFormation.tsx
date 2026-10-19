@@ -1,5 +1,6 @@
 import { openInternalPreviewUrl } from '../../lib/mobile';
 import { normalizeStudioEnvelope, normalizeStudioBlocks } from '../../lib/studioLegacyCompatibility';
+import { createStudioUndoLedger, type StudioUndoCommand } from '../../lib/studioUndoLedger';
 import MobileBuilderAdvice from '../../components/MobileBuilderAdvice';
 import { Component, useState, useEffect, useCallback, useRef, useMemo, type ReactNode } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
@@ -283,26 +284,17 @@ export default function StudioConceptionFormation() {
   const [activeAssessment, setActiveAssessment] = useState<{ id: string; required: boolean; is_active: boolean; title: string } | null>(null);
   const [assessmentManagementBusy, setAssessmentManagementBusy] = useState(false);
   const [assessmentRefresh, setAssessmentRefresh] = useState(0);
-  // Only reorder transactions can be reversed on the server without risking media,
-  // attempts or uploaded resources. Text history is delegated to Tiptap.
-  type BlockOrderCommand = { lessonId: string; before: string[]; after: string[] };
-  const blockOrderUndo = useRef<BlockOrderCommand[]>([]);
-  const blockOrderRedo = useRef<BlockOrderCommand[]>([]);
-  // Changes to specialist blocks ("À retenir", objectives, activities...) do not
-  // belong to Tiptap history. Keep reversible content snapshots for this session.
-  type ContentEditCommand = { lessonId: string; blockId: string; before: Record<string, any>; after: Record<string, any>; at: number };
-  const contentUndo = useRef<ContentEditCommand[]>([]);
-  const contentRedo = useRef<ContentEditCommand[]>([]);
-  const lastHistoryKind = useRef<'prose'|'content'|'order'>('prose');
+  // A single chronological undo/redo ledger covers prose, specialist content,
+  // reorders and reversible structure operations in this lesson/session.
+  const sessionHistory = useRef(createStudioUndoLedger());
   const historyReplayInFlight = useRef(false);
   const [historyBusy, setHistoryBusy] = useState(false);
   const blockSnapshotRef = useRef<Block[]>([]);
   blockSnapshotRef.current = blocks;
-  const clearBlockOrderHistory = () => {
-    blockOrderUndo.current = []; blockOrderRedo.current = [];
-    contentUndo.current = []; contentRedo.current = [];
-    lastHistoryKind.current = 'prose';
-  };
+  const clearBlockOrderHistory = () => sessionHistory.current.clear();
+  function rememberAction(command: StudioUndoCommand) {
+    if (!historyReplayInFlight.current) sessionHistory.current.record(command);
+  }
 
   const [stageMenuId, setStageMenuId] = useState<string | null>(null);
   const [curriculumOpen, setCurriculumOpen] = useState(false);
@@ -525,23 +517,33 @@ export default function StudioConceptionFormation() {
     const before = structuredClone(block.content_json || {});
     const after = structuredClone(nextContent || {});
     if (JSON.stringify(before) === JSON.stringify(after)) return;
-    const now = Date.now();
-    const previous = contentUndo.current[contentUndo.current.length - 1];
-    // Coalesce rapid typing in the same specialist block into one undo step.
-    if (previous?.lessonId === currentLesson.id && previous.blockId === blockId && now - previous.at < 1200) {
-      previous.after = after;
-      previous.at = now;
-    } else {
-      contentUndo.current.push({ lessonId: currentLesson.id, blockId, before, after, at: now });
-      if (contentUndo.current.length > 40) contentUndo.current.shift();
-    }
-    contentRedo.current = [];
-    lastHistoryKind.current = 'content';
+    rememberAction({ kind: 'content', lessonId: currentLesson.id, blockId,
+      before, after, at: Date.now() });
     const updated = blockSnapshotRef.current.map(item => item.id === blockId ? { ...item, content_json: after } : item);
     blockSnapshotRef.current = updated;
     setBlocks(updated);
     setSelectedBlock(selected => selected?.id === blockId ? { ...selected, content_json: after } : selected);
     void queueBlockUpdate(blockId, { content_json: after }).catch(() => undefined);
+  }
+
+  function recordReversibleBlockSettings(blockId: string, updates: Record<string, any>) {
+    if (historyReplayInFlight.current || !currentLesson) return;
+    // These fields can be restored safely through the existing update_block API.
+    // Assessment links, media and ownership changes are NOT recorded as snapshots.
+    const safeKeys = new Set(['title','settings_json','preview_allowed','is_required',
+      'training_passing_score','training_is_graded','rag_enabled']);
+    const keys = Object.keys(updates);
+    if (!keys.length || keys.some(key => !safeKeys.has(key))) return;
+    const current = blockSnapshotRef.current.find(item => item.id === blockId);
+    if (!current) return;
+    const before: Record<string, unknown> = {};
+    const after: Record<string, unknown> = {};
+    for (const key of keys) {
+      before[key] = structuredClone((current as unknown as Record<string, any>)[key] ?? null);
+      after[key] = structuredClone(updates[key] ?? null);
+    }
+    if (JSON.stringify(before) !== JSON.stringify(after))
+      rememberAction({kind:'settings',lessonId:currentLesson.id,blockId,before,after,at:Date.now()});
   }
 
   function queueBlockUpdate(blockId: string, updates: Record<string, any>) {
@@ -929,7 +931,7 @@ void openModuleAssessment;
 
   // ─── Ajouter bloc ─────────────────────────────────────────
   async function addBlock(blockType: string, insertionIndex?: number, slashComposerKey?: string) {
-    if (locked || !BLOCK_DEFS.some(def => def.type === blockType)) return false;
+    if (locked || historyReplayInFlight.current || !BLOCK_DEFS.some(def => def.type === blockType)) return false;
     if (!course?.id || !currentModule?.id || !currentLesson?.id) {
       showToast('Sélectionnez d\'abord une leçon', 'error'); return false;
     }
@@ -948,8 +950,9 @@ void openModuleAssessment;
       ...(typeof insertionIndex === 'number' ? { position: insertionIndex } : {}),
       ...(assessmentWorkspace ? { interaction_mode: 'assessment', assessment_scope: assessmentWorkspace.scope } : {}),
     });
-    if (data.success) {
-      clearBlockOrderHistory();
+    if (data.success && data.block?.id) {
+      rememberAction({ kind: 'structure', operation: 'add', lessonId: targetLessonId,
+        blockId: String(data.block.id), at: Date.now() });
       if (assessmentWorkspace) setAssessmentRefresh(previous => previous + 1);
       if (currentLesson?.id === targetLessonId) {
         const refreshed = await loadBlocks(targetLessonId);
@@ -995,7 +998,8 @@ void openModuleAssessment;
       return false;
     }
     if (currentLesson?.id === lessonId) {
-      clearBlockOrderHistory();
+      rememberAction({ kind: 'structure', operation: 'add', lessonId,
+        blockId: String(data.block.id), at: Date.now() });
       setBlocks(previous => previous.some(block => block.id === data.block.id) ? previous : [...previous, data.block]);
     }
     return String(data.block.id);
@@ -1041,7 +1045,10 @@ void openModuleAssessment;
 
   // ─── Supprimer / dupliquer / réordonner les blocs ───────────
   async function deleteBlock(blockId: string): Promise<boolean> {
-    if (locked) return false;
+    // Capture a stable lesson ID before any await: currentLesson may become null
+    // when navigating away while a deletion is pending.
+    const deletingLessonId = currentLesson?.id;
+    if (locked || historyReplayInFlight.current || !deletingLessonId) return false;
     if (!await flushProseComposer()) return false;
     const blockToDelete = blocks.find(item => item.id === blockId);
     if (!blockToDelete) return false;
@@ -1049,12 +1056,23 @@ void openModuleAssessment;
     if (!window.confirm(`Supprimer uniquement le bloc « ${blockLabel} » ? Les autres blocs et la leçon seront conservés.`)) return false;
     try { await flushBlockUpdates(); }
     catch { showToast('Sauvegarde incomplète : suppression annulée.', 'error'); return false; }
-    const result = await api('delete_block', { block_id: blockId });
+    // Reversible deletion is server-authorized and signs its restoration receipt.
+    // Media with external resources or graded/question-linked blocks are never
+    // silently restored from a client-side snapshot.
+    let result = await api('history_remove_block', { course_id: course.id, block_id: blockId,
+      expected_content_json: blockToDelete.content_json });
+    if (!result.success && result.error === 'BLOCK_NOT_REVERSIBLE') {
+      if (!window.confirm('Ce bloc contient une ressource, une évaluation ou un lien qui ne peut pas être restauré automatiquement. Confirmer une suppression NON ANNULABLE ?')) return false;
+      result = await api('delete_block', { course_id: course.id, block_id: blockId });
+      if (result.success) clearBlockOrderHistory();
+    } else if (result.success && result.restore_receipt) {
+      rememberAction({ kind: 'structure', operation: 'delete', lessonId: deletingLessonId,
+        blockId, receipt: String(result.restore_receipt), at: Date.now() });
+    }
     if (!result.success) {
       showToast(result.message || result.error || 'Impossible de supprimer le bloc.', 'error');
       return false;
     }
-    clearBlockOrderHistory();
     setBlocks(bs => bs.filter(b => b.id !== blockId));
     if (selectedBlock?.id === blockId) { setSelectedBlock(null); setSelectedBlockDef(null); }
     // Deleting a block must never redirect to (or reopen) the Quality Centre.
@@ -1071,7 +1089,8 @@ void openModuleAssessment;
     catch { showToast('Sauvegarde incomplète : duplication annulée.', 'error'); return; }
     const data = await api('duplicate_block', { course_id: course.id, block_id: block.id });
     if (data.success && data.block) {
-      clearBlockOrderHistory();
+      rememberAction({ kind: 'structure', operation: 'add', lessonId: currentLesson.id,
+        blockId: String(data.block.id), at: Date.now() });
       setBlocks(bs => {
         const idx = bs.findIndex(b => b.id === block.id);
         const next = [...bs];
@@ -1124,10 +1143,8 @@ void openModuleAssessment;
       if (!result.success) throw new Error(result.message || result.error || 'Échec du déplacement');
       if (currentLesson?.id === lessonId) {
         setBlocks(next.map((block, position) => ({ ...block, position })));
-        blockOrderUndo.current.push({ lessonId, before: original.map(block => block.id), after: next.map(block => block.id) });
-        if (blockOrderUndo.current.length > 30) blockOrderUndo.current.shift();
-        blockOrderRedo.current = [];
-        lastHistoryKind.current = 'order';
+        rememberAction({ kind: 'order', lessonId, before: original.map(block => block.id),
+          after: next.map(block => block.id), at: Date.now() });
       }
       showToast('Nouvel ordre enregistré (annulable)', 'success');
     } catch (error) {
@@ -1137,92 +1154,137 @@ void openModuleAssessment;
       setDragOverSlot(null);
     }
   }
-  async function replayBlockOrder(direction: 'undo'|'redo'): Promise<boolean> {
-    if (locked || reorderInFlight.current || !currentLesson) return false;
-    const from = direction === 'undo' ? blockOrderUndo.current : blockOrderRedo.current;
-    const to = direction === 'undo' ? blockOrderRedo.current : blockOrderUndo.current;
-    const command = from[from.length - 1];
-    if (!command || command.lessonId !== currentLesson.id) return false;
+  async function replayBlockOrder(command: Extract<StudioUndoCommand, {kind:'order'}>, direction: 'undo'|'redo'): Promise<boolean> {
+    if (!currentLesson || reorderInFlight.current) return false;
     const expected = direction === 'undo' ? command.after : command.before;
     const target = direction === 'undo' ? command.before : command.after;
     if (blocks.map(block => block.id).join('|') !== expected.join('|')) {
-      clearBlockOrderHistory();
-      showToast('L’ordre des blocs a changé. Historique de déplacement réinitialisé.', 'error');
-      return true;
+      showToast('L’ordre des blocs a changé. Rechargez la leçon avant de reprendre.', 'error'); return false;
     }
     reorderInFlight.current = true;
     try {
-      if (!await flushProseComposer()) return true;
+      if (!await flushProseComposer()) return false;
       await flushBlockUpdates();
-      const result = await api('reorder_blocks', { lesson_id: currentLesson.id,
+      const result = await api('reorder_blocks', { course_id: course.id, lesson_id: currentLesson.id,
         expected_ordered_ids: expected, ordered_ids: target });
-      if (!result.success) throw new Error(result.message || result.error || 'Impossible de rétablir l’ordre précédent.');
+      if (!result.success) throw new Error(result.message || result.error || 'Déplacement non enregistré');
       const byId = new Map(blocks.map(block => [block.id, block]));
       setBlocks(target.map((id, position) => ({ ...byId.get(id)!, position })));
-      from.pop(); to.push(command);
-      lastHistoryKind.current = 'order';
-      showToast(direction === 'undo' ? 'Déplacement annulé.' : 'Déplacement rétabli.');
-    } catch (error) {
-      showToast(error instanceof Error ? error.message : 'Historique indisponible', 'error');
-    } finally { reorderInFlight.current = false; }
-    return true;
+      return true;
+    } catch (error) { showToast(error instanceof Error ? error.message : 'Déplacement annulé', 'error'); return false; }
+    finally { reorderInFlight.current = false; }
   }
 
-  async function replaySpecialistContent(direction: 'undo'|'redo'): Promise<boolean> {
-    if (locked || historyReplayInFlight.current || !currentLesson) return false;
-    const from = direction === 'undo' ? contentUndo.current : contentRedo.current;
-    const to = direction === 'undo' ? contentRedo.current : contentUndo.current;
-    const command = from[from.length - 1];
-    if (!command || command.lessonId !== currentLesson.id) return false;
+  async function replaySpecialistContent(command: Extract<StudioUndoCommand, {kind:'content'}>, direction: 'undo'|'redo'): Promise<boolean> {
     const expected = direction === 'undo' ? command.after : command.before;
     const target = direction === 'undo' ? command.before : command.after;
-    const block = blockSnapshotRef.current.find(item => item.id === command.blockId);
-    if (!block || JSON.stringify(block.content_json || {}) !== JSON.stringify(expected)) {
-      contentUndo.current = []; contentRedo.current = [];
-      showToast('Le bloc a changé depuis cette édition. Historique de contenu annulé pour éviter un écrasement.', 'error');
-      return true;
-    }
-    historyReplayInFlight.current = true;
-    setHistoryBusy(true);
     try {
       await flushBlockUpdates();
+      const block = blockSnapshotRef.current.find(item => item.id === command.blockId);
+      if (!block || JSON.stringify(block.content_json || {}) !== JSON.stringify(expected)) {
+        showToast('Le contenu du bloc a changé depuis cette action. Annulation refusée pour éviter un écrasement.', 'error'); return false;
+      }
       const result = await queueBlockUpdate(command.blockId, { content_json: target });
-      if (!result?.success) throw new Error('HISTORY_WRITE_FAILED');
+      if (!result?.success) return false;
       const updated = blockSnapshotRef.current.map(item => item.id === command.blockId ? { ...item, content_json: structuredClone(target) } : item);
       blockSnapshotRef.current = updated;
       setBlocks(updated);
       setSelectedBlock(selected => selected?.id === command.blockId ? { ...selected, content_json: structuredClone(target) } : selected);
-      from.pop(); to.push(command);
-      lastHistoryKind.current = 'content';
-      showToast(direction === 'undo' ? 'Modification du bloc annulée.' : 'Modification du bloc rétablie.');
-    } catch (error) {
-      showToast(error instanceof Error ? error.message : 'Impossible de modifier le bloc sur le serveur.', 'error');
-    } finally {
-      historyReplayInFlight.current = false;
-      setHistoryBusy(false);
+      return true;
+    } catch { showToast('Impossible de restaurer le contenu sur le serveur.', 'error'); return false; }
+  }
+
+  async function replayBlockSettings(command: Extract<StudioUndoCommand, {kind:'settings'}>, direction: 'undo'|'redo'): Promise<boolean> {
+    const expected = direction === 'undo' ? command.after : command.before;
+    const target = direction === 'undo' ? command.before : command.after;
+    try {
+      await flushBlockUpdates();
+      const current = blockSnapshotRef.current.find(item => item.id === command.blockId);
+      if (!current || Object.keys(expected).some(key =>
+        JSON.stringify((current as unknown as Record<string, any>)[key] ?? null) !== JSON.stringify(expected[key]))) {
+        showToast('Les paramètres ont changé entre-temps. Rechargez la leçon.', 'error'); return false;
+      }
+      const response = await queueBlockUpdate(command.blockId, target);
+      if (!response?.success) return false;
+      const refreshed = blockSnapshotRef.current.map(item => item.id === command.blockId ? {...item,...target} : item);
+      blockSnapshotRef.current = refreshed;
+      setBlocks(refreshed);
+      setSelectedBlock(selected => selected?.id === command.blockId ? {...selected,...target} : selected);
+      return true;
+    } catch { showToast('Impossible de restaurer les paramètres du bloc.', 'error'); return false; }
+  }
+
+  async function replayStructural(command: Extract<StudioUndoCommand, {kind:'structure'}>, direction: 'undo'|'redo'): Promise<boolean> {
+    if (!currentLesson || !course.id) return false;
+    if (!await flushProseComposer()) return false;
+    try { await flushBlockUpdates(); }
+    catch { showToast('Des blocs ne sont pas enregistrés. Annulation suspendue.', 'error'); return false; }
+    const mustRemove = (command.operation === 'add') === (direction === 'undo');
+    if (mustRemove) {
+      const block = blockSnapshotRef.current.find(item => item.id === command.blockId);
+      if (!block) { showToast('Le bloc attendu est absent. Rechargez la leçon.', 'error'); return false; }
+      const response = await api('history_remove_block', { course_id: course.id,
+        block_id: command.blockId, expected_content_json: block.content_json });
+      if (!response.success || !response.restore_receipt) {
+        showToast(response.message || response.error || 'Annulation du bloc refusée par le serveur.', 'error'); return false;
+      }
+      command.receipt = String(response.restore_receipt);
+    } else {
+      if (!command.receipt) { showToast('Reçu de restauration absent. Rechargement nécessaire.', 'error'); return false; }
+      const response = await api('history_restore_block', { course_id: course.id,
+        restore_receipt: command.receipt });
+      if (!response.success) {
+        showToast(response.message || response.error || 'Restauration du bloc refusée par le serveur.', 'error'); return false;
+      }
+      command.receipt = undefined;
     }
+    // Reload server-owned positions instead of constructing blocks from
+    // untrusted client snapshots. A failed reload must not clear server rows.
+    const loaded = await loadBlocks(command.lessonId);
+    if (!loaded) {
+      clearBlockOrderHistory();
+      showToast('Modification effectuée sur le serveur ; rechargez la leçon avant de continuer.', 'error');
+      return false;
+    }
+    setSelectedBlock(null); setSelectedBlockDef(null);
+    setChecklist(null); setShowChecklist(false);
     return true;
   }
 
-  async function undoStudioAction() {
-    if (historyReplayInFlight.current) return;
-    if (lastHistoryKind.current === 'content' && await replaySpecialistContent('undo')) return;
-    if (lastHistoryKind.current === 'order' && await replayBlockOrder('undo')) return;
-    if (proseComposerRefs.current.get(activeProseKey.current)?.undo()) { lastHistoryKind.current = 'prose'; return; }
-    if (await replaySpecialistContent('undo')) return;
-    if (await replayBlockOrder('undo')) return;
-    showToast('Aucune modification annulable dans cette session. L’historique ne survit pas à une actualisation.', 'info');
+  async function replayStudioHistory(direction: 'undo'|'redo') {
+    if (historyReplayInFlight.current || locked || !currentLesson) return;
+    const ledger = sessionHistory.current;
+    const command = direction === 'undo' ? ledger.undoCommand() : ledger.redoCommand();
+    if (!command || command.lessonId !== currentLesson.id) {
+      showToast('Aucune modification à ' + (direction === 'undo' ? 'annuler' : 'rétablir') + ' dans cette leçon et cette session.', 'info');
+      return;
+    }
+    historyReplayInFlight.current = true;
+    setHistoryBusy(true);
+    try {
+      let success = false;
+      switch (command.kind) {
+        case 'prose': {
+          const editor = proseComposerRefs.current.get(command.key);
+          if (!editor) { showToast('Éditeur indisponible : impossible de rejouer cette modification.', 'error'); break; }
+          success = direction === 'undo' ? editor.undo() : editor.redo();
+          if (success) success = await editor.flush();
+          break;
+        }
+        case 'content': success = await replaySpecialistContent(command, direction); break;
+        case 'order': success = await replayBlockOrder(command, direction); break;
+        case 'settings': success = await replayBlockSettings(command, direction); break;
+        case 'structure': success = await replayStructural(command, direction); break;
+      }
+      if (success) {
+        if (direction === 'undo') ledger.completeUndo(command);
+        else ledger.completeRedo(command);
+        showToast(direction === 'undo' ? 'Modification annulée.' : 'Modification rétablie.', 'success');
+      }
+    } finally { historyReplayInFlight.current = false; setHistoryBusy(false); }
   }
-
-  async function redoStudioAction() {
-    if (historyReplayInFlight.current) return;
-    if (lastHistoryKind.current === 'content' && await replaySpecialistContent('redo')) return;
-    if (lastHistoryKind.current === 'order' && await replayBlockOrder('redo')) return;
-    if (proseComposerRefs.current.get(activeProseKey.current)?.redo()) { lastHistoryKind.current = 'prose'; return; }
-    if (await replaySpecialistContent('redo')) return;
-    if (await replayBlockOrder('redo')) return;
-    showToast('Aucune modification à rétablir dans cette session. L’historique ne survit pas à une actualisation.', 'info');
-  }
+  async function undoStudioAction() { await replayStudioHistory('undo'); }
+  async function redoStudioAction() { await replayStudioHistory('redo'); }
 
   async function onDrop(e: React.DragEvent, targetIdx: number) {
     const incomingType = e.dataTransfer.getData('application/x-omnia-block');
@@ -1718,10 +1780,10 @@ void openModuleAssessment;
         {/* Actions */}
         <div className="flex items-center gap-2 flex-shrink-0">
           <button type="button" onMouseDown={event => event.preventDefault()} onClick={() => { void undoStudioAction(); }}
-            disabled={locked || historyBusy || !currentLesson || !!assessmentWorkspace} title="Annuler la rédaction, une modification de bloc ou un déplacement (session actuelle)" aria-label="Annuler la dernière modification"
+            disabled={locked || historyBusy || !currentLesson || !!assessmentWorkspace} title="Annuler texte, ajout, duplication, suppression réversible, modification ou déplacement (session actuelle)" aria-label="Annuler la dernière modification"
             className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm font-semibold text-[#002050] disabled:opacity-40">↶ Annuler</button>
           <button type="button" onMouseDown={event => event.preventDefault()} onClick={() => { void redoStudioAction(); }}
-            disabled={locked || historyBusy || !currentLesson || !!assessmentWorkspace} title="Rétablir la rédaction, une modification de bloc ou un déplacement (session actuelle)" aria-label="Rétablir la dernière modification"
+            disabled={locked || historyBusy || !currentLesson || !!assessmentWorkspace} title="Rétablir la dernière opération annulée dans cette session" aria-label="Rétablir la dernière modification"
             className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm font-semibold text-[#002050] disabled:opacity-40">↷ Rétablir</button>
           <button type="button" onClick={() => setCurriculumOpen(value => !value)} aria-expanded={curriculumOpen}
             className={`flex items-center gap-1 rounded-lg border px-3 py-1.5 text-xs font-semibold ${curriculumOpen ? 'border-[#BF8813] bg-amber-50 text-[#002050]' : 'border-slate-200 text-[#002050]'}`}>
@@ -2320,7 +2382,7 @@ void openModuleAssessment;
                                 initialHtml={String(block.content_json?.html ?? block.content_json?.content ?? block.content_json?.text ?? '')}
                                 blockId={block.id}
                                 onActivate={() => { activeProseKey.current = block.id; }}
-                                onEdit={() => { lastHistoryKind.current = 'prose'; }}
+                                onEdit={() => { if (currentLesson && !historyReplayInFlight.current) rememberAction({kind:'prose', lessonId:currentLesson.id, key:block.id, at:Date.now()}); }}
                                 onCommit={commitPageParagraph}
                                 onDelete={deleteBlock}
                                 onInsertBlock={async type => addBlock(type, idx + 1, block.id)}
@@ -2360,7 +2422,7 @@ void openModuleAssessment;
                     <StudioBlankPageComposer
                       ref={instance => registerProseComposer('tail', instance)}
                       onActivate={() => { activeProseKey.current = 'tail'; }}
-                      onEdit={() => { lastHistoryKind.current = 'prose'; }}
+                      onEdit={() => { if (currentLesson && !historyReplayInFlight.current) rememberAction({kind:'prose', lessonId:currentLesson.id, key:'tail', at:Date.now()}); }}
                       key={`${currentLesson.id}:${lastContentBlock?.id ?? 'blank'}`}
                       draftKey={`${currentLesson.id}:${lastContentBlock?.id ?? 'blank'}`}
                       initialHtml={String(trailingProse?.content_json?.html ?? trailingProse?.content_json?.content ?? trailingProse?.content_json?.text ?? '')}
@@ -2550,11 +2612,15 @@ void openModuleAssessment;
                         const rest = { ...updates };
                         delete rest.content_json;
                         if (Object.keys(rest).length) {
+                          recordReversibleBlockSettings(selectedBlock.id, rest);
+                          blockSnapshotRef.current = blockSnapshotRef.current.map(b => b.id === selectedBlock.id ? {...b,...rest} : b);
                           setBlocks(bs => bs.map(b => b.id === selectedBlock.id ? { ...b, ...rest } : b));
                           setSelectedBlock(b => b ? { ...b, ...rest } : b);
                           await queueBlockUpdate(selectedBlock.id, rest);
                         }
                       } else {
+                        recordReversibleBlockSettings(selectedBlock.id, updates);
+                        blockSnapshotRef.current = blockSnapshotRef.current.map(b => b.id === selectedBlock.id ? {...b,...updates} : b);
                         setBlocks(bs => bs.map(b => b.id === selectedBlock.id ? { ...b, ...updates } : b));
                         setSelectedBlock(b => b ? { ...b, ...updates } : b);
                         await queueBlockUpdate(selectedBlock.id, updates);

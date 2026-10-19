@@ -1,0 +1,28 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+let ts; try { ts = require('typescript'); } catch { ts = require('/opt/nvm/versions/node/v22.16.0/lib/node_modules/typescript'); }
+const Module = require('node:module');
+const filename = 'src/lib/studioUndoLedger.ts';
+const code = ts.transpileModule(fs.readFileSync(filename, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
+const moduleObject = new Module(filename, module);
+moduleObject._compile(code, filename);
+const ledger = moduleObject.exports.createStudioUndoLedger();
+const prose = {kind:'prose',lessonId:'l',key:'tail',at:100};
+ledger.record(prose);
+ledger.record({kind:'prose',lessonId:'l',key:'tail',at:300});
+assert.equal(ledger.sizes().undo,1,'coalesced prose');
+const added = {kind:'structure',lessonId:'l',blockId:'b',operation:'add',at:1000};
+ledger.record(added);
+assert.equal(ledger.undoCommand(),added);
+assert.ok(ledger.completeUndo(added));
+assert.equal(ledger.redoCommand(),added);
+assert.ok(ledger.completeRedo(added));
+const move={kind:'order',lessonId:'l',before:['a','b'],after:['b','a'],at:1500};
+ledger.record(move);
+assert.equal(ledger.undoCommand(),move);
+assert.ok(ledger.completeUndo(move));
+const deleted={kind:'structure',lessonId:'l',blockId:'b',operation:'delete',at:1600};
+ledger.record(deleted);
+assert.equal(ledger.sizes().redo,0,'new action invalidates redo');
+ledger.clear(); assert.deepEqual(ledger.sizes(),{undo:0,redo:0});
+console.log('STUDIO_UNDO_LEDGER_PASS');
