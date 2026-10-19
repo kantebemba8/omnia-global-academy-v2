@@ -44,9 +44,9 @@ verify('Réponse serveur incorrecte refusée',c.normalizeStudioEnvelope({success
 verify('Bloc corrompu refusé sans masquer les autres',c.normalizeStudioBlocks({success:true,blocks:[{block_type:'text'}]})===null);
 verify('Données historiques non mutées',malformed.content_json.__legacy_collection_source.items==='not-json');
 verify('Écriture directe conservée', any(builder,'<StudioBlankPageComposer') && any(builder,'commitPageParagraph') && any(rich,'EditorContent editor={editor}'));
-verify('Slash ne vide que si ajout accepté', any(composer,"if (await onInsertBlock(type)) setDraft('');"));
+verify('Slash rétablit la prose uniquement si ajout accepté', any(composer, 'const ok = await onInsertBlock(type);') && any(composer,'if (ok) {') && any(composer,'savedHtml.current'));
 verify('Insertion non valide refusée', any(builder,'return false;') && any(builder,'async function addBlock'));
-verify('Insertion de texte legacy via backend', any(builder,"block_type: 'text', content_json: { html, content: html, text: stripHtml(html) }"));
+verify('Insertion de texte legacy via backend', any(builder,"block_type: 'text', content_json: content, settings_json: {}") && any(builder,"await queueBlockUpdate(blockId, { content_json })"));
 verify('Édition Tiptap directe dans blocs prose', any(builder,'<RichTextEditor plainPage') && any(builder,'const proseBlock'));
 verify('Bibliothèque 52 types présente', any(builder,'const modeBlocks = BLOCK_DEFS'));
 verify('Drag and drop conservé', any(builder,'<DndContext') && any(builder,'<SortableContext'));

@@ -12,9 +12,11 @@ const lock = JSON.parse(read('package-lock.json'));
 let passed = 0;
 function check(name, predicate) { assert.ok(predicate, name); console.log('PASS', name); passed++; }
 check('52 existing block definitions preserved', (builder.match(/\{ type: '[^']+',\s*label:/g) || []).length === 52);
-check('Direct writing is a real Tiptap editor component', composer.includes('<StudioRichTextEditor') && composer.includes('onCommit(draft)'));
+check('Live Tiptap text segment reuses stable row', composer.includes('<StudioRichTextEditor') && composer.includes('onCommitRef.current(snapshot, savedBlockId.current)') && composer.includes('Texte enregistré'));
 check('Slash commands use registered block IDs', composer.includes('onInsertBlock(type)') && composer.includes('role="listbox"'));
-check('Plain writer uses the existing create_block endpoint', builder.includes("block_type: 'text', content_json: { html, content: html, text: stripHtml(html) }"));
+check('Text creation preserves historical format', builder.includes("block_type: 'text', content_json: content, settings_json: {}"));
+check('Text updates reuse stable block id', builder.includes('await queueBlockUpdate(blockId, { content_json })') && composer.includes('savedBlockId.current = id'));
+check('Leaving page flushes pending text', builder.includes('if (!await flushProseComposer()) return false;'));
 check('Unsaved text retained in session storage', composer.includes('sessionStorage.setItem(storageKey') && composer.includes('sessionStorage.getItem(storageKey'));
 check('No data schema change to legacy blocks', builder.includes("settings_json: {},") && backend.includes('if(action==="create_block")'));
 check('Blank page canvas dominates', builder.includes('max-w-[1080px]') && builder.includes('bg-white px-4 py-6'));

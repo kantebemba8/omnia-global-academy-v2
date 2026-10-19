@@ -11,7 +11,7 @@ import StudioQualityStatusPanel from '../../components/StudioQualityStatusPanel'
 import CourseAdvancedSettingsPanel from '../../components/CourseAdvancedSettingsPanel';
 import BuilderImportDialog from '../../components/studio/BuilderImportDialog';
 import RichTextEditor from '../../components/studio/StudioRichTextEditor';
-import StudioBlankPageComposer from '../../components/studio/StudioBlankPageComposer';
+import StudioBlankPageComposer, { type StudioProseComposerHandle } from '../../components/studio/StudioBlankPageComposer';
 import StudioCollectionControls from '../../components/studio/StudioCollectionControls';
 import StudioSortableBlock from '../../components/studio/StudioSortableBlock';
 import Uppy from '@uppy/core';
@@ -256,6 +256,14 @@ export default function StudioConceptionFormation() {
   const [currentModule, setCurrentModule] = useState<Module | null>(null);
   const [currentLesson, setCurrentLesson] = useState<Lesson | null>(null);
   const [blocks, setBlocks] = useState<Block[]>([]);
+  const proseComposerRef = useRef<StudioProseComposerHandle | null>(null);
+  useEffect(() => {
+    const warn = (event: BeforeUnloadEvent) => {
+      if (proseComposerRef.current?.hasUnsaved()) { event.preventDefault(); event.returnValue = ''; }
+    };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, []);
   const blockSaveQueues = useRef<Record<string, Promise<any>>>({});
   // Never consider a failed write successful after its Promise leaves the queue.
   const failedBlockSaves = useRef<Set<string>>(new Set());
@@ -290,6 +298,25 @@ export default function StudioConceptionFormation() {
   });
   const [showPreview, setShowPreview] = useState(false);
   const [mobileLibraryOpen, setMobileLibraryOpen] = useState(false);
+  const [desktopLibraryOpen, setDesktopLibraryOpen] = useState(() => {
+    try { return localStorage.getItem('oga_studio_desktop_library') !== '0'; } catch { return true; }
+  });
+  const [studioOptionsOpen, setStudioOptionsOpen] = useState(false);
+  const studioOptionsRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!studioOptionsOpen) return;
+    const outside = (event: PointerEvent) => {
+      if (event.target instanceof Node && !studioOptionsRef.current?.contains(event.target)) setStudioOptionsOpen(false);
+    };
+    const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') setStudioOptionsOpen(false); };
+    document.addEventListener('pointerdown', outside);
+    document.addEventListener('keydown', escape);
+    return () => { document.removeEventListener('pointerdown', outside); document.removeEventListener('keydown', escape); };
+  }, [studioOptionsOpen]);
+  const toggleDesktopLibrary = () => setDesktopLibraryOpen(previous => {
+    try { localStorage.setItem('oga_studio_desktop_library', previous ? '0' : '1'); } catch {}
+    return !previous;
+  });
   const [blockLibrarySearch, setBlockLibrarySearch] = useState('');
   // V4: the block library is a searchable professional command list, not a favorites board.
   const [inspectorCollapsed, setInspectorCollapsed] = useState(true);
@@ -606,8 +633,16 @@ export default function StudioConceptionFormation() {
     }
   }
 
+  // Leaving a lesson never silently drops a pending prose write.
+  async function flushProseComposer() {
+    const complete = await (proseComposerRef.current?.flush() ?? Promise.resolve(true));
+    if (!complete) showToast('La rédaction de la leçon n’a pas été enregistrée. Corrigez l’erreur avant de continuer.', 'error');
+    return complete;
+  }
+
   // ─── Sélection leçon ──────────────────────────────────────
   async function selectLesson(mod: Module, lesson: Lesson): Promise<boolean> {
+    if (!await flushProseComposer()) return false;
     if (currentLesson?.id === lesson.id) { setAssessmentWorkspace(null); setCurrentModule(mod); setCurriculumOpen(false); return true; }
     try { await flushBlockUpdates(); }
     catch { showToast('Sauvegarde incomplète : changement de leçon annulé.', 'error'); return false; }
@@ -669,6 +704,7 @@ export default function StudioConceptionFormation() {
 
   // ─── Ajouter leçon ────────────────────────────────────────
   async function addLesson(mod: Module) {
+    if (!await flushProseComposer()) return;
     if (!course?.id) return;
     const lessonCount = (mod.lessons || []).filter(l => stageTypeOf(l) === 'lesson').length;
     const title = `Leçon ${lessonCount + 1}`;
@@ -740,7 +776,7 @@ void openModuleAssessment;
   }
 
   // ─── Ajouter bloc ─────────────────────────────────────────
-  async function addBlock(blockType: string, insertionIndex?: number) {
+  async function addBlock(blockType: string, insertionIndex?: number, skipSlashFlush = false) {
     if (locked || !BLOCK_DEFS.some(def => def.type === blockType)) return false;
     if (!course?.id || !currentModule?.id || !currentLesson?.id) {
       showToast('Sélectionnez d\'abord une leçon', 'error'); return false;
@@ -749,6 +785,7 @@ void openModuleAssessment;
       showToast('Dans le sous-espace Évaluation, ajoutez uniquement un bloc pouvant servir de question officielle.', 'error');
       return false;
     }
+    if (!skipSlashFlush && !await flushProseComposer()) return false;
     try { await flushBlockUpdates(); }
     catch { showToast('Sauvegarde en attente : ajout annulé pour éviter une perte de données.', 'error'); return false; }
     const targetLessonId = currentLesson.id;
@@ -775,24 +812,38 @@ void openModuleAssessment;
     }
   }
 
-  // Direct writing creates an ordinary legacy-compatible text block, preserving
-  // the existing lesson_blocks API and its historical HTML storage contract.
-  async function commitPageParagraph(html: string): Promise<boolean> {
+  // The final prose segment is a single, stable legacy text row. Editing it
+  // calls update_block (never create_block), preventing duplicate paragraphs.
+  // Other legacy blocks, including unknown HTML/JSON, are not rewritten.
+  async function commitPageParagraph(html: string, blockId?: string): Promise<string | false> {
     if (locked || !currentLesson?.id || !currentModule?.id || !course?.id) return false;
+    const content = { html, content: html, text: stripHtml(html) };
+    if (blockId) {
+      const original = blocks.find(block => block.id === blockId && block.block_type === 'text');
+      if (!original) { showToast('Bloc texte introuvable. Rechargez la leçon avant d’enregistrer.', 'error'); return false; }
+      const content_json = { ...original.content_json, ...content };
+      try {
+        await queueBlockUpdate(blockId, { content_json });
+        setBlocks(previous => previous.map(block => block.id === blockId ? { ...block, content_json } : block));
+        return blockId;
+      } catch { return false; }
+    }
     if (!stripHtml(html).trim() && !/<img\b/i.test(html)) return false;
     try { await flushBlockUpdates(); }
-    catch { showToast('Enregistrez les changements précédents avant d’ajouter ce texte.', 'error'); return false; }
+    catch { showToast('Enregistrez les blocs précédents avant d’écrire.', 'error'); return false; }
     const lessonId = currentLesson.id;
     const data = await api('create_block', {
       course_id: course.id, module_id: currentModule.id, lesson_id: lessonId,
-      block_type: 'text', content_json: { html, content: html, text: stripHtml(html) }, settings_json: {},
+      block_type: 'text', content_json: content, settings_json: {},
     });
-    if (!data.success) { showToast(data.message || data.error || 'Écriture non enregistrée.', 'error'); return false; }
-    const refreshed = await loadBlocks(lessonId);
-    // The server write already succeeded. Returning false would preserve the draft
-    // and create a second copy when the creator retries after a transient read error.
-    if (!refreshed) showToast('Texte enregistré ; actualisez la leçon pour le voir.', 'info');
-    return true;
+    if (!data.success || !data.block?.id) {
+      showToast(data.message || data.error || 'Impossible de confirmer la création du texte. Vérifiez la leçon avant de réessayer.', 'error');
+      return false;
+    }
+    if (currentLesson?.id === lessonId) {
+      setBlocks(previous => previous.some(block => block.id === data.block.id) ? previous : [...previous, data.block]);
+    }
+    return String(data.block.id);
   }
 
   function getDefaultContent(type: string): Record<string, any> {
@@ -806,25 +857,28 @@ void openModuleAssessment;
 
 
   // ─── Supprimer / dupliquer / réordonner les blocs ───────────
-  async function deleteBlock(blockId: string) {
-    if (locked) return;
+  async function deleteBlock(blockId: string): Promise<boolean> {
+    if (locked) return false;
+    if (!await flushProseComposer()) return false;
     const blockToDelete = blocks.find(item => item.id === blockId);
-    if (!blockToDelete) return;
+    if (!blockToDelete) return false;
     const blockLabel = BLOCK_DEFS.find(item => item.type === blockToDelete.block_type)?.label || blockToDelete.block_type;
-    if (!window.confirm(`Supprimer uniquement le bloc « ${blockLabel} » ? Les autres blocs et la leçon seront conservés.`)) return;
+    if (!window.confirm(`Supprimer uniquement le bloc « ${blockLabel} » ? Les autres blocs et la leçon seront conservés.`)) return false;
     try { await flushBlockUpdates(); }
-    catch { showToast('Sauvegarde incomplète : suppression annulée.', 'error'); return; }
+    catch { showToast('Sauvegarde incomplète : suppression annulée.', 'error'); return false; }
     const result = await api('delete_block', { block_id: blockId });
     if (!result.success) {
       showToast(result.message || result.error || 'Impossible de supprimer le bloc.', 'error');
-      return;
+      return false;
     }
     setBlocks(bs => bs.filter(b => b.id !== blockId));
     if (selectedBlock?.id === blockId) { setSelectedBlock(null); setSelectedBlockDef(null); }
+    return true;
   }
 
   async function duplicateBlock(block: Block) {
     if (locked || !course?.id || !currentLesson?.id) return;
+    if (!await flushProseComposer()) return;
     try { await flushBlockUpdates(); }
     catch { showToast('Sauvegarde incomplète : duplication annulée.', 'error'); return; }
     const data = await api('duplicate_block', { course_id: course.id, block_id: block.id });
@@ -871,6 +925,7 @@ void openModuleAssessment;
     if (locked || reorderInFlight.current || next.length !== original.length || !orderChanged(original, next)) return;
     reorderInFlight.current = true;
     try {
+      if (!await flushProseComposer()) return;
       await flushBlockUpdates();
       const result = await api('reorder_blocks', { lesson_id: lessonId, ordered_ids: next.map(b => b.id) });
       if (!result.success) throw new Error(result.message || result.error || 'Échec du déplacement');
@@ -917,6 +972,7 @@ void openModuleAssessment;
   }
 
   async function saveCurrentPage(goNext = false) {
+    if (!await flushProseComposer()) return;
     if (!course.id) { const created = await ensureCourseCreated(); if (!created) return; courseRef.current = created; }
     try { await flushBlockUpdates(); } catch { showToast('Un bloc n’a pas été enregistré. Corrigez l’erreur avant de changer de page.', 'error'); return; }
     const result = await persistCourseDraft();
@@ -1017,6 +1073,7 @@ void openModuleAssessment;
 
   async function save() {
     setSaving(true);
+    if (!await flushProseComposer()) { setSaving(false); return; }
     try {
       const savedCourse = course.id ? course : await ensureCourseCreated();
       if (!savedCourse?.id) return;
@@ -1100,6 +1157,7 @@ void openModuleAssessment;
 
   // ─── Publier / soumettre ──────────────────────────────────
   async function submit() {
+    if (!await flushProseComposer()) return;
     if (!course?.id || submitting) return;
     setSubmitting(true);
     setFinalizationCheck(null);
@@ -1215,12 +1273,21 @@ void openModuleAssessment;
   const workflowLocked = ['pending_validation', 'validated', 'published', 'suspended'].includes(course.studio_status || '');
   const statusCfg = STATUS_CFG[course.studio_status || 'draft'] || STATUS_CFG.draft;
   const modeBlocks = BLOCK_DEFS; // 52 types always accessible, without a second level of navigation
+  // Text, headings and subtitles are written directly in Tiptap in simple mode.
+  // Advanced mode keeps all historical block types accessible for compatibility.
   const visibleBlocks = assessmentWorkspace
     ? modeBlocks.filter(def => ASSESSMENT_CAPABLE_BLOCKS.has(def.type))
-    : modeBlocks;
+    : advancedMode ? modeBlocks : modeBlocks.filter(def => !['text', 'heading', 'subheading', 'subtitle'].includes(def.type));
+  const contentBlocks = blocks.filter(block => block.interaction_mode !== 'assessment');
+  const lastContentBlock = contentBlocks[contentBlocks.length - 1];
+  const trailingProse = !locked && !assessmentWorkspace && lastContentBlock?.block_type === 'text'
+    && !lastContentBlock.content_json?.__legacy_collection_source
+    && typeof lastContentBlock.content_json === 'object'
+    && !lastContentBlock.content_json?.cloudflare_stream_uid
+    ? lastContentBlock : null;
   const displayedBlocks = assessmentWorkspace
     ? blocks.filter(block => block.interaction_mode === 'assessment')
-    : blocks.filter(block => block.interaction_mode !== 'assessment');
+    : contentBlocks.filter(block => block.id !== trailingProse?.id);
 
   const quickBlockMatches = quickBlockQuery.trim()
     ? visibleBlocks.filter(def => {
@@ -1315,14 +1382,21 @@ void openModuleAssessment;
         </div>
 
         {/* Les préférences restent accessibles sans encombrer le canevas. */}
-        {!headerCollapsed && <details className="relative hidden lg:block shrink-0">
-          <summary className="cursor-pointer list-none rounded-lg px-2.5 py-1.5 text-xs text-slate-500 hover:bg-slate-100">Options <ChevronDown size={12} className="inline"/></summary>
-          <div className="absolute right-0 z-40 mt-2 min-w-[210px] space-y-1 rounded-xl border border-slate-200 bg-white p-2 shadow-xl">
-            <button type="button" onClick={() => void changeStudioMode(false)} className="w-full rounded-lg px-3 py-2 text-left text-xs text-slate-700 hover:bg-slate-50">Réglages essentiels {advancedMode ? '' : '✓'}</button>
-            <button type="button" onClick={() => void changeStudioMode(true)} className="w-full rounded-lg px-3 py-2 text-left text-xs text-slate-700 hover:bg-slate-50">Réglages avancés {advancedMode ? '✓' : ''}</button>
-            <button type="button" onClick={() => setHeaderCollapsedPersisted(!headerCollapsed)} className="w-full rounded-lg px-3 py-2 text-left text-xs text-slate-700 hover:bg-slate-50">{headerCollapsed ? 'Afficher les détails' : 'Masquer les détails'}</button>
-          </div>
-        </details>}
+        <div ref={studioOptionsRef} className="relative shrink-0">
+          <button type="button" aria-expanded={studioOptionsOpen} aria-haspopup="true"
+            onClick={() => setStudioOptionsOpen(open => !open)}
+            className="flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs text-[#002050] hover:bg-slate-50">
+            <Settings size={14} /> <span className="hidden sm:inline">Paramètres</span>
+          </button>
+          {studioOptionsOpen && <div className="absolute right-0 top-full z-50 mt-2 min-w-[235px] space-y-1 rounded-xl border border-slate-200 bg-white p-2 shadow-xl">
+            <button type="button" onClick={() => { void changeStudioMode(false); setStudioOptionsOpen(false); }} className="w-full rounded-lg px-3 py-2 text-left text-xs text-slate-700 hover:bg-slate-50">Mode simple {!advancedMode ? '✓' : ''}</button>
+            <button type="button" onClick={() => { void changeStudioMode(true); setStudioOptionsOpen(false); }} className="w-full rounded-lg px-3 py-2 text-left text-xs text-slate-700 hover:bg-slate-50">Mode avancé {advancedMode ? '✓' : ''}</button>
+            <div className="my-1 border-t border-slate-100" />
+            <button type="button" onClick={() => { toggleDesktopLibrary(); setStudioOptionsOpen(false); }} className="hidden w-full rounded-lg px-3 py-2 text-left text-xs text-slate-700 hover:bg-slate-50 lg:block">{desktopLibraryOpen ? 'Masquer' : 'Afficher'} la bibliothèque</button>
+            <button type="button" onClick={() => { setInspectorCollapsed(value => !value); setStudioOptionsOpen(false); }} className="w-full rounded-lg px-3 py-2 text-left text-xs text-slate-700 hover:bg-slate-50">{inspectorCollapsed ? 'Afficher' : 'Masquer'} l’inspecteur</button>
+            <button type="button" onClick={() => { setHeaderCollapsedPersisted(!headerCollapsed); setStudioOptionsOpen(false); }} className="w-full rounded-lg px-3 py-2 text-left text-xs text-slate-700 hover:bg-slate-50">{headerCollapsed ? 'Afficher' : 'Masquer'} les indicateurs d’en-tête</button>
+          </div>}
+        </div>
 
         {/* Statut */}
         {!headerCollapsed && <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold mr-3 flex-shrink-0" style={{ background: statusCfg.bg, color: statusCfg.color }}>
@@ -1337,6 +1411,7 @@ void openModuleAssessment;
             className={`flex items-center gap-1 rounded-lg border px-3 py-1.5 text-xs font-semibold ${curriculumOpen ? 'border-[#BF8813] bg-amber-50 text-[#002050]' : 'border-slate-200 text-[#002050]'}`}>
             <Layers size={14} /> Plan
           </button>
+          <button type="button" onClick={toggleDesktopLibrary} aria-expanded={desktopLibraryOpen} className="hidden lg:flex items-center gap-1 rounded-lg border border-slate-200 px-2 py-1.5 text-xs text-[#002050]"><Layers size={13}/>{desktopLibraryOpen ? 'Masquer bibliothèque' : 'Bibliothèque'}</button>
           {!headerCollapsed && <button onClick={loadHistory} className="hidden md:flex items-center gap-1 px-3 py-1.5 rounded-lg border text-xs font-medium" style={{ borderColor: '#E4E7EC', color: '#6B7280' }}>
             <History size={13} /> Historique
           </button>}
@@ -1361,7 +1436,7 @@ void openModuleAssessment;
       <div className="flex flex-1 overflow-hidden relative">
         {mobileLibraryOpen && <button type="button" aria-label="Fermer la bibliothèque" onClick={() => setMobileLibraryOpen(false)} className="absolute inset-0 z-30 bg-slate-950/30 lg:hidden" />}
         {/* ── COLONNE GAUCHE : Bibliothèque ────────────── */}
-        <div className={`${mobileLibraryOpen ? 'absolute inset-y-0 left-0 z-40 flex w-[min(22rem,92vw)] shadow-2xl' : 'hidden'} bg-white border-r flex-col flex-shrink-0 lg:flex lg:static lg:w-[242px] 2xl:w-[274px] lg:shadow-none`} style={{ borderColor: '#E4E7EC' }}>
+        <div className={`${mobileLibraryOpen ? 'absolute inset-y-0 left-0 z-40 flex w-[min(22rem,92vw)] shadow-2xl' : 'hidden'} bg-white border-r flex-col flex-shrink-0 lg:static lg:w-[242px] 2xl:w-[274px] lg:shadow-none ${desktopLibraryOpen ? 'lg:flex' : 'lg:hidden'}`} style={{ borderColor: '#E4E7EC' }}>
 
           {/* Tabs bibliothèque */}
           <div className="flex items-center border-b" style={{ borderColor: '#E4E7EC' }}>
@@ -1941,11 +2016,15 @@ void openModuleAssessment;
 
                   {!locked && !assessmentWorkspace && (
                     <StudioBlankPageComposer
-                      key={currentLesson.id}
-                      draftKey={currentLesson.id}
+                      ref={proseComposerRef}
+                      key={`${currentLesson.id}:${lastContentBlock?.id ?? 'blank'}`}
+                      draftKey={`${currentLesson.id}:${lastContentBlock?.id ?? 'blank'}`}
+                      initialHtml={String(trailingProse?.content_json?.html ?? trailingProse?.content_json?.content ?? trailingProse?.content_json?.text ?? '')}
+                      blockId={trailingProse?.id}
                       onCommit={commitPageParagraph}
+                      onDelete={deleteBlock}
                       onInsertBlock={async type => {
-                        const created = await addBlock(type, insertionSlot ?? undefined);
+                        const created = await addBlock(type, insertionSlot ?? undefined, true);
                         if (created) setInsertionSlot(null);
                         return created;
                       }}
@@ -1968,7 +2047,7 @@ void openModuleAssessment;
                             }
                           }}
                           className="min-w-0 flex-1 border-0 bg-transparent px-1 py-2 text-sm outline-none"
-                          placeholder="Ajouter un bloc : texte, image, QCM, tableau…"
+                          placeholder="Ajouter un média, une activité ou une évaluation…"
                           aria-label="Ajouter rapidement un bloc"
                         />
                         <button type="button" onClick={() => setMobileLibraryOpen(true)} className="rounded-lg border px-2.5 py-1.5 text-xs font-semibold" style={{ borderColor: '#E4E7EC', color: '#002050' }}>Tous les blocs</button>
@@ -2040,7 +2119,7 @@ void openModuleAssessment;
         </div>
 
         {/* ── COLONNE DROITE : Réglages ou Aperçu ─────── */}
-        {(selectedBlock || showPreview || showAI || !inspectorCollapsed) && (
+        {(showPreview || showAI || !inspectorCollapsed) && (
           <div className={`${selectedBlock || showPreview || showAI ? 'absolute inset-0 z-50' : 'hidden'} flex-col border-l bg-white md:static md:flex md:w-[315px] md:max-w-[30%] md:flex-shrink-0`}  style={{ borderColor: '#E4E7EC' }}>
 
             {!selectedBlock && !showPreview && !showAI && <div className="flex h-full flex-col">
