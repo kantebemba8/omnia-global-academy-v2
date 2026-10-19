@@ -3,7 +3,7 @@
  * live Tiptap history must not be replayed against a reloaded lesson.
  */
 export type StudioUndoCommand =
-  | { kind: 'prose'; lessonId: string; key: string; at: number }
+  | { kind: 'prose'; lessonId: string; key: string; before?: string; after?: string; at: number }
   | { kind: 'content'; lessonId: string; blockId: string; before: Record<string, unknown>; after: Record<string, unknown>; at: number }
   | { kind: 'order'; lessonId: string; before: string[]; after: string[]; at: number }
   | { kind: 'settings'; lessonId: string; blockId: string; before: Record<string, unknown>; after: Record<string, unknown>; at: number }
@@ -18,6 +18,9 @@ export function createStudioUndoLedger(limit = 60) {
       // One typing burst is one undo step. Distinct actions retain their exact order.
       if (last?.kind === 'prose' && command.kind === 'prose' && last.key === command.key
           && last.lessonId === command.lessonId && command.at - last.at < 900) {
+        // The ledger owns the exact text snapshots. Tiptap's local history may be
+        // rebuilt when a segment is saved or its parent block is reloaded.
+        if (command.after !== undefined) last.after = command.after;
         last.at = command.at;
       } else if (last?.kind === 'content' && command.kind === 'content'
           && last.blockId === command.blockId && last.lessonId === command.lessonId

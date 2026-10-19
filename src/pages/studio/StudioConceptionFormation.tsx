@@ -1234,7 +1234,7 @@ void openModuleAssessment;
       const response = await api('history_restore_block', { course_id: course.id,
         restore_receipt: command.receipt });
       if (!response.success) {
-        showToast(response.message || response.error || 'Restauration du bloc refusée par le serveur.', 'error'); return false;
+        showToast(`Rétablir impossible : ${response.message || response.error || 'reçu de restauration refusé'}. Le bloc reste conservé côté serveur selon la dernière action confirmée.`, 'error'); return false;
       }
       command.receipt = undefined;
     }
@@ -1267,8 +1267,16 @@ void openModuleAssessment;
         case 'prose': {
           const editor = proseComposerRefs.current.get(command.key);
           if (!editor) { showToast('Éditeur indisponible : impossible de rejouer cette modification.', 'error'); break; }
-          success = direction === 'undo' ? editor.undo() : editor.redo();
-          if (success) success = await editor.flush();
+          if (command.before !== undefined && command.after !== undefined) {
+            const expected = direction === 'undo' ? command.after : command.before;
+            const target = direction === 'undo' ? command.before : command.after;
+            success = await editor.applyHistoryHtml(expected, target);
+            if (!success) showToast('Le texte a changé ou la sauvegarde a échoué. Historique conservé pour éviter un écrasement.', 'error');
+          } else {
+            // Backward-compatible path for any earlier in-memory command.
+            success = direction === 'undo' ? editor.undo() : editor.redo();
+            if (success) success = await editor.flush();
+          }
           break;
         }
         case 'content': success = await replaySpecialistContent(command, direction); break;
@@ -1293,7 +1301,8 @@ void openModuleAssessment;
     const bounds = e.currentTarget.getBoundingClientRect();
     const slot = targetIdx + (e.clientY >= bounds.top + bounds.height / 2 ? 1 : 0);
     setDragOverSlot(null);
-    await addBlock(incomingType, slot);
+    const added = await addBlock(incomingType, slot);
+    if (added) { setInsertionSlot(null); setMobileLibraryOpen(false); }
   }
 
   async function onDndReorder(event: DragEndEvent) {
@@ -1850,7 +1859,7 @@ void openModuleAssessment;
                         {groupBlocks.map(def => (
                           <button key={def.type} type="button" disabled={locked || !currentLesson}
                             draggable={!locked && !!currentLesson}
-                            onClick={async () => { await addBlock(def.type, insertionSlot ?? undefined); setInsertionSlot(null); setMobileLibraryOpen(false); }}
+                            onClick={async () => { const added = await addBlock(def.type, insertionSlot ?? undefined); if (added) { setInsertionSlot(null); setMobileLibraryOpen(false); } }}
                             onDragStart={event => { event.dataTransfer.setData('application/x-omnia-block', def.type); event.dataTransfer.effectAllowed = 'copy'; }}
                             onDragEnd={() => setDragOverSlot(null)}
                             title={`Ajouter ${def.label}`} aria-label={`Ajouter le bloc ${def.label}`}
@@ -2382,7 +2391,7 @@ void openModuleAssessment;
                                 initialHtml={String(block.content_json?.html ?? block.content_json?.content ?? block.content_json?.text ?? '')}
                                 blockId={block.id}
                                 onActivate={() => { activeProseKey.current = block.id; }}
-                                onEdit={() => { if (currentLesson && !historyReplayInFlight.current) rememberAction({kind:'prose', lessonId:currentLesson.id, key:block.id, at:Date.now()}); }}
+                                onEdit={(before, after) => { if (currentLesson && !historyReplayInFlight.current) rememberAction({kind:'prose', lessonId:currentLesson.id, key:block.id, before, after, at:Date.now()}); }}
                                 onCommit={commitPageParagraph}
                                 onDelete={deleteBlock}
                                 onInsertBlock={async type => addBlock(type, idx + 1, block.id)}
@@ -2422,7 +2431,7 @@ void openModuleAssessment;
                     <StudioBlankPageComposer
                       ref={instance => registerProseComposer('tail', instance)}
                       onActivate={() => { activeProseKey.current = 'tail'; }}
-                      onEdit={() => { if (currentLesson && !historyReplayInFlight.current) rememberAction({kind:'prose', lessonId:currentLesson.id, key:'tail', at:Date.now()}); }}
+                      onEdit={(before, after) => { if (currentLesson && !historyReplayInFlight.current) rememberAction({kind:'prose', lessonId:currentLesson.id, key:'tail', before, after, at:Date.now()}); }}
                       key={`${currentLesson.id}:${lastContentBlock?.id ?? 'blank'}`}
                       draftKey={`${currentLesson.id}:${lastContentBlock?.id ?? 'blank'}`}
                       initialHtml={String(trailingProse?.content_json?.html ?? trailingProse?.content_json?.content ?? trailingProse?.content_json?.text ?? '')}
@@ -2630,7 +2639,7 @@ void openModuleAssessment;
                       setAiAction(action); setAiInput(prompt); setShowAI(true); setSelectedBlock(null);
                     }}
                     onRemoveResource={() => removeBlockResource(selectedBlock)}
-                    onBeforeUpload={flushBlockUpdates}
+                    onBeforeUpload={async () => { if (!await flushProseComposer()) throw new Error('Texte non enregistré : import du média interrompu.'); await flushBlockUpdates(); }}
                     onResourceUploaded={(savedBlock) => {
                       // upload_block_file has already written the authoritative resource on the server.
                       // Do not queue a second update_block with a short-lived signed URL.
@@ -3641,7 +3650,7 @@ function BlockSettings({ block, locked, onUpdate, onAI, onRemoveResource, onBefo
       ))}
 
       {/* Upload image */}
-      {block.block_type === 'image' && (
+      {block.block_type === 'image' && (c.source || 'upload') === 'upload' && (
         <div className="space-y-3">
           {!block.file_name ? (
             <label onDragEnter={e=>{e.preventDefault();if(!locked&&!uploading)setFileDragActive(true);}} onDragOver={e=>{e.preventDefault();e.dataTransfer.dropEffect=(locked||uploading)?'none':'copy';}} onDragLeave={e=>{e.preventDefault();setFileDragActive(false);}} onDrop={e=>handleMediaDrop(e,'image')} className={`flex flex-col items-center justify-center p-6 rounded-xl border-2 border-dashed cursor-pointer transition-all ${fileDragActive?'border-[#BF8813] bg-amber-50':''} ${locked ? 'opacity-50 cursor-not-allowed' : 'hover:border-[#002050]'}`}

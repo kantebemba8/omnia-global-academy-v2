@@ -19,7 +19,14 @@ vm.runInNewContext(script,context,{timeout:1500});
  const receipt=await result.exports.signBlockHistory(payload);
  const decoded=await result.exports.verifyBlockHistory(receipt);
  assert.equal(decoded.userId,'u');assert.equal(decoded.block.content_json.title,'À retenir');
- assert.equal(await result.exports.verifyBlockHistory(receipt.slice(0,-1)+(receipt.endsWith('0')?'1':'0')),null);
+ // Tamper a SIGNIFICANT Base64URL character: changing the final character can
+ // alter only unused padding bits and leave the decoded HMAC bytes identical.
+ const [body, signature] = receipt.split('.');
+ assert.ok(body && signature, 'signed receipt has payload and signature');
+ const alteredSignature = (signature[0] === 'A' ? 'B' : 'A') + signature.slice(1);
+ assert.notEqual(alteredSignature, signature);
+ assert.equal(await result.exports.verifyBlockHistory(`${body}.${alteredSignature}`),null,
+   'a cryptographically changed signature must be rejected');
  const expired=await result.exports.signBlockHistory({...payload,until:Date.now()-1});
  assert.equal(await result.exports.verifyBlockHistory(expired),null);
  console.log('STUDIO_HISTORY_RECEIPT_HMAC_PASS');

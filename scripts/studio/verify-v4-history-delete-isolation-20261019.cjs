@@ -33,8 +33,8 @@ check('Redo uses chronological ledger', historySection.includes('ledger.complete
 check('Undo and redo route specialist history', historySection.includes("case 'content': success = await replaySpecialistContent"));
 check('Specialist preview routed to history', builder.includes('recordSpecialistBlockEdit(block.id, content_json)'));
 check('Inspector content routed to history', builder.includes('recordSpecialistBlockEdit(selectedBlock.id, updates.content_json)'));
-check('Prose changes stored in same chronological ledger', builder.includes("kind:'prose'") && composer.includes('onEdit?.(); latestDraft.current = html'));
-check('Prose undo and redo stay with Tiptap', historySection.includes('editor.undo()') && historySection.includes('editor.redo()'));
+check('Prose changes stored in same chronological ledger', builder.includes("kind:'prose'") && composer.includes('onEdit?.(before, html); latestDraft.current = html'));
+check('Prose undo and redo use saved text snapshots and retain Tiptap fallback', historySection.includes('editor.applyHistoryHtml(expected, target)') && historySection.includes('editor.undo()') && historySection.includes('editor.redo()'));
 check('Delete asks confirmation', deleteSection.includes('window.confirm('));
 check('Delete awaits pending writes', deleteSection.includes('await flushBlockUpdates()'));
 check('Delete uses reversible server operation first', deleteSection.includes("api('history_remove_block'"));

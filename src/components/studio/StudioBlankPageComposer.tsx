@@ -11,6 +11,7 @@ export type StudioProseComposerHandle = {
   hasUnsaved: () => boolean;
   undo: () => boolean;
   redo: () => boolean;
+  applyHistoryHtml: (expected: string, target: string) => Promise<boolean>;
 };
 type Choice = { type: string; label: string };
 type Props = {
@@ -23,7 +24,7 @@ type Props = {
   onInsertBlock: (type: string) => Promise<boolean>;
   onDelete?: (blockId: string) => Promise<boolean>;
   onActivate?: () => void;
-  onEdit?: () => void;
+  onEdit?: (before: string, after: string) => void;
 };
 
 function readable(html: string) {
@@ -105,11 +106,46 @@ const StudioBlankPageComposer = forwardRef<StudioProseComposerHandle, Props>(fun
     try { return await operation; }
     finally { if (busyPromise.current === operation) busyPromise.current = null; }
   }
+  // Replay a snapshot from the unified ledger rather than depending on the
+  // ProseMirror history after a row save, an autosave or a block-list reload.
+  // The stable row is updated through the same server path as a normal save.
+  async function applyHistoryHtml(expected: string, target: string): Promise<boolean> {
+    if (busyPromise.current) {
+      if (!await busyPromise.current) return false;
+    }
+    if (latestDraft.current !== expected || recoveryPending) return false;
+    setBusy(true);
+    setStatus('saving');
+    const operation = (async (): Promise<boolean> => {
+      try {
+        // Undoing the first unsaved keystroke must not create an empty row.
+        let id: string | false | undefined = savedBlockId.current;
+        if (id || readable(target).trim() || /<img\b/i.test(target)) {
+          id = await onCommitRef.current(target, savedBlockId.current);
+          if (!id) { setStatus('error'); return false; }
+        }
+        if (id) savedBlockId.current = id;
+        savedHtml.current = target;
+        latestDraft.current = target;
+        setDraft(target);
+        try { sessionStorage.removeItem(storageKey); } catch { /* optional */ }
+        setStatus('saved');
+        return true;
+      } catch {
+        setStatus('error');
+        return false;
+      } finally { setBusy(false); }
+    })();
+    busyPromise.current = operation;
+    try { return await operation; }
+    finally { if (busyPromise.current === operation) busyPromise.current = null; }
+  }
   useImperativeHandle(ref, () => ({
     flush,
     hasUnsaved: () => latestDraft.current !== savedHtml.current,
     undo: () => editorRef.current?.undo() ?? false,
     redo: () => editorRef.current?.redo() ?? false,
+    applyHistoryHtml,
   }));
 
   useEffect(() => {
@@ -161,7 +197,7 @@ const StudioBlankPageComposer = forwardRef<StudioProseComposerHandle, Props>(fun
       <button type="button" onClick={restoreLocalDraft} className="rounded border border-amber-300 bg-white px-3 py-1.5 font-semibold">Restaurer le brouillon</button>
       <button type="button" onClick={discardLocalDraft} className="rounded border border-slate-300 bg-white px-3 py-1.5">Garder la version serveur</button>
     </div>}
-    <StudioRichTextEditor ref={editorRef} onEditorFocus={onActivate} value={draft} onChange={html => { onEdit?.(); latestDraft.current = html; setDraft(html); setRecoveryPending(false); setStatus('pending'); }} locked={busy}
+    <StudioRichTextEditor ref={editorRef} onEditorFocus={onActivate} value={draft} onChange={html => { const before = latestDraft.current; if (before !== html) onEdit?.(before, html); latestDraft.current = html; setDraft(html); setRecoveryPending(false); setStatus('pending'); }} locked={busy}
       language={language} plainPage onEditorBlur={() => { if (!busyPromise.current) void flush(); }}
       placeholder="Commencez à écrire ici, ou tapez / pour insérer un bloc…" />
     {slash && matching.length > 0 && <div role="listbox" aria-label="Commandes de blocs" className="mt-2 max-h-52 overflow-y-auto rounded-xl border border-slate-200 bg-white p-2 shadow-lg">
