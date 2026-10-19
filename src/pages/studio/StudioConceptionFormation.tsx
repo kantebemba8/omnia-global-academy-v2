@@ -256,10 +256,17 @@ export default function StudioConceptionFormation() {
   const [currentModule, setCurrentModule] = useState<Module | null>(null);
   const [currentLesson, setCurrentLesson] = useState<Lesson | null>(null);
   const [blocks, setBlocks] = useState<Block[]>([]);
-  const proseComposerRef = useRef<StudioProseComposerHandle | null>(null);
+  // Each prose segment keeps its own stable historical row. A map ensures that
+  // navigation/Save flushes ALL active segments, not only the final blank page.
+  const proseComposerRefs = useRef<Map<string, StudioProseComposerHandle>>(new Map());
+  const activeProseKey = useRef('tail');
+  const registerProseComposer = (key: string, instance: StudioProseComposerHandle | null) => {
+    if (instance) proseComposerRefs.current.set(key, instance);
+    else proseComposerRefs.current.delete(key);
+  };
   useEffect(() => {
     const warn = (event: BeforeUnloadEvent) => {
-      if (proseComposerRef.current?.hasUnsaved()) { event.preventDefault(); event.returnValue = ''; }
+      if ([...proseComposerRefs.current.values()].some(composer => composer.hasUnsaved())) { event.preventDefault(); event.returnValue = ''; }
     };
     window.addEventListener('beforeunload', warn);
     return () => window.removeEventListener('beforeunload', warn);
@@ -527,6 +534,7 @@ export default function StudioConceptionFormation() {
 
   async function runQualityCheck() {
     if (!course?.id) return;
+    if (!await flushProseComposer()) return;
     try { await flushBlockUpdates(); } catch { showToast('Enregistrement des blocs incomplet : contrôle qualité interrompu.', 'error'); return; }
     setShowChecklist(true);
     const data = await api('validate_checklist', { course_id: course.id, phase: 'quality' });
@@ -635,9 +643,30 @@ export default function StudioConceptionFormation() {
 
   // Leaving a lesson never silently drops a pending prose write.
   async function flushProseComposer() {
-    const complete = await (proseComposerRef.current?.flush() ?? Promise.resolve(true));
-    if (!complete) showToast('La rédaction de la leçon n’a pas été enregistrée. Corrigez l’erreur avant de continuer.', 'error');
-    return complete;
+    // Snapshot: saving a newly created tail block can remount its composer.
+    // Always complete the pending request before switching the lesson.
+    for (const composer of [...proseComposerRefs.current.values()]) {
+      if (!await composer.flush()) {
+        showToast('La rédaction de la leçon n’a pas été enregistrée. Corrigez l’erreur avant de continuer.', 'error');
+        return false;
+      }
+    }
+    return true;
+  }
+
+  async function leaveLessonFor(view: 'formation' | 'publication' | 'empty-module', mod?: Module): Promise<boolean> {
+    if (!await flushProseComposer()) return false;
+    try { await flushBlockUpdates(); }
+    catch { showToast('Enregistrement incomplet : navigation annulée.', 'error'); return false; }
+    setCurrentModule(view === 'empty-module' ? mod ?? null : null);
+    setCurrentLesson(null);
+    setBlocks([]);
+    setSelectedBlock(null);
+    setSelectedBlockDef(null);
+    setAssessmentWorkspace(null);
+    setShowFinalization(view === 'publication');
+    setCurriculumOpen(false);
+    return true;
   }
 
   // ─── Sélection leçon ──────────────────────────────────────
@@ -757,6 +786,8 @@ void openModuleAssessment;
   async function deleteLesson(mod: Module, lesson: Lesson) {
     if (!course?.id || locked) return;
     if (!window.confirm(`Supprimer « ${lesson.title} » et tous ses contenus ? Cette action est définitive pour ce brouillon.`)) return;
+    if (!await flushProseComposer()) return;
+    try { await flushBlockUpdates(); } catch { showToast('Sauvegarde incomplète : suppression annulée.', 'error'); return; }
     const data = await api('delete_lesson', { course_id: course.id, lesson_id: lesson.id });
     if (!data.success) { showToast(data.message || data.error || 'Suppression impossible.', 'error'); return; }
     const nextModule = { ...mod, lessons: (mod.lessons || []).filter(l => l.id !== lesson.id) };
@@ -768,6 +799,8 @@ void openModuleAssessment;
   async function deleteModule(mod: Module) {
     if (!course?.id || locked || mod.is_intro || mod.is_conclusion || mod.is_final_exam) return;
     if (!window.confirm(`Supprimer le module « ${mod.title} », ses leçons, sa synthèse et tous leurs contenus ?`)) return;
+    if (!await flushProseComposer()) return;
+    try { await flushBlockUpdates(); } catch { showToast('Sauvegarde incomplète : suppression annulée.', 'error'); return; }
     const data = await api('delete_module', { course_id: course.id, module_id: mod.id });
     if (!data.success) { showToast(data.message || data.error || 'Suppression du module impossible.', 'error'); return; }
     setModules(ms => ms.filter(m => m.id !== mod.id));
@@ -820,7 +853,7 @@ void openModuleAssessment;
     const content = { html, content: html, text: stripHtml(html) };
     if (blockId) {
       const original = blocks.find(block => block.id === blockId && block.block_type === 'text');
-      if (!original) { showToast('Bloc texte introuvable. Rechargez la leçon avant d’enregistrer.', 'error'); return false; }
+      if (!original || original.content_json?.__legacy_collection_source) { showToast('Bloc texte historique indisponible pour cette édition. Son contenu est conservé.', 'error'); return false; }
       const content_json = { ...original.content_json, ...content };
       try {
         await queueBlockUpdate(blockId, { content_json });
@@ -1122,23 +1155,31 @@ void openModuleAssessment;
   }
 
   async function goToQualityIssue(issue: { target?: string; lesson_id?: string; module_id?: string; block_id?: string }) {
+    if (!await flushProseComposer()) return;
+    try { await flushBlockUpdates(); }
+    catch { showToast('Enregistrement incomplet : navigation annulée.', 'error'); return; }
     setShowChecklist(false);
-    if (issue.target === 'finalization') { setShowFinalization(true); setCurrentModule(null); setCurrentLesson(null); setBlocks([]); setSelectedBlock(null); return; }
-    if (issue.target === 'information') { setShowFinalization(false); setCurrentModule(null); setCurrentLesson(null); setBlocks([]); setSelectedBlock(null); return; }
+    if (issue.target === 'finalization') { await leaveLessonFor('publication'); return; }
+    if (issue.target === 'information') { await leaveLessonFor('formation'); return; }
     const module = modules.find(m => m.id === issue.module_id || m.lessons?.some(l => l.id === issue.lesson_id));
     if (!module) return;
     if (issue.lesson_id) {
       const lesson = module.lessons?.find(l => l.id === issue.lesson_id);
       if (lesson) {
-        setShowFinalization(false); setCurrentModule(module); setCurrentLesson(lesson); setSelectedBlock(null); setBlocks([]);
-        const data = await api('get_blocks', { lesson_id: lesson.id });
-        const nextBlocks = data.success ? (data.blocks || []) : [];
-        setBlocks(nextBlocks);
-        if (issue.block_id) setSelectedBlock(nextBlocks.find((block: Block) => block.id === issue.block_id) || null);
+        if (!await selectLesson(module, lesson)) return;
+        setShowFinalization(false);
+        // Never translate a failed get_blocks response to an empty collection.
+        if (issue.block_id) {
+          const next = await api('get_blocks', { lesson_id: lesson.id });
+          const normalized = next.success ? normalizeStudioBlocks(next) : null;
+          if (!normalized) { showToast('Impossible de sélectionner le bloc ; contenu existant conservé.', 'error'); return; }
+          const match = (normalized as unknown as Block[]).find(item => item.id === issue.block_id);
+          if (match) setSelectedBlock(match);
+        }
         return;
       }
     }
-    setShowFinalization(false); setCurrentModule(module); setCurrentLesson(null); setBlocks([]); setSelectedBlock(null);
+    await leaveLessonFor('empty-module', module);
   }
 
   async function runQualityWritingReview() {
@@ -1356,7 +1397,9 @@ void openModuleAssessment;
 
       {/* ── BARRE SUPÉRIEURE ─────────────────────────────── */}
       <div className="bg-white border-b flex items-center gap-1 px-2 h-14 flex-shrink-0 sm:px-4" style={{ borderColor: '#E4E7EC' }}>
-        <button onClick={() => {
+        <button onClick={async () => {
+          if (!await flushProseComposer()) return;
+          try { await flushBlockUpdates(); } catch { showToast('Enregistrement incomplet : retour annulé.', 'error'); return; }
           const back = window.location.pathname.includes('/admin/') ? '/admin/studio-mes-formations'
             : window.location.pathname.includes('/partner/') ? '/partner/dashboard'
             : window.location.pathname.includes('/structure/') ? '/structure/formations'
@@ -1407,6 +1450,12 @@ void openModuleAssessment;
 
         {/* Actions */}
         <div className="flex items-center gap-2 flex-shrink-0">
+          <button type="button" onMouseDown={event => event.preventDefault()} onClick={() => { if (!proseComposerRefs.current.get(activeProseKey.current)?.undo()) showToast('Cliquez dans une zone de texte pour annuler une modification rédactionnelle.', 'info'); }}
+            disabled={locked || !currentLesson || !!assessmentWorkspace} title="Annuler une modification du texte actif (pas les blocs déjà enregistrés)" aria-label="Annuler le texte"
+            className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm font-semibold text-[#002050] disabled:opacity-40">↶</button>
+          <button type="button" onMouseDown={event => event.preventDefault()} onClick={() => { if (!proseComposerRefs.current.get(activeProseKey.current)?.redo()) showToast('Aucune modification rédactionnelle à rétablir dans cette zone.', 'info'); }}
+            disabled={locked || !currentLesson || !!assessmentWorkspace} title="Rétablir une modification du texte actif" aria-label="Rétablir le texte"
+            className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm font-semibold text-[#002050] disabled:opacity-40">↷</button>
           <button type="button" onClick={() => setCurriculumOpen(value => !value)} aria-expanded={curriculumOpen}
             className={`flex items-center gap-1 rounded-lg border px-3 py-1.5 text-xs font-semibold ${curriculumOpen ? 'border-[#BF8813] bg-amber-50 text-[#002050]' : 'border-slate-200 text-[#002050]'}`}>
             <Layers size={14} /> Plan
@@ -1584,27 +1633,27 @@ void openModuleAssessment;
                 <button type="button" onClick={() => setCurriculumOpen(false)} className="rounded-lg border border-slate-200 p-1.5 text-slate-500" aria-label="Fermer le plan"><X size={16}/></button>
               </div>
               <div className="mb-3 flex items-center gap-2 overflow-x-auto pb-1">
-                <button type="button" onClick={() => { setShowFinalization(false); setCurrentModule(null); setCurrentLesson(null); setBlocks([]); setSelectedBlock(null); setAssessmentWorkspace(null); setCurriculumOpen(false); }}
+                <button type="button" onClick={() => { void leaveLessonFor('formation'); }}
                   className={`shrink-0 rounded-lg px-3 py-2 text-sm font-semibold ${!currentModule && !showFinalization ? 'bg-[#002050] text-white' : 'text-slate-600 hover:bg-slate-100'}`}>
                   Formation
                 </button>
                 {builderModules.map(mod => (
                   <button key={mod.id} type="button" aria-current={currentModule?.id === mod.id ? 'page' : undefined}
-                    onClick={() => { setShowFinalization(false); if (mod.lessons?.[0]) void selectLesson(mod, mod.lessons[0]); else { setCurrentModule(mod); setCurrentLesson(null); setBlocks([]); setAssessmentWorkspace(null); } }}
+                    onClick={() => { if (mod.lessons?.[0]) void selectLesson(mod, mod.lessons[0]).then(ok => { if (ok) setShowFinalization(false); }); else void leaveLessonFor('empty-module', mod); }}
                     className={`shrink-0 rounded-lg px-3 py-2 text-sm font-semibold transition-colors ${currentModule?.id === mod.id ? 'bg-[#002050] text-white' : 'text-slate-600 hover:bg-slate-100'}`}>
                     {mod.title}
                   </button>
                 ))}
                 {!locked && <button type="button" onClick={() => void addModule()} className="shrink-0 rounded-lg border border-dashed border-[#BF8813] px-3 py-2 text-sm font-semibold text-amber-800"><Plus size={14} className="mr-1 inline"/>Module</button>}
                 {endingSections.map(mod => <button key={mod.id} type="button"
-                  onClick={() => { setShowFinalization(false); if (mod.lessons?.[0]) void selectLesson(mod, mod.lessons[0]); }}
+                  onClick={() => { if (mod.lessons?.[0]) void selectLesson(mod, mod.lessons[0]).then(ok => { if (ok) setShowFinalization(false); }); }}
                   className={`shrink-0 rounded-lg px-3 py-2 text-sm font-semibold ${currentModule?.id === mod.id ? 'bg-[#002050] text-white' : 'text-slate-600 hover:bg-slate-100'}`}>{sectionTypeOf(mod) === 'conclusion' ? 'Conclusion' : 'Examen final'}</button>)}
                 {!endingSections.some(mod => sectionTypeOf(mod) === 'conclusion') && !locked &&
                   <button type="button" onClick={async () => { if (!course.id) { const created = await ensureCourseCreated(); if (!created) return; } const d = await api('ensure_special_sections', { course_id: courseRef.current.id, include_final_exam: false }); if (d.success) await reloadCourse(courseRef.current.id); else showToast(d.message || d.error || 'Création impossible', 'error'); }} className="shrink-0 rounded-lg border border-dashed px-3 py-2 text-sm font-medium text-[#002050]"><Plus size={14} className="mr-1 inline"/>Conclusion</button>}
                 {!endingSections.some(mod => sectionTypeOf(mod) === 'final_exam') && !locked &&
                   <button type="button" onClick={async () => { if (!course.id) { const created = await ensureCourseCreated(); if (!created) return; } const d = await api('ensure_special_sections', { course_id: courseRef.current.id, include_final_exam: true }); if (d.success) { await reloadCourse(courseRef.current.id); showToast('Examen final ajouté'); } else showToast(d.message || d.error || 'Création impossible', 'error'); }} className="shrink-0 rounded-lg border border-dashed border-amber-300 px-3 py-2 text-sm font-semibold text-amber-800"><Plus size={14} className="mr-1 inline"/>Examen final</button>}
                 <button type="button" onClick={runQualityCheck} className="ml-auto shrink-0 rounded-lg border px-3 py-2 text-sm font-medium text-emerald-700"><CheckCircle size={14} className="mr-1 inline"/>Qualité</button>
-                <button type="button" onClick={() => { setShowFinalization(true); setCurrentModule(null); setCurrentLesson(null); setBlocks([]); setSelectedBlock(null); setAssessmentWorkspace(null); setCurriculumOpen(false); }} className={`shrink-0 rounded-lg px-3 py-2 text-sm font-semibold ${showFinalization ? 'bg-[#002050] text-white' : 'border text-[#002050]'}`}><ShieldCheck size={14} className="mr-1 inline"/>Publication</button>
+                <button type="button" onClick={() => { void leaveLessonFor('publication'); }} className={`shrink-0 rounded-lg px-3 py-2 text-sm font-semibold ${showFinalization ? 'bg-[#002050] text-white' : 'border text-[#002050]'}`}><ShieldCheck size={14} className="mr-1 inline"/>Publication</button>
               </div>
               {currentModule && !showFinalization && (() => {
                 const mod = modules.find(m => m.id === currentModule.id) || currentModule;
@@ -1627,7 +1676,7 @@ void openModuleAssessment;
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                     {(mod.lessons || []).map(lesson => <div key={lesson.id} className="inline-flex items-center rounded-lg border border-slate-200 bg-white p-0.5">
-                      <button type="button" onClick={() => { setShowFinalization(false); void selectLesson(mod, lesson); }} className={`rounded-md px-3 py-2 text-sm ${currentLesson?.id === lesson.id && !assessmentWorkspace ? 'bg-[#002050] font-semibold text-white' : 'font-medium text-slate-700 hover:bg-slate-50'}`}>{stageTypeOf(lesson) === 'module_summary' ? 'Synthèse' : lesson.title}</button>
+                      <button type="button" onClick={() => { void selectLesson(mod, lesson).then(ok => { if (ok) setShowFinalization(false); }); }} className={`rounded-md px-3 py-2 text-sm ${currentLesson?.id === lesson.id && !assessmentWorkspace ? 'bg-[#002050] font-semibold text-white' : 'font-medium text-slate-700 hover:bg-slate-50'}`}>{stageTypeOf(lesson) === 'module_summary' ? 'Synthèse' : lesson.title}</button>
                       {/* No redundant Évaluation chip beside each lesson. */}
                       {stage === 'module' && !locked && <div className="relative" data-oga-stage-menu>
                         <button type="button" aria-label={`Actions de ${lesson.title}`} aria-haspopup="menu" aria-expanded={stageMenuId === lesson.id}
@@ -1824,7 +1873,7 @@ void openModuleAssessment;
                   {finalizationCheck && !finalizationCheck.valid && <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3"><p className="text-xs font-bold text-amber-900">Éléments à compléter avant publication</p><ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-amber-800">{finalizationCheck.errors.map((message,index)=><li key={index}>{message}</li>)}</ul></div>}
                   {advancedMode && course.id && course.studio_status && !['draft','changes_requested'].includes(String(course.studio_status)) && <div className="mt-4"><StudioQualityStatusPanel courseId={course.id} /></div>}
                   <div className="mt-4 flex flex-col-reverse gap-2 border-t pt-4 sm:flex-row sm:items-center sm:justify-between" style={{borderColor:'#EEF1F5'}}>
-                    <button onClick={()=>{setShowFinalization(false);setCurrentModule(null);setCurrentLesson(null);}} className="flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium" style={{borderColor:'#E4E7EC',color:'#374151'}}><ChevronLeft size={15}/>Retour aux informations</button>
+                    <button onClick={() => { void leaveLessonFor('formation'); }} className="flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium" style={{borderColor:'#E4E7EC',color:'#374151'}}><ChevronLeft size={15}/>Retour aux informations</button>
                     <button onClick={submit} disabled={submitting||workflowLocked} className="flex items-center justify-center gap-2 rounded-lg px-5 py-2 text-sm font-semibold text-white disabled:opacity-50" style={{background:'#BF8813'}}><Send size={15}/>{submitting?'Vérification…':course.creator_context === 'super_admin' ? 'Publier la formation' : 'Soumettre la formation'}</button>
                   </div>
                 </div>
@@ -1925,6 +1974,9 @@ void openModuleAssessment;
                     const def = BLOCK_DEFS.find(d => d.type === block.block_type);
                     const isSelected = selectedBlock?.id === block.id;
                     const proseBlock = ['text', 'heading', 'subheading'].includes(block.block_type);
+                    const inlineProse = !locked && !assessmentWorkspace && block.block_type === 'text'
+                      && !block.content_json?.__legacy_collection_source
+                      && !block.content_json?.cloudflare_stream_uid;
                     return (
                       <StudioSortableBlock key={block.id} id={block.id} disabled={locked || reorderInFlight.current}
                         onPaletteDragOver={e => onDragOver(e, idx)}
@@ -1981,7 +2033,20 @@ void openModuleAssessment;
                                 <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-all rounded bg-white p-2 text-[11px]">{JSON.stringify(block.content_json.__legacy_collection_source, null, 2)}</pre>
                               </details>
                             )}
-                            <BuilderBlockBoundary blockType={block.block_type} block={block} locked={locked} onFallbackChange={content_json => {
+                            {inlineProse ? (
+                              <StudioBlankPageComposer
+                                ref={instance => registerProseComposer(block.id, instance)}
+                                draftKey={`${currentLesson.id}:${block.id}`}
+                                initialHtml={String(block.content_json?.html ?? block.content_json?.content ?? block.content_json?.text ?? '')}
+                                blockId={block.id}
+                                onActivate={() => { activeProseKey.current = block.id; }}
+                                onCommit={commitPageParagraph}
+                                onDelete={deleteBlock}
+                                onInsertBlock={async type => addBlock(type, idx + 1, true)}
+                                choices={visibleBlocks.map(choice => ({ type: choice.type, label: choice.label }))}
+                                language={course?.instruction_language || course?.language || 'fr'}
+                              />
+                            ) : <BuilderBlockBoundary blockType={block.block_type} block={block} locked={locked} onFallbackChange={content_json => {
                               setBlocks(bs => bs.map(b => b.id === block.id ? { ...b, content_json } : b));
                               if (isSelected) setSelectedBlock(b => b ? { ...b, content_json } : b);
                               void queueBlockUpdate(block.id, { content_json });
@@ -1995,7 +2060,7 @@ void openModuleAssessment;
                                 if (isSelected) setSelectedBlock(b => b ? { ...b, content_json } : b);
                                 await queueBlockUpdate(block.id, { content_json });
                               }} />
-                            </BuilderBlockBoundary>
+                            </BuilderBlockBoundary>}
                           </div>
                         </div>
                         {!locked && !assessmentWorkspace && (
@@ -2016,7 +2081,8 @@ void openModuleAssessment;
 
                   {!locked && !assessmentWorkspace && (
                     <StudioBlankPageComposer
-                      ref={proseComposerRef}
+                      ref={instance => registerProseComposer('tail', instance)}
+                      onActivate={() => { activeProseKey.current = 'tail'; }}
                       key={`${currentLesson.id}:${lastContentBlock?.id ?? 'blank'}`}
                       draftKey={`${currentLesson.id}:${lastContentBlock?.id ?? 'blank'}`}
                       initialHtml={String(trailingProse?.content_json?.html ?? trailingProse?.content_json?.content ?? trailingProse?.content_json?.text ?? '')}
@@ -2297,7 +2363,7 @@ void openModuleAssessment;
                 {qualityWritingSuggestions.length > 0 && <div className="mt-3 space-y-2">{qualityWritingSuggestions.map((item:any, index:number)=><div key={`${item.block_id||item.source||'text'}-${index}`} className="rounded-lg bg-white p-2 text-xs"><p className="font-semibold text-gray-800">{item.original || item.source || 'Suggestion'}</p>{item.replacement && <p className="mt-1 text-emerald-700">Proposition : {item.replacement}</p>}{item.reason && <p className="mt-1 text-gray-500">{item.reason}</p>}{item.lesson_id && <button type="button" onClick={() => goToQualityIssue({target:'lesson',lesson_id:item.lesson_id,module_id:item.module_id})} className="mt-1 font-semibold underline" style={{color:'#002050'}}>Voir le bloc</button>}</div>)}</div>}
               </div>
               {checklist.valid && (
-                <button onClick={() => { setShowChecklist(false); setShowFinalization(true); setCurrentModule(null); setCurrentLesson(null); setBlocks([]); setSelectedBlock(null); }}
+                <button onClick={() => { void leaveLessonFor('publication').then(ok => { if (ok) setShowChecklist(false); }); }}
                   className="w-full py-3 rounded-xl font-bold text-white mt-2"
                   style={{ background: '#BF8813' }}>
                   Continuer vers Finalisation

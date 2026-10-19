@@ -4,11 +4,13 @@
  * Existing legacy blocks remain independent and retain their metadata.
  */
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
-import StudioRichTextEditor from './StudioRichTextEditor';
+import StudioRichTextEditor, { type StudioRichTextEditorHandle } from './StudioRichTextEditor';
 
 export type StudioProseComposerHandle = {
   flush: () => Promise<boolean>;
   hasUnsaved: () => boolean;
+  undo: () => boolean;
+  redo: () => boolean;
 };
 type Choice = { type: string; label: string };
 type Props = {
@@ -20,6 +22,7 @@ type Props = {
   onCommit: (html: string, blockId?: string) => Promise<string | false>;
   onInsertBlock: (type: string) => Promise<boolean>;
   onDelete?: (blockId: string) => Promise<boolean>;
+  onActivate?: () => void;
 };
 
 function readable(html: string) {
@@ -30,12 +33,13 @@ function readable(html: string) {
 }
 
 const StudioBlankPageComposer = forwardRef<StudioProseComposerHandle, Props>(function StudioBlankPageComposer(
-  { language, draftKey, initialHtml, blockId, choices, onCommit, onInsertBlock, onDelete }, ref,
+  { language, draftKey, initialHtml, blockId, choices, onCommit, onInsertBlock, onDelete, onActivate }, ref,
 ) {
   const storageKey = `oga_studio_v4_unsent_text_${draftKey}`;
   const [draft, setDraft] = useState(() => {
     try { return sessionStorage.getItem(storageKey) ?? initialHtml; } catch { return initialHtml; }
   });
+  const editorRef = useRef<StudioRichTextEditorHandle | null>(null);
   const latestDraft = useRef(draft);
   latestDraft.current = draft;
   const savedHtml = useRef(initialHtml);
@@ -94,7 +98,12 @@ const StudioBlankPageComposer = forwardRef<StudioProseComposerHandle, Props>(fun
     try { return await operation; }
     finally { if (busyPromise.current === operation) busyPromise.current = null; }
   }
-  useImperativeHandle(ref, () => ({ flush, hasUnsaved: () => latestDraft.current !== savedHtml.current }));
+  useImperativeHandle(ref, () => ({
+    flush,
+    hasUnsaved: () => latestDraft.current !== savedHtml.current,
+    undo: () => editorRef.current?.undo() ?? false,
+    redo: () => editorRef.current?.redo() ?? false,
+  }));
 
   useEffect(() => {
     if (draft === savedHtml.current || slash || status === 'error' || busy) return;
@@ -128,7 +137,7 @@ const StudioBlankPageComposer = forwardRef<StudioProseComposerHandle, Props>(fun
   }
 
   return <section aria-label="Rédaction directe de la leçon" className="mt-3 mb-2 rounded-xl bg-white px-1 py-2">
-    <StudioRichTextEditor value={draft} onChange={html => { latestDraft.current = html; setDraft(html); setStatus('pending'); }} locked={busy}
+    <StudioRichTextEditor ref={editorRef} onEditorFocus={onActivate} value={draft} onChange={html => { latestDraft.current = html; setDraft(html); setStatus('pending'); }} locked={busy}
       language={language} plainPage onEditorBlur={() => { if (!busyPromise.current) void flush(); }}
       placeholder="Commencez à écrire ici, ou tapez / pour insérer un bloc…" />
     {slash && matching.length > 0 && <div role="listbox" aria-label="Commandes de blocs" className="mt-2 max-h-52 overflow-y-auto rounded-xl border border-slate-200 bg-white p-2 shadow-lg">

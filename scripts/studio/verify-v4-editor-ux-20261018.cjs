@@ -16,7 +16,7 @@ check('Accessible searchable library with legible row buttons', builder.includes
 check('Central canvas wide and inspector closed by default', builder.includes('max-w-[1080px]') && builder.includes('useState(true);\n  const [collapsedBlockGroups'));
 check('Tiptap 3 rich editor retained', editor.includes("from '@tiptap/react'") && editor.includes('useEditor({') && editor.includes('EditorContent'));
 check('Tiptap extensions StarterKit, TableKit, Image preserved', editor.includes('StarterKit.configure') && editor.includes('TableKit') && editor.includes('Image.configure'));
-check('Rich editor toolbar contextual', editor.includes('toolbarOpen &&') && editor.includes('onFocus: () => setToolbarOpen(true)'));
+check('Rich editor toolbar contextual', editor.includes('toolbarOpen &&') && editor.includes('setToolbarOpen(true); onFocusRef.current?.()'));
 check('Builder retains dnd-kit plus Uppy', builder.includes("from '@dnd-kit/core'") && builder.includes("from '@uppy/core'"));
 check('A renderer fault is disclosed without raw HTML recovery UI', builder.includes('L’éditeur de ce bloc a rencontré une erreur') && !builder.includes('Réessayer l’éditeur Tiptap') && builder.includes('onFallbackChange'));
 check('Clear text does not restore stale legacy fields', builder.includes('value={c.html ?? c.text ?? c.content ??') && builder.includes('html, content: html, text: stripHtml(html)'));

@@ -4,7 +4,7 @@
  * No schema/data migration is required. All pre-existing Builder callers retain
  * the same value/onChange/locked/placeholder/headingLevel/language props.
  */
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { EditorContent, useEditor } from '@tiptap/react';
 import { Extension } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
@@ -164,15 +164,23 @@ type RichTextProps = {
   language?: string;
   plainPage?: boolean;
   onEditorBlur?: () => void;
+  onEditorFocus?: () => void;
 };
 
-export default function StudioRichTextEditor({
-  value, onChange, locked, placeholder, headingLevel, language = 'fr', plainPage = false, onEditorBlur,
-}: RichTextProps) {
+export type StudioRichTextEditorHandle = {
+  undo: () => boolean;
+  redo: () => boolean;
+};
+
+const StudioRichTextEditor = forwardRef<StudioRichTextEditorHandle, RichTextProps>(function StudioRichTextEditor({
+  value, onChange, locked, placeholder, headingLevel, language = 'fr', plainPage = false, onEditorBlur, onEditorFocus,
+}, ref) {
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
   const onBlurRef = useRef(onEditorBlur);
   onBlurRef.current = onEditorBlur;
+  const onFocusRef = useRef(onEditorFocus);
+  onFocusRef.current = onEditorFocus;
   const lastEmitted = useRef<string | null>(null);
   const lastExternal = useRef(String(value ?? ''));
   const [error, setError] = useState('');
@@ -220,9 +228,14 @@ export default function StudioRichTextEditor({
       onChangeRef.current(html);
     },
     onSelectionUpdate: () => refreshToolbar(v => (v + 1) % 100000),
-    onFocus: () => setToolbarOpen(true),
+    onFocus: () => { setToolbarOpen(true); onFocusRef.current?.(); },
     onBlur: () => { setToolbarOpen(false); setAdvancedToolbar(false); onBlurRef.current?.(); },
   });
+
+  useImperativeHandle(ref, () => ({
+    undo: () => Boolean(editor && !editor.isDestroyed && !locked && editor.can().undo() && editor.chain().focus().undo().run()),
+    redo: () => Boolean(editor && !editor.isDestroyed && !locked && editor.can().redo() && editor.chain().focus().redo().run()),
+  }), [editor, locked]);
 
   useEffect(() => {
     if (!editor || editor.isDestroyed) return;
@@ -334,4 +347,6 @@ export default function StudioRichTextEditor({
     {!locked && !editor?.getText().trim() && <p aria-hidden="true" className="pointer-events-none px-4 pb-2 text-xs text-slate-400">{placeholder}</p>}
     {error && <p className="border-t border-red-100 px-3 py-1 text-xs text-red-700" role="alert">{error}</p>}
   </div>;
-}
+});
+
+export default StudioRichTextEditor;
