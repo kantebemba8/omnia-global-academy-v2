@@ -199,7 +199,7 @@ export default function StudioRichTextEditor({
           [&_li]:my-1 [&_a]:text-blue-700 [&_a]:underline [&_blockquote]:border-l-4
           [&_blockquote]:border-amber-600 [&_blockquote]:pl-3 [&_table]:my-3
           [&_table]:w-full [&_table]:border-collapse [&_td]:border [&_td]:p-2
-          [&_th]:border [&_th]:bg-slate-100 [&_th]:p-2 [&_img]:max-w-full`,
+          [&_th]:border [&_th]:bg-slate-100 [&_th]:p-2 [&_img]:max-w-full`.trim().split(/\s+/).join(' '),
         role: 'textbox',
         'aria-label': placeholder || 'Éditeur pédagogique',
         'aria-multiline': headingLevel ? 'false' : 'true',
