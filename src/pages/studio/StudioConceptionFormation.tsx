@@ -280,6 +280,16 @@ export default function StudioConceptionFormation() {
   const [selectedBlock, setSelectedBlock] = useState<Block | null>(null);
   const [selectedBlockDef, setSelectedBlockDef] = useState<typeof BLOCK_DEFS[0] | null>(null);
   const [assessmentWorkspace, setAssessmentWorkspace] = useState<{ scope: 'lesson'|'module'|'final'; lessonId: string; moduleId: string } | null>(null);
+  const [activeAssessment, setActiveAssessment] = useState<{ id: string; required: boolean; is_active: boolean; title: string } | null>(null);
+  const [assessmentManagementBusy, setAssessmentManagementBusy] = useState(false);
+  const [assessmentRefresh, setAssessmentRefresh] = useState(0);
+  // Only reorder transactions can be reversed on the server without risking media,
+  // attempts or uploaded resources. Text history is delegated to Tiptap.
+  type BlockOrderCommand = { lessonId: string; before: string[]; after: string[] };
+  const blockOrderUndo = useRef<BlockOrderCommand[]>([]);
+  const blockOrderRedo = useRef<BlockOrderCommand[]>([]);
+  const clearBlockOrderHistory = () => { blockOrderUndo.current = []; blockOrderRedo.current = []; };
+
   const [stageMenuId, setStageMenuId] = useState<string | null>(null);
   const [curriculumOpen, setCurriculumOpen] = useState(false);
   useEffect(() => {
@@ -292,6 +302,24 @@ export default function StudioConceptionFormation() {
     document.addEventListener('keydown', closeEscape);
     return () => { document.removeEventListener('pointerdown', closeOutside); document.removeEventListener('keydown', closeEscape); };
   }, [stageMenuId]);
+
+  useEffect(() => {
+    let live = true;
+    setActiveAssessment(null);
+    if (!assessmentWorkspace || !course.id) return () => { live = false; };
+    const workspace = assessmentWorkspace;
+    void api('assessment_policy_get', { course_id: course.id }).then(data => {
+      if (!live) return;
+      if (!data.success) { showToast('Statut de l’évaluation indisponible ; aucune action destructive autorisée.', 'error'); return; }
+      const matching = (Array.isArray(data.assessments) ? data.assessments : []).find((item: any) =>
+        item.scope === workspace.scope && (workspace.scope === 'lesson' ? item.lesson_id === workspace.lessonId
+          : workspace.scope === 'module' ? item.module_id === workspace.moduleId
+          : !item.lesson_id && !item.module_id));
+      setActiveAssessment(matching ? { id: String(matching.id), required: matching.required === true,
+        is_active: matching.is_active !== false, title: String(matching.title || '') } : null);
+    }).catch(() => { if (live) showToast('Impossible de vérifier les règles de l’évaluation.', 'error'); });
+    return () => { live = false; };
+  }, [assessmentWorkspace?.lessonId, assessmentWorkspace?.moduleId, assessmentWorkspace?.scope, course.id, assessmentRefresh]);
 
   // UI
   const [loading, setLoading] = useState(true);
@@ -372,6 +400,16 @@ export default function StudioConceptionFormation() {
   const courseEditRevision = useRef(0);
   const courseRef = useRef<Course>(EMPTY_COURSE);
   courseRef.current = course;
+  useEffect(() => {
+    const beforeUnload = (event: BeforeUnloadEvent) => {
+      if (['pending','saving','error'].includes(courseSaveStatus) || failedBlockSaves.current.size > 0 || Object.keys(blockSaveQueues.current).length > 0) {
+        event.preventDefault(); event.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', beforeUnload);
+    return () => window.removeEventListener('beforeunload', beforeUnload);
+  }, [courseSaveStatus]);
+
 
   function showToast(msg: string, type: 'success' | 'error' | 'info' = 'success') {
     setToast(msg); setToastType(type);
@@ -641,6 +679,16 @@ export default function StudioConceptionFormation() {
     }
   }
 
+  async function flushPendingCourseEdits(): Promise<boolean> {
+    if (!courseRef.current?.id || courseSaveStatus === 'idle' || courseSaveStatus === 'saved') return true;
+    const result = await persistCourseDraft('update_course');
+    if (!result.success) {
+      showToast(result.message || result.error || 'Les informations générales ne sont pas enregistrées. Navigation annulée.', 'error');
+      return false;
+    }
+    return true;
+  }
+
   // Leaving a lesson never silently drops a pending prose write.
   async function flushProseComposer() {
     // Snapshot: saving a newly created tail block can remount its composer.
@@ -658,6 +706,8 @@ export default function StudioConceptionFormation() {
     if (!await flushProseComposer()) return false;
     try { await flushBlockUpdates(); }
     catch { showToast('Enregistrement incomplet : navigation annulée.', 'error'); return false; }
+    if (!await flushPendingCourseEdits()) return false;
+    clearBlockOrderHistory();
     setCurrentModule(view === 'empty-module' ? mod ?? null : null);
     setCurrentLesson(null);
     setBlocks([]);
@@ -672,11 +722,13 @@ export default function StudioConceptionFormation() {
   // ─── Sélection leçon ──────────────────────────────────────
   async function selectLesson(mod: Module, lesson: Lesson): Promise<boolean> {
     if (!await flushProseComposer()) return false;
-    if (currentLesson?.id === lesson.id) { setAssessmentWorkspace(null); setCurrentModule(mod); setCurriculumOpen(false); return true; }
+    if (currentLesson?.id === lesson.id) { if (!await flushPendingCourseEdits()) return false; setAssessmentWorkspace(null); setCurrentModule(mod); setCurriculumOpen(false); return true; }
     try { await flushBlockUpdates(); }
     catch { showToast('Sauvegarde incomplète : changement de leçon annulé.', 'error'); return false; }
+    if (!await flushPendingCourseEdits()) return false;
     const loaded = await loadBlocks(lesson.id);
     if (!loaded) return false;
+    clearBlockOrderHistory();
     setAssessmentWorkspace(null);
     setCurrentModule(mod);
     setCurrentLesson(lesson);
@@ -830,6 +882,8 @@ void openModuleAssessment;
       ...(assessmentWorkspace ? { interaction_mode: 'assessment', assessment_scope: assessmentWorkspace.scope } : {}),
     });
     if (data.success) {
+      clearBlockOrderHistory();
+      if (assessmentWorkspace) setAssessmentRefresh(previous => previous + 1);
       if (currentLesson?.id === targetLessonId) {
         const refreshed = await loadBlocks(targetLessonId);
         if (!refreshed) showToast('Bloc créé, mais rechargement impossible : actualisez cette leçon.', 'error');
@@ -874,6 +928,7 @@ void openModuleAssessment;
       return false;
     }
     if (currentLesson?.id === lessonId) {
+      clearBlockOrderHistory();
       setBlocks(previous => previous.some(block => block.id === data.block.id) ? previous : [...previous, data.block]);
     }
     return String(data.block.id);
@@ -888,6 +943,34 @@ void openModuleAssessment;
     return value;
   }
 
+
+  async function manageAssessment(action: 'assessment_set_active'|'assessment_clear_questions', enabled?: boolean) {
+    if (locked || assessmentManagementBusy || !assessmentWorkspace || !activeAssessment || !course?.id) return;
+    if (action === 'assessment_clear_questions' && !window.confirm('Vider les questions de cette évaluation brouillon ? Les blocs sources seront conservés comme activités d’entraînement. Les tentatives historiques empêchent cette opération.')) return;
+    if (action === 'assessment_set_active' && enabled === false && !window.confirm('Désactiver cette évaluation du parcours apprenant ? Les tentatives et résultats déjà enregistrés seront conservés.')) return;
+    setAssessmentManagementBusy(true);
+    try {
+      if (!await flushProseComposer()) return;
+      await flushBlockUpdates();
+      const result = await api(action, { course_id: course.id, assessment_id: activeAssessment.id,
+        ...(action === 'assessment_set_active' ? { is_active: enabled } : {}) });
+      if (!result.success) throw new Error(result.message || result.error || 'Action refusée par le serveur');
+      if (action === 'assessment_clear_questions') {
+        if (!await loadBlocks(assessmentWorkspace.lessonId)) {
+          showToast('Questions vidées, mais rechargement indisponible. Rechargez la leçon avant de la modifier.', 'error');
+          return;
+        }
+        setSelectedBlock(null);
+        clearBlockOrderHistory();
+      }
+      setActiveAssessment(previous => previous ? { ...previous, is_active: action === 'assessment_clear_questions' ? false : enabled === true } : previous);
+      showToast(action === 'assessment_clear_questions'
+        ? `${result.questions_removed || 0} question(s) retirée(s) ; blocs sources conservés.`
+        : enabled ? 'Évaluation réactivée.' : 'Évaluation désactivée ; résultats historiques conservés.', 'success');
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Impossible de modifier l’évaluation', 'error');
+    } finally { setAssessmentManagementBusy(false); }
+  }
 
   // ─── Supprimer / dupliquer / réordonner les blocs ───────────
   async function deleteBlock(blockId: string): Promise<boolean> {
@@ -904,6 +987,7 @@ void openModuleAssessment;
       showToast(result.message || result.error || 'Impossible de supprimer le bloc.', 'error');
       return false;
     }
+    clearBlockOrderHistory();
     setBlocks(bs => bs.filter(b => b.id !== blockId));
     if (selectedBlock?.id === blockId) { setSelectedBlock(null); setSelectedBlockDef(null); }
     return true;
@@ -916,6 +1000,7 @@ void openModuleAssessment;
     catch { showToast('Sauvegarde incomplète : duplication annulée.', 'error'); return; }
     const data = await api('duplicate_block', { course_id: course.id, block_id: block.id });
     if (data.success && data.block) {
+      clearBlockOrderHistory();
       setBlocks(bs => {
         const idx = bs.findIndex(b => b.id === block.id);
         const next = [...bs];
@@ -962,8 +1047,13 @@ void openModuleAssessment;
       await flushBlockUpdates();
       const result = await api('reorder_blocks', { lesson_id: lessonId, ordered_ids: next.map(b => b.id) });
       if (!result.success) throw new Error(result.message || result.error || 'Échec du déplacement');
-      if (currentLesson?.id === lessonId) setBlocks(next.map((block, position) => ({ ...block, position })));
-      showToast('Nouvel ordre enregistré', 'success');
+      if (currentLesson?.id === lessonId) {
+        setBlocks(next.map((block, position) => ({ ...block, position })));
+        blockOrderUndo.current.push({ lessonId, before: original.map(block => block.id), after: next.map(block => block.id) });
+        if (blockOrderUndo.current.length > 30) blockOrderUndo.current.shift();
+        blockOrderRedo.current = [];
+      }
+      showToast('Nouvel ordre enregistré (annulable)', 'success');
     } catch (error) {
       showToast(error instanceof Error ? error.message : 'Impossible de réordonner les blocs.', 'error');
     } finally {
@@ -971,6 +1061,47 @@ void openModuleAssessment;
       setDragOverSlot(null);
     }
   }
+  async function replayBlockOrder(direction: 'undo'|'redo'): Promise<boolean> {
+    if (locked || reorderInFlight.current || !currentLesson) return false;
+    const from = direction === 'undo' ? blockOrderUndo.current : blockOrderRedo.current;
+    const to = direction === 'undo' ? blockOrderRedo.current : blockOrderUndo.current;
+    const command = from[from.length - 1];
+    if (!command || command.lessonId !== currentLesson.id) return false;
+    const expected = direction === 'undo' ? command.after : command.before;
+    const target = direction === 'undo' ? command.before : command.after;
+    if (blocks.map(block => block.id).join('|') !== expected.join('|')) {
+      clearBlockOrderHistory();
+      showToast('L’ordre des blocs a changé. Historique de déplacement réinitialisé.', 'error');
+      return true;
+    }
+    reorderInFlight.current = true;
+    try {
+      if (!await flushProseComposer()) return true;
+      await flushBlockUpdates();
+      const result = await api('reorder_blocks', { lesson_id: currentLesson.id, ordered_ids: target });
+      if (!result.success) throw new Error(result.message || result.error || 'Impossible de rétablir l’ordre précédent.');
+      const byId = new Map(blocks.map(block => [block.id, block]));
+      setBlocks(target.map((id, position) => ({ ...byId.get(id)!, position })));
+      from.pop(); to.push(command);
+      showToast(direction === 'undo' ? 'Déplacement annulé.' : 'Déplacement rétabli.');
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Historique indisponible', 'error');
+    } finally { reorderInFlight.current = false; }
+    return true;
+  }
+
+  async function undoStudioAction() {
+    if (proseComposerRefs.current.get(activeProseKey.current)?.undo()) return;
+    if (await replayBlockOrder('undo')) return;
+    showToast('Aucune modification rédactionnelle ou de déplacement à annuler.', 'info');
+  }
+
+  async function redoStudioAction() {
+    if (proseComposerRefs.current.get(activeProseKey.current)?.redo()) return;
+    if (await replayBlockOrder('redo')) return;
+    showToast('Aucune modification rédactionnelle ou de déplacement à rétablir.', 'info');
+  }
+
   async function onDrop(e: React.DragEvent, targetIdx: number) {
     const incomingType = e.dataTransfer.getData('application/x-omnia-block');
     if (!incomingType || locked || reorderInFlight.current) return;
@@ -1313,12 +1444,16 @@ void openModuleAssessment;
   const locked = ['pending_validation', 'validated', 'suspended'].includes(course.studio_status || '') || (course.studio_status === 'published' && !publishedSuperAdminEditable);
   const workflowLocked = ['pending_validation', 'validated', 'published', 'suspended'].includes(course.studio_status || '');
   const statusCfg = STATUS_CFG[course.studio_status || 'draft'] || STATUS_CFG.draft;
-  const modeBlocks = BLOCK_DEFS; // 52 types always accessible, without a second level of navigation
+  const modeBlocks = BLOCK_DEFS; // The 52 identifiers remain supported in both modes.
+  // Simple mode reduces only the insertion palette, NEVER the displayed or stored data.
+  const simplePaletteTypes = new Set([...ESSENTIAL_BLOCK_TYPES,
+    'objective','summary','callout','definition','pdf','word','excel','scorm',
+    'true_false','open_question','exercise','case_study','separator','link_button']);
   // Text, headings and subtitles are written directly in Tiptap in simple mode.
   // Advanced mode keeps all historical block types accessible for compatibility.
   const visibleBlocks = assessmentWorkspace
     ? modeBlocks.filter(def => ASSESSMENT_CAPABLE_BLOCKS.has(def.type))
-    : advancedMode ? modeBlocks : modeBlocks.filter(def => !['text', 'heading', 'subheading', 'subtitle'].includes(def.type));
+    : advancedMode ? modeBlocks : modeBlocks.filter(def => simplePaletteTypes.has(def.type) && !['text', 'heading', 'subheading', 'subtitle'].includes(def.type));
   const contentBlocks = blocks.filter(block => block.interaction_mode !== 'assessment');
   const lastContentBlock = contentBlocks[contentBlocks.length - 1];
   const trailingProse = !locked && !assessmentWorkspace && lastContentBlock?.block_type === 'text'
@@ -1450,12 +1585,12 @@ void openModuleAssessment;
 
         {/* Actions */}
         <div className="flex items-center gap-2 flex-shrink-0">
-          <button type="button" onMouseDown={event => event.preventDefault()} onClick={() => { if (!proseComposerRefs.current.get(activeProseKey.current)?.undo()) showToast('Cliquez dans une zone de texte pour annuler une modification rédactionnelle.', 'info'); }}
-            disabled={locked || !currentLesson || !!assessmentWorkspace} title="Annuler une modification du texte actif (pas les blocs déjà enregistrés)" aria-label="Annuler le texte"
-            className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm font-semibold text-[#002050] disabled:opacity-40">↶</button>
-          <button type="button" onMouseDown={event => event.preventDefault()} onClick={() => { if (!proseComposerRefs.current.get(activeProseKey.current)?.redo()) showToast('Aucune modification rédactionnelle à rétablir dans cette zone.', 'info'); }}
-            disabled={locked || !currentLesson || !!assessmentWorkspace} title="Rétablir une modification du texte actif" aria-label="Rétablir le texte"
-            className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm font-semibold text-[#002050] disabled:opacity-40">↷</button>
+          <button type="button" onMouseDown={event => event.preventDefault()} onClick={() => { void undoStudioAction(); }}
+            disabled={locked || !currentLesson || !!assessmentWorkspace} title="Annuler la rédaction ou le dernier déplacement de bloc" aria-label="Annuler le texte"
+            className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm font-semibold text-[#002050] disabled:opacity-40">↶ Annuler</button>
+          <button type="button" onMouseDown={event => event.preventDefault()} onClick={() => { void redoStudioAction(); }}
+            disabled={locked || !currentLesson || !!assessmentWorkspace} title="Rétablir la rédaction ou le dernier déplacement de bloc" aria-label="Rétablir le texte"
+            className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm font-semibold text-[#002050] disabled:opacity-40">↷ Rétablir</button>
           <button type="button" onClick={() => setCurriculumOpen(value => !value)} aria-expanded={curriculumOpen}
             className={`flex items-center gap-1 rounded-lg border px-3 py-1.5 text-xs font-semibold ${curriculumOpen ? 'border-[#BF8813] bg-amber-50 text-[#002050]' : 'border-slate-200 text-[#002050]'}`}>
             <Layers size={14} /> Plan
@@ -1560,7 +1695,7 @@ void openModuleAssessment;
                   { label: 'Séquence vocabulaire', blocks: ['vocabulary', 'flashcards', 'matching'] },
                   { label: 'Séquence compréhension orale', blocks: ['listening_comprehension', 'dictation', 'summary'] },
                   { label: 'Séquence expression orale', blocks: ['dialogue', 'pronunciation', 'oral_response'] },
-                ].filter(section => advancedMode || section.blocks.every(bt => BLOCK_DEFS.find(def => def.type === bt)?.mode === 'simple')).map(section => (
+                ].filter(section => advancedMode || section.blocks.every(bt => ['text','heading','subheading'].includes(bt) || simplePaletteTypes.has(bt))).map(section => (
                   <button key={section.label} disabled={locked}
                     onClick={async () => { for (const bt of section.blocks) { await addBlock(bt); } }}
                     className="w-full text-left p-3 rounded-lg border text-xs font-medium transition-all hover:shadow-sm disabled:opacity-40"
@@ -1924,6 +2059,12 @@ void openModuleAssessment;
                     <div className="mt-3 rounded-xl border px-3 py-2" style={{borderColor:'#DDD6FE',background:'#F5F3FF'}}>
                       <p className="text-xs font-bold" style={{color:'#6D28D9'}}>{assessmentWorkspace.scope==='lesson'?'Sous-espace · Évaluation de la leçon':assessmentWorkspace.scope==='module'?'Sous-espace · Évaluation du module':'Sous-espace · Épreuve officielle finale'}</p>
                       <p className="mt-1 text-[11px] text-slate-500">Évaluation désactivée tant qu'aucune question officielle n'est créée. Chaque question peut être facultative ou obligatoire selon la politique de la formation. Les questions restent distinctes des exercices d'entraînement et ne sont pas répétées dans le contenu pédagogique.</p>
+                      <div className="mt-3 flex flex-wrap items-center gap-2">
+                        <span className="mr-auto text-xs font-semibold text-purple-900">{activeAssessment ? (activeAssessment.is_active ? 'Évaluation active' : 'Évaluation désactivée') : 'Aucune évaluation officielle enregistrée'}</span>
+                        {activeAssessment && !activeAssessment.required && <button type="button" disabled={locked || assessmentManagementBusy} onClick={() => void manageAssessment('assessment_set_active', !activeAssessment.is_active)} className="rounded-md border border-purple-300 bg-white px-3 py-2 text-xs font-semibold text-purple-900 disabled:opacity-40">{activeAssessment.is_active ? 'Désactiver l’évaluation' : 'Réactiver l’évaluation'}</button>}
+                        {activeAssessment && <button type="button" disabled={locked || assessmentManagementBusy} onClick={() => void manageAssessment('assessment_clear_questions')} className="rounded-md border border-red-200 bg-white px-3 py-2 text-xs font-semibold text-red-700 disabled:opacity-40">Vider les questions…</button>}
+                      </div>
+                      <p className="mt-2 text-[11px] text-slate-500">Vider : uniquement sans tentative historique ; les anciens blocs restent disponibles comme exercices. Désactiver : conserve tentatives, notes et certificats.</p>
                     </div>
                   )}
                   {!assessmentWorkspace && !locked && course.id && (

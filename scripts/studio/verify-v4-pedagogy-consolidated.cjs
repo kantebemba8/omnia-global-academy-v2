@@ -15,7 +15,7 @@ check('Bilan de module rattachement dédié',builder.includes('async function op
 check('Évaluation de leçon configurée explicitement, sans l’imposer',builder.includes("stageTypeOf(currentLesson) === 'module_summary'") && builder.includes("selectAssessmentWorkspace(currentModule, currentLesson, scope)"));
 check('Examen final optionnel et révocable en brouillon',studio.includes('FINAL_EXAM_ONLY_REMOVABLE_IN_DRAFT')&&studio.includes('FINAL_EXAM_HAS_ATTEMPTS'));
 check('Contrôle des scopes non destructif',studio.includes('ASSESSMENT_SCOPE_CONFLICT')&&studio.includes('ASSESSMENT_SCOPE_REQUIRES_EXPLICIT_MIGRATION'));
-check('Synchronisation ne supprime pas les anciennes questions',!studio.slice(studio.indexOf('if(action==="ensure_assessments")'),studio.indexOf('if(action==="assessment_policy_get")')).includes('assessment_questions").delete()'));
+check('Synchronisation ne supprime pas les anciennes questions',!studio.slice(studio.indexOf('if(action==="ensure_assessments")'),studio.indexOf('if(action==="assessment_set_active")')).includes('assessment_questions").delete()'));
 check('Protection historique avant édition',studio.includes('await ensureOfficialQuestionHistoryEditable(sb,String(blk.id))'));
 check('Protection historique avant suppression bloc',studio.includes('await ensureOfficialQuestionHistoryEditable(sb,String(b.block_id))'));
 check('Protection historique avant suppression leçon/module',(studio.match(/hasStageAssessmentAttempts\(/g)||[]).length>=3);

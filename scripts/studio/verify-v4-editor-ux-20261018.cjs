@@ -10,7 +10,7 @@ const reader = file('src/pages/CoursLecteur.tsx');
 let checks=0;
 function check(name, value) { assert.ok(value, name); checks++; console.log('PASS', name); }
 check('52 block type definitions retained', (builder.match(/\{ type: '(?:[^']+)',\s+label:/g)||[]).length===52);
-check('Full block library independent of complicated simple/advanced filtering', builder.includes('const modeBlocks = BLOCK_DEFS;'));
+check('52 block types preserved; Simple palette distinct without deleting legacy blocks', builder.includes('const modeBlocks = BLOCK_DEFS;') && builder.includes('simplePaletteTypes.has(def.type)'));
 check('Favorites grid and star buttons removed', !builder.includes('favoriteBlockTypes') && !builder.includes('toggleFavorite'));
 check('Accessible searchable library with legible row buttons', builder.includes('aria-label={`Ajouter le bloc ${def.label}`}') && builder.includes('grid grid-cols-1'));
 check('Central canvas wide and inspector closed by default', builder.includes('max-w-[1080px]') && builder.includes('useState(true);\n  const [collapsedBlockGroups'));
@@ -28,7 +28,7 @@ check('No before/after buttons within block header', !builder.includes('Insérer
 check('Contextual insertion preserved', builder.includes('Insérer un bloc après ${'));
 check('Deletion hidden in named management menus', builder.includes('Gérer le module') && builder.includes('Supprimer la leçon…') && !builder.includes('Supprimer cette étape…'));
 check('No module deletion icon beside module assessment', !builder.includes('Configurer évaluation module (facultative)') && builder.includes('void deleteModule(mod)'));
-check('Assessment can switch back to same lesson', builder.includes('if (currentLesson?.id === lesson.id) { setAssessmentWorkspace(null)') && builder.includes('Retour au contenu'));
+check('Assessment can switch back to same lesson', builder.includes('if (currentLesson?.id === lesson.id) { if (!await flushPendingCourseEdits()) return false; setAssessmentWorkspace(null)') && builder.includes('Retour au contenu'));
 check('Backend RPCs and SQL193 kept in base', file('supabase/functions/studio-unified/index.ts').includes('oga_studio_v4_193_apply_policy') && file('supabase/migrations/20261017205000_193_oga_studio_v4_assessments_atomic.sql').includes('CREATE OR REPLACE FUNCTION'));
 let ts;try{ts=require('typescript')}catch{};
 if(ts) for(const rel of ['src/pages/studio/StudioConceptionFormation.tsx','src/pages/CoursLecteur.tsx','src/components/studio/StudioRichTextEditor.tsx']){

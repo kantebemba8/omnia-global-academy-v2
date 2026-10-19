@@ -160,7 +160,7 @@ async function syncExistingOfficialAssessmentFromBlock(sb:any,block:any){
   // L'éditeur ne remplace pas un seuil déjà validé dans Finalisation.
   const {data:coursePolicy}=await sb.from("courses").select("assessment_policy").eq("id",String(block.course_id)).maybeSingle();
   const explicitPolicy=Boolean(coursePolicy?.assessment_policy?.builder_configured_at);
-  const updated=await sb.from("course_assessments").update(explicitPolicy?{is_active:true,updated_at:now}:{is_active:true,required,passing_score:cfg.passing_score,updated_at:now}).eq("id",assessment.id).select("*").single();
+  const updated=await sb.from("course_assessments").update(explicitPolicy?{updated_at:now}:{required,passing_score:cfg.passing_score,updated_at:now}).eq("id",assessment.id).select("*").single();
   if(updated.error)throw updated.error;assessment=updated.data;
  }
  const qdata=assessmentQuestionDataFromBlock(block);const rubric=await rubricCriteriaForTarget(sb,sourceId);const questionPayload={...qdata,rubric:rubric.length?rubric:(Array.isArray(block.content_json?.rubric)?block.content_json.rubric:[]),updated_at:now};
@@ -220,7 +220,7 @@ async function sessionUser(sb:any, req:Request, bodyToken=""){
 }
 async function roles(sb:any,userId:string){const {data}=await sb.from("user_roles").select("role").eq("user_id",userId);return (data||[]).map((r:any)=>r.role)}
 async function owns(sb:any,userId:string,courseId:string,permission="can_edit_courses"){const {data}=await sb.from("courses").select("creator_id,creator_context,structure_id").eq("id",courseId).maybeSingle();if(!data)return false;const rs=await roles(sb,userId);if(rs.includes("super_admin"))return true;if(String(data.creator_context||"")==="structure"){if(!data.structure_id)return false;const access=await validatedStructureAccess(sb,userId,String(data.structure_id));return hasStructurePermission(access,permission)}return String(data.creator_id)===userId}
-function coursePermissionForAction(action:string){if(action==="submit_course")return "can_submit_courses";if(["create_module","update_module","delete_module","create_lesson","update_lesson","delete_lesson","create_module_stage","create_block","update_block","delete_block","duplicate_block","remove_block_resource","reorder_blocks","ensure_special_sections","remove_final_exam","ensure_assessments","assessment_policy_update","assessment_policy_confirm_review","assessment_composition_get","assessment_section_create","assessment_section_update","assessment_section_delete","assessment_question_design_update"].includes(action))return "can_manage_lessons";if(["prepare_upload","upload_block_file","prepare_assessment_correction_upload"].includes(action))return "can_upload_files";return "can_edit_courses"}
+function coursePermissionForAction(action:string){if(action==="submit_course")return "can_submit_courses";if(["create_module","update_module","delete_module","create_lesson","update_lesson","delete_lesson","create_module_stage","create_block","update_block","delete_block","duplicate_block","remove_block_resource","reorder_blocks","ensure_special_sections","remove_final_exam","ensure_assessments","assessment_policy_update","assessment_policy_confirm_review","assessment_composition_get","assessment_section_create","assessment_section_update","assessment_section_delete","assessment_question_design_update","assessment_set_active","assessment_clear_questions"].includes(action))return "can_manage_lessons";if(["prepare_upload","upload_block_file","prepare_assessment_correction_upload"].includes(action))return "can_upload_files";return "can_edit_courses"}
 async function log(sb:any,courseId:string,userId:string,action:string,details:any={}){await Promise.allSettled([sb.from("course_studio_logs").insert({course_id:courseId,user_id:userId,action,details}),sb.from("course_audit_log").insert({course_id:courseId,actor_id:userId,action,entity_type:"course",metadata:details})])}
 
 
@@ -1083,10 +1083,6 @@ Deno.serve(async(req)=>{
    const sectionId=String(b.section_id||"");if(!sectionId)return json({success:false,error:"SECTION_ID_REQUIRED"},400);
    const {data:section}=await sb.from("assessment_sections").select("id,assessment_id,course_assessments!assessment_sections_assessment_id_fkey(course_id)").eq("id",sectionId).maybeSingle();const course=(section as any)?.course_assessments?.course_id;if(!section||!course||!(await owns(sb,userId,String(course),"can_manage_lessons")))return json({success:false,error:"FORBIDDEN"},403);
    const patch:any={updated_at:new Date().toISOString()};if(b.title!==undefined){const title=String(b.title||"").trim();if(!title)return json({success:false,error:"SECTION_TITLE_REQUIRED"},400);patch.title=title;}if(b.description!==undefined)patch.description=String(b.description||"");if(b.target_points!==undefined)patch.target_points=b.target_points===null||b.target_points===""?null:Math.max(0.1,Number(b.target_points));if(b.position!==undefined)patch.position=Math.max(0,Number(b.position)||0);
-   if(b.response_mode!==undefined){const responseMode=b.response_mode?String(b.response_mode):null;if(responseMode&&!["text","file","text_file"].includes(responseMode))return json({success:false,error:"INVALID_RESPONSE_MODE"},400);if(responseMode&&!["exercise","case_study"].includes(String((question as any).question_type||"")))return json({success:false,error:"RESPONSE_MODE_NOT_SUPPORTED_FOR_QUESTION_TYPE"},400);const effectiveGrading=String((b.grading_mode??(question as any).grading_mode)||"human");if(responseMode&&responseMode!=="text"&&["ai","ai_human"].includes(effectiveGrading))return json({success:false,error:"AI_FILE_GRADING_NOT_AVAILABLE",message:"La correction IA des pièces jointes n’est pas activée. Utilisez Évaluateur humain ou une remise texte."},409);patch.response_mode=responseMode;}
-   if(b.response_layout!==undefined){const layout=b.response_layout?String(b.response_layout):null;if(layout&&!["single","per_question"].includes(layout))return json({success:false,error:"INVALID_RESPONSE_LAYOUT"},400);patch.response_layout=layout;}
-   if(b.max_submission_size_mb!==undefined)patch.max_submission_size_mb=b.max_submission_size_mb==null?null:Math.max(1,Math.min(50,Number(b.max_submission_size_mb)||10));
-   if(b.grading_mode!==undefined){const mode=String(b.grading_mode);if(!["automatic","ai","human","ai_human"].includes(mode))return json({success:false,error:"INVALID_GRADING_MODE"},400);if(mode==="automatic"&&!["qcm","true_false","cloze","matching","sentence_order","dictation","listening_comprehension"].includes(String((question as any).question_type||"")))return json({success:false,error:"AUTOMATIC_MODE_NOT_SUPPORTED_FOR_QUESTION_TYPE"},400);const effectiveResponse=String((b.response_mode??(question as any).response_mode)||"");if(["ai","ai_human"].includes(mode)&&effectiveResponse&&effectiveResponse!=="text")return json({success:false,error:"AI_FILE_GRADING_NOT_AVAILABLE",message:"La correction IA des pièces jointes n’est pas activée. Utilisez Évaluateur humain ou une remise texte."},409);patch.grading_mode=mode;}
    const {data,error}=await sb.from("assessment_sections").update(patch).eq("id",sectionId).select("*").single();if(error)throw error;return json({success:true,section:data});
   }
   if(action==="assessment_section_delete"){
@@ -1096,11 +1092,28 @@ Deno.serve(async(req)=>{
   }
   if(action==="assessment_question_design_update"){
    const questionId=String(b.question_id||"");if(!questionId)return json({success:false,error:"QUESTION_ID_REQUIRED"},400);
-   const {data:question,error:qError}=await sb.from("assessment_questions").select("id,assessment_id,question_type,grading_mode,response_mode,course_assessments!assessment_questions_assessment_id_fkey(course_id)").eq("id",questionId).maybeSingle();if(qError)throw qError;const course=(question as any)?.course_assessments?.course_id;if(!question||!course||!(await owns(sb,userId,String(course),"can_manage_lessons")))return json({success:false,error:"FORBIDDEN"},403);
+   const {data:question,error:qError}=await sb.from("assessment_questions").select("id,assessment_id,question_type,grading_mode,response_mode,response_layout,course_assessments!assessment_questions_assessment_id_fkey(course_id)").eq("id",questionId).maybeSingle();if(qError)throw qError;const course=(question as any)?.course_assessments?.course_id;if(!question||!course||!(await owns(sb,userId,String(course),"can_manage_lessons")))return json({success:false,error:"FORBIDDEN"},403);
    const patch:any={updated_at:new Date().toISOString()};if(b.points!==undefined){const points=Number(b.points);if(!Number.isFinite(points)||points<=0||points>10000)return json({success:false,error:"INVALID_QUESTION_POINTS"},400);patch.points=Math.round(points*100)/100;}
    if(b.section_id!==undefined){if(b.section_id){const {data:section}=await sb.from("assessment_sections").select("id").eq("id",String(b.section_id)).eq("assessment_id",question.assessment_id).maybeSingle();if(!section)return json({success:false,error:"SECTION_OUTSIDE_ASSESSMENT"},400);patch.section_id=section.id;}else patch.section_id=null;}
-   if(b.position!==undefined)patch.position=Math.max(0,Number(b.position)||0);
-   const {data,error}=await sb.from("assessment_questions").update(patch).eq("id",questionId).select("id,section_id,position,points").single();if(error)throw error;return json({success:true,question:data});
+       if(b.position!==undefined)patch.position=Math.max(0,Number(b.position)||0);
+    const type=String(question.question_type||"");
+    if(b.response_mode!==undefined){
+     const mode=b.response_mode?String(b.response_mode):null;
+     if(mode&&!['text','file','text_file'].includes(mode))return json({success:false,error:'INVALID_RESPONSE_MODE'},400);
+     if(mode&&!['exercise','case_study','assignment_upload','open_question','written_expression'].includes(type))return json({success:false,error:'RESPONSE_MODE_NOT_SUPPORTED_FOR_QUESTION_TYPE'},400);
+     patch.response_mode=mode;
+    }
+    if(b.response_layout!==undefined){const layout=b.response_layout?String(b.response_layout):null;if(layout&&!['single','per_question'].includes(layout))return json({success:false,error:'INVALID_RESPONSE_LAYOUT'},400);patch.response_layout=layout;}
+    if(b.max_submission_size_mb!==undefined)patch.max_submission_size_mb=b.max_submission_size_mb==null?null:Math.max(1,Math.min(50,Number(b.max_submission_size_mb)||10));
+    const grading=String(b.grading_mode??question.grading_mode??'human');
+    if(b.grading_mode!==undefined){
+     if(!['automatic','ai','human','ai_human'].includes(grading))return json({success:false,error:'INVALID_GRADING_MODE'},400);
+     if(grading==='automatic'&&!['qcm','true_false','cloze','matching','sentence_order','dictation','listening_comprehension'].includes(type))return json({success:false,error:'AUTOMATIC_MODE_NOT_SUPPORTED_FOR_QUESTION_TYPE'},400);
+     patch.grading_mode=grading;
+    }
+    const effectiveResponse=String(b.response_mode??question.response_mode??'text');
+    if(['ai','ai_human'].includes(grading)&&effectiveResponse!=='text')return json({success:false,error:'AI_FILE_GRADING_NOT_AVAILABLE',message:'La correction IA des pièces jointes n’est pas activée.'},409);
+    const {data,error}=await sb.from("assessment_questions").update(patch).eq("id",questionId).select("id,section_id,position,points,grading_mode,response_mode,response_layout,max_submission_size_mb").single();if(error)throw error;return json({success:true,question:data});
   }
   if(action==="question_bank_list"){
    let q=sb.from("question_bank").select("*").eq("is_active",true).order("updated_at",{ascending:false}).limit(500);if(!isAdmin)q=q.eq("owner_id",userId);if(b.category)q=q.eq("category",String(b.category));if(b.question_type)q=q.eq("question_type",String(b.question_type));const {data,error}=await q;if(error)throw error;return json({success:true,questions:data||[]});
@@ -1688,12 +1701,72 @@ Deno.serve(async(req)=>{
    if(allError)throw allError;await recalculateCourseDuration(sb,courseId);
    return json({success:true,assessments:all||[],policy});
   }
+  // V4: explicit, owner-authorized assessment lifecycle. Attempts, scores and certificates
+  // are NEVER deleted. Clearing is allowed only before the first attempt; historic
+  // assessment source blocks are demoted to training instead of destroyed.
+  if(action==="assessment_set_active"||action==="assessment_clear_questions"){
+   if(!courseId||!(await owns(sb,userId,courseId,"can_manage_lessons")))return json({success:false,error:"FORBIDDEN"},403);
+   const assessmentId=String(b.assessment_id||"");if(!assessmentId)return json({success:false,error:"ASSESSMENT_ID_REQUIRED"},400);
+   const {data:courseState,error:courseStateError}=await sb.from("courses").select("studio_status").eq("id",courseId).maybeSingle();
+   if(courseStateError)throw courseStateError;
+   if(!courseState)return json({success:false,error:"COURSE_NOT_FOUND"},404);
+   if(["pending_validation","validated","published","suspended"].includes(String(courseState.studio_status||"")))return json({success:false,error:"COURSE_LOCKED",message:"Créez une nouvelle version brouillon pour modifier une évaluation publiée."},409);
+   const {data:assessment,error:assessmentError}=await sb.from("course_assessments").select("id,course_id,scope,required,is_active").eq("id",assessmentId).eq("course_id",courseId).maybeSingle();
+   if(assessmentError)throw assessmentError;
+   if(!assessment)return json({success:false,error:"ASSESSMENT_NOT_FOUND"},404);
+   const {count:attemptCount,error:attemptError}=await sb.from("assessment_attempts").select("id",{head:true,count:"exact"}).eq("assessment_id",assessmentId);
+   if(attemptError)throw attemptError;
+   if(action==="assessment_set_active"){
+    if(typeof b.is_active!=="boolean")return json({success:false,error:"INVALID_ACTIVE_STATUS"},400);
+    if(!b.is_active&&assessment.required===true)return json({success:false,error:"REQUIRED_ASSESSMENT",message:"Cette évaluation est obligatoire. Modifiez d’abord la politique pédagogique si cela est autorisé."},409);
+    if(b.is_active){
+     const {count,error}=await sb.from("assessment_questions").select("id",{head:true,count:"exact"}).eq("assessment_id",assessmentId);
+     if(error)throw error;if(!count)return json({success:false,error:"ASSESSMENT_EMPTY",message:"Ajoutez au moins une question avant d’activer l’évaluation."},409);
+    }
+    const {data:updated,error}=await sb.from("course_assessments").update({is_active:b.is_active,updated_at:new Date().toISOString()}).eq("id",assessmentId).eq("course_id",courseId).select("id,is_active").single();
+    if(error)throw error;
+    await log(sb,courseId,userId,b.is_active?"assessment_activated":"assessment_deactivated",{assessment_id:assessmentId,existing_attempts:attemptCount||0});
+    return json({success:true,assessment:updated,attempts_preserved:Number(attemptCount||0)});
+   }
+   if(Number(attemptCount||0)>0)return json({success:false,error:"ASSESSMENT_ATTEMPTS_EXIST",message:"Les questions ne peuvent pas être vidées après une tentative. Désactivez plutôt cette évaluation pour conserver les résultats historiques."},409);
+   const {data:questions,error:questionsError}=await sb.from("assessment_questions").select("id,source_lesson_block_id").eq("assessment_id",assessmentId);
+   if(questionsError)throw questionsError;
+   const sourceIds=[...new Set((questions||[]).map((row:any)=>String(row.source_lesson_block_id||"")).filter(Boolean))];
+   let converted=0;
+   if(sourceIds.length){
+    const {data:sources,error:sourceError}=await sb.from("lesson_blocks").select("id,course_id,interaction_mode").in("id",sourceIds);
+    if(sourceError)throw sourceError;
+    if((sources||[]).length!==sourceIds.length||(sources||[]).some((row:any)=>String(row.course_id)!==courseId))return json({success:false,error:"SOURCE_BLOCK_MISMATCH"},409);
+    const {data:shared,error:sharedError}=await sb.from("assessment_questions").select("id").in("source_lesson_block_id",sourceIds).neq("assessment_id",assessmentId).limit(1);
+    if(sharedError)throw sharedError;
+    if(shared?.length)return json({success:false,error:"SHARED_SOURCE_BLOCK",message:"Une question est partagée avec une autre évaluation. Retirez d’abord ce lien."},409);
+    // Fail closed: an interrupted clear must never leave an incomplete exam active.
+    const {error:disableFirstError}=await sb.from("course_assessments").update({is_active:false,updated_at:new Date().toISOString()}).eq("id",assessmentId).eq("course_id",courseId);
+    if(disableFirstError)throw disableFirstError;
+    const {error:demoteError}=await sb.from("lesson_blocks").update({interaction_mode:"training",assessment_scope:null,updated_at:new Date().toISOString()}).in("id",sourceIds).eq("course_id",courseId);
+    if(demoteError)throw demoteError;
+    converted=sourceIds.length;
+   }
+   if(!sourceIds.length){
+    const {error:disableEmptyError}=await sb.from("course_assessments").update({is_active:false,updated_at:new Date().toISOString()}).eq("id",assessmentId).eq("course_id",courseId);
+    if(disableEmptyError)throw disableEmptyError;
+   }
+   const {error:removeError}=await sb.from("assessment_questions").delete().eq("assessment_id",assessmentId);
+   if(removeError){
+    // Best-effort restoration: never suppress a failure or claim complete clearing.
+    if(sourceIds.length)await sb.from("lesson_blocks").update({interaction_mode:"assessment",assessment_scope:assessment.scope,updated_at:new Date().toISOString()}).in("id",sourceIds).eq("course_id",courseId);
+    throw removeError;
+   }
+   await recalculateCourseDuration(sb,courseId);
+   await log(sb,courseId,userId,"assessment_draft_cleared",{assessment_id:assessmentId,questions_removed:questions?.length||0,source_blocks_preserved_as_training:converted});
+   return json({success:true,questions_removed:questions?.length||0,training_blocks_preserved:converted,attempts_preserved:0,is_active:false});
+  }
   if(action==="assessment_policy_get"){
    if(!courseId||!(await owns(sb,userId,courseId)))return json({success:false,error:"FORBIDDEN"},403);
    const {data:course,error:courseError}=await sb.from("courses").select("assessment_policy").eq("id",courseId).maybeSingle();
    if(courseError)throw courseError;
    if(!course)return json({success:false,error:"NOT_FOUND"},404);
-   const {data:assessments,error:assessmentError}=await sb.from("course_assessments").select("id,title,scope,module_id,lesson_id,passing_score,max_attempts,time_limit_minutes,required,retry_cooldown_hours,remediation_after_attempts,remediation_mode,attempts_unlimited_for_purchased,attempts_per_period,attempt_period,retry_instructions,assessment_type,delivery_mode,security_level,session_required,identity_verification_required,proctoring_settings,result_release_mode,competency_labels,competency_framework_id,jury_required,jury_min_members,jury_decision_mode,appeal_enabled,appeal_deadline_days,allowed_materials,candidate_instructions,integrity_rules,randomize_questions,random_question_count").eq("course_id",courseId).order("scope");
+   const {data:assessments,error:assessmentError}=await sb.from("course_assessments").select("id,title,scope,module_id,lesson_id,is_active,passing_score,max_attempts,time_limit_minutes,required,retry_cooldown_hours,remediation_after_attempts,remediation_mode,attempts_unlimited_for_purchased,attempts_per_period,attempt_period,retry_instructions,assessment_type,delivery_mode,security_level,session_required,identity_verification_required,proctoring_settings,result_release_mode,competency_labels,competency_framework_id,jury_required,jury_min_members,jury_decision_mode,appeal_enabled,appeal_deadline_days,allowed_materials,candidate_instructions,integrity_rules,randomize_questions,random_question_count").eq("course_id",courseId).order("scope");
    if(assessmentError)throw assessmentError;
    const ids=(assessments||[]).map((item:any)=>item.id);
    let mappings:any[]=[];

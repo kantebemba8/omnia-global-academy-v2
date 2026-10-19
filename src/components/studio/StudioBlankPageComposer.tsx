@@ -36,9 +36,13 @@ const StudioBlankPageComposer = forwardRef<StudioProseComposerHandle, Props>(fun
   { language, draftKey, initialHtml, blockId, choices, onCommit, onInsertBlock, onDelete, onActivate }, ref,
 ) {
   const storageKey = `oga_studio_v4_unsent_text_${draftKey}`;
-  const [draft, setDraft] = useState(() => {
-    try { return sessionStorage.getItem(storageKey) ?? initialHtml; } catch { return initialHtml; }
+  // Never silently overwrite the server with an older unsent session draft.
+  // Offer explicit recovery; a previously completed remote save stays authoritative.
+  const [recoveryHtml] = useState<string | null>(() => {
+    try { return sessionStorage.getItem(storageKey); } catch { return null; }
   });
+  const [recoveryPending, setRecoveryPending] = useState(recoveryHtml !== null && recoveryHtml !== initialHtml);
+  const [draft, setDraft] = useState(initialHtml);
   const editorRef = useRef<StudioRichTextEditorHandle | null>(null);
   const latestDraft = useRef(draft);
   latestDraft.current = draft;
@@ -58,11 +62,13 @@ const StudioBlankPageComposer = forwardRef<StudioProseComposerHandle, Props>(fun
     if (blockId && !savedBlockId.current) savedBlockId.current = blockId;
   }, [blockId]);
   useEffect(() => {
+    // Keep the unsent original untouched until the author chooses Restore/Ignore.
+    if (recoveryPending) return;
     try {
       if (draft !== savedHtml.current) sessionStorage.setItem(storageKey, draft);
       else sessionStorage.removeItem(storageKey);
     } catch { /* Private browsing may disable session storage. */ }
-  }, [draft, status, storageKey]);
+  }, [draft, status, storageKey, recoveryPending]);
 
   async function flush(): Promise<boolean> {
     if (busyPromise.current) {
@@ -136,8 +142,25 @@ const StudioBlankPageComposer = forwardRef<StudioProseComposerHandle, Props>(fun
     }
   }
 
+  function restoreLocalDraft() {
+    if (recoveryHtml === null) return;
+    latestDraft.current = recoveryHtml;
+    setDraft(recoveryHtml);
+    setRecoveryPending(false);
+    setStatus('pending');
+  }
+  function discardLocalDraft() {
+    try { sessionStorage.removeItem(storageKey); } catch {}
+    setRecoveryPending(false);
+  }
+
   return <section aria-label="Rédaction directe de la leçon" className="mt-3 mb-2 rounded-xl bg-white px-1 py-2">
-    <StudioRichTextEditor ref={editorRef} onEditorFocus={onActivate} value={draft} onChange={html => { latestDraft.current = html; setDraft(html); setStatus('pending'); }} locked={busy}
+    {recoveryPending && <div role="alert" className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+      <span className="mr-auto">Un brouillon local différent du contenu serveur a été retrouvé. Choisissez avant toute restauration.</span>
+      <button type="button" onClick={restoreLocalDraft} className="rounded border border-amber-300 bg-white px-3 py-1.5 font-semibold">Restaurer le brouillon</button>
+      <button type="button" onClick={discardLocalDraft} className="rounded border border-slate-300 bg-white px-3 py-1.5">Garder la version serveur</button>
+    </div>}
+    <StudioRichTextEditor ref={editorRef} onEditorFocus={onActivate} value={draft} onChange={html => { latestDraft.current = html; setDraft(html); setRecoveryPending(false); setStatus('pending'); }} locked={busy}
       language={language} plainPage onEditorBlur={() => { if (!busyPromise.current) void flush(); }}
       placeholder="Commencez à écrire ici, ou tapez / pour insérer un bloc…" />
     {slash && matching.length > 0 && <div role="listbox" aria-label="Commandes de blocs" className="mt-2 max-h-52 overflow-y-auto rounded-xl border border-slate-200 bg-white p-2 shadow-lg">
