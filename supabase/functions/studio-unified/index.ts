@@ -1589,11 +1589,18 @@ Deno.serve(async(req)=>{
    if(conflict)return json({success:false,error:"HISTORY_BLOCK_ALREADY_EXISTS"},409);
    const row=restorableBlockRow(block);
    const index=Math.max(0,Math.min(ids.length,Number(block.position)||0));
-   row.position=ids.length; // Insert outside the old order before reindexing.
+   const occupied=(existing||[]).map((item:any)=>Number(item.position)).filter((value:number)=>Number.isFinite(value));
+   row.position=Math.max(-1,...occupied)+1; // Insert outside all occupied positions.
    const {error:insertError}=await sb.from("lesson_blocks").insert(row);
    if(insertError)throw insertError;
    const next=[...ids];next.splice(index,0,String(block.id));
    try{
+    // Two-phase reindex avoids transient position uniqueness conflicts.
+    const temporaryStart=row.position+next.length+1;
+    for(let i=0;i<next.length;i++){
+     const {error}=await sb.from("lesson_blocks").update({position:temporaryStart+i,updated_at:new Date().toISOString()}).eq("id",next[i]).eq("lesson_id",block.lesson_id);
+     if(error)throw error;
+    }
     for(let i=0;i<next.length;i++){
      const {error}=await sb.from("lesson_blocks").update({position:i,updated_at:new Date().toISOString()}).eq("id",next[i]).eq("lesson_id",block.lesson_id);
      if(error)throw error;

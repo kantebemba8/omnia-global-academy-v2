@@ -998,8 +998,8 @@ void openModuleAssessment;
       return false;
     }
     if (currentLesson?.id === lessonId) {
-      rememberAction({ kind: 'structure', operation: 'add', lessonId,
-        blockId: String(data.block.id), at: Date.now() });
+      // An autosaved text row is not an independent author action.
+      // Keep the previous prose command at the top of undo history.
       setBlocks(previous => previous.some(block => block.id === data.block.id) ? previous : [...previous, data.block]);
     }
     return String(data.block.id);
@@ -1289,6 +1289,8 @@ void openModuleAssessment;
         else ledger.completeRedo(command);
         showToast(direction === 'undo' ? 'Modification annulée.' : 'Modification rétablie.', 'success');
       }
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Historique indisponible. Aucune modification non confirmée.', 'error');
     } finally { historyReplayInFlight.current = false; setHistoryBusy(false); }
   }
   async function undoStudioAction() { await replayStudioHistory('undo'); }
@@ -1635,6 +1637,26 @@ void openModuleAssessment;
 
   const publishedSuperAdminEditable = course.studio_status === 'published' && course.creator_context === 'super_admin';
   const locked = ['pending_validation', 'validated', 'suspended'].includes(course.studio_status || '') || (course.studio_status === 'published' && !publishedSuperAdminEditable);
+
+  // Keyboard shortcuts must use the same history as the Studio buttons.
+  // Never let native Tiptap undo create a second Studio action.
+  useEffect(() => {
+    const onHistoryKeyDown = (event: KeyboardEvent) => {
+      if (locked || historyBusy || !currentLesson || assessmentWorkspace ||
+          historyReplayInFlight.current || event.altKey || (!event.ctrlKey && !event.metaKey)) return;
+      if (!(event.target instanceof Element) || !event.target.closest('.oga-tiptap-content')) return;
+      const key = event.key.toLowerCase();
+      if (key !== 'z' && key !== 'y') return;
+      const direction: 'undo' | 'redo' = key === 'y' || (key === 'z' && event.shiftKey) ? 'redo' : 'undo';
+      const command = direction === 'undo' ? sessionHistory.current.undoCommand() : sessionHistory.current.redoCommand();
+      if (!command || command.lessonId !== currentLesson.id) return;
+      event.preventDefault();
+      event.stopPropagation();
+      void replayStudioHistory(direction);
+    };
+    document.addEventListener('keydown', onHistoryKeyDown, true);
+    return () => document.removeEventListener('keydown', onHistoryKeyDown, true);
+  }, [locked, historyBusy, currentLesson?.id, assessmentWorkspace]);
   const workflowLocked = ['pending_validation', 'validated', 'published', 'suspended'].includes(course.studio_status || '');
   const statusCfg = STATUS_CFG[course.studio_status || 'draft'] || STATUS_CFG.draft;
   const modeBlocks = BLOCK_DEFS; // The 52 identifiers remain supported in both modes.
@@ -2391,6 +2413,7 @@ void openModuleAssessment;
                                 initialHtml={String(block.content_json?.html ?? block.content_json?.content ?? block.content_json?.text ?? '')}
                                 blockId={block.id}
                                 onActivate={() => { activeProseKey.current = block.id; }}
+                                onHistoryAction={direction => { void replayStudioHistory(direction); }}
                                 onEdit={(before, after) => { if (currentLesson && !historyReplayInFlight.current) rememberAction({kind:'prose', lessonId:currentLesson.id, key:block.id, before, after, at:Date.now()}); }}
                                 onCommit={commitPageParagraph}
                                 onDelete={deleteBlock}
@@ -2431,6 +2454,7 @@ void openModuleAssessment;
                     <StudioBlankPageComposer
                       ref={instance => registerProseComposer('tail', instance)}
                       onActivate={() => { activeProseKey.current = 'tail'; }}
+                      onHistoryAction={direction => { void replayStudioHistory(direction); }}
                       onEdit={(before, after) => { if (currentLesson && !historyReplayInFlight.current) rememberAction({kind:'prose', lessonId:currentLesson.id, key:'tail', before, after, at:Date.now()}); }}
                       key={`${currentLesson.id}:${lastContentBlock?.id ?? 'blank'}`}
                       draftKey={`${currentLesson.id}:${lastContentBlock?.id ?? 'blank'}`}

@@ -165,6 +165,7 @@ type RichTextProps = {
   plainPage?: boolean;
   onEditorBlur?: () => void;
   onEditorFocus?: () => void;
+  onHistoryAction?: (direction: 'undo' | 'redo') => void;
 };
 
 export type StudioRichTextEditorHandle = {
@@ -173,7 +174,7 @@ export type StudioRichTextEditorHandle = {
 };
 
 const StudioRichTextEditor = forwardRef<StudioRichTextEditorHandle, RichTextProps>(function StudioRichTextEditor({
-  value, onChange, locked, placeholder, headingLevel, language = 'fr', plainPage = false, onEditorBlur, onEditorFocus,
+  value, onChange, locked, placeholder, headingLevel, language = 'fr', plainPage = false, onEditorBlur, onEditorFocus, onHistoryAction,
 }, ref) {
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
@@ -181,6 +182,8 @@ const StudioRichTextEditor = forwardRef<StudioRichTextEditorHandle, RichTextProp
   onBlurRef.current = onEditorBlur;
   const onFocusRef = useRef(onEditorFocus);
   onFocusRef.current = onEditorFocus;
+  const historyActionRef = useRef(onHistoryAction);
+  historyActionRef.current = onHistoryAction;
   const lastEmitted = useRef<string | null>(null);
   const lastExternal = useRef(String(value ?? ''));
   const [error, setError] = useState('');
@@ -214,6 +217,13 @@ const StudioRichTextEditor = forwardRef<StudioRichTextEditorHandle, RichTextProp
         lang: language,
       },
       handleKeyDown: (_view, event) => {
+        const historyKey = event.key.toLowerCase();
+        if ((event.ctrlKey || event.metaKey) && !event.altKey &&
+            (historyKey === 'z' || historyKey === 'y') && historyActionRef.current) {
+          event.preventDefault();
+          historyActionRef.current(historyKey === 'y' || event.shiftKey ? 'redo' : 'undo');
+          return true;
+        }
         if (headingLevel && event.key === 'Enter') {
           event.preventDefault();
           return true;
@@ -338,8 +348,8 @@ const StudioRichTextEditor = forwardRef<StudioRichTextEditorHandle, RichTextProp
         {tool(labels.tableRemove, '× Tableau', () => editor?.chain().focus().deleteTable().run())}
       </>}
       <span aria-hidden="true" className="mx-1 h-5 border-l border-slate-200" />
-      {tool(labels.undo, '↶', () => editor?.chain().focus().undo().run(), false, !editor?.can().undo())}
-      {tool(labels.redo, '↷', () => editor?.chain().focus().redo().run(), false, !editor?.can().redo())}
+      {tool(labels.undo, '↶', () => onHistoryAction ? onHistoryAction('undo') : editor?.chain().focus().undo().run(), false, !onHistoryAction && !editor?.can().undo())}
+      {tool(labels.redo, '↷', () => onHistoryAction ? onHistoryAction('redo') : editor?.chain().focus().redo().run(), false, !onHistoryAction && !editor?.can().redo())}
     </div>}
     <div className={headingLevel === 1 ? '[&_.oga-tiptap-content]:text-xl [&_.oga-tiptap-content]:font-bold' : headingLevel === 2 ? '[&_.oga-tiptap-content]:text-lg [&_.oga-tiptap-content]:font-semibold' : ''}>
       <EditorContent editor={editor} />
