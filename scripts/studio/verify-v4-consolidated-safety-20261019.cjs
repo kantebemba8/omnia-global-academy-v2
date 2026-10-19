@@ -20,7 +20,7 @@ check('Automatic grading restricts question types', question.includes('AUTOMATIC
 check('AI file grading prohibited', question.includes('AI_FILE_GRADING_NOT_AVAILABLE'));
 check('Response layout and size configured at question level', question.includes('patch.response_layout=layout') && question.includes('patch.max_submission_size_mb='));
 check('Deactivation and clearing require course ownership', management.includes('can_manage_lessons'));
-check('Assessment cannot be managed in published course', management.includes('"published","suspended"'));
+check('Assessment cannot be managed in published course', management.includes('courseState.is_published===true') && management.includes('"published","submitted","suspended"'));
 check('Required assessments cannot be deactivated silently', management.includes('REQUIRED_ASSESSMENT'));
 check('Reactivation refuses empty assessment', management.includes('ASSESSMENT_EMPTY'));
 check('Clear refuses recorded attempts', management.includes('ASSESSMENT_ATTEMPTS_EXIST'));
