@@ -12,7 +12,7 @@ type Props = {
   draftKey: string;
   choices: Choice[];
   onCommit: (html: string) => Promise<boolean>;
-  onInsertBlock: (type: string) => Promise<void>;
+  onInsertBlock: (type: string) => Promise<boolean>;
 };
 
 function readable(html: string) {
@@ -45,9 +45,12 @@ export default function StudioBlankPageComposer({ language, draftKey, choices, o
   }
   async function choose(type: string) {
     if (busyRef.current) return;
-    // A slash command must never be persisted as lesson text.
-    setDraft('');
-    await onInsertBlock(type);
+    busyRef.current = true; setBusy(true);
+    try {
+      // Keep the slash draft until Supabase confirms creation. This avoids lost
+      // work when a mobile connection fails or the creator loses permissions.
+      if (await onInsertBlock(type)) setDraft('');
+    } finally { busyRef.current = false; setBusy(false); }
   }
 
   return <section aria-label="Rédaction directe de la leçon" className="mt-3 mb-2 rounded-xl bg-white px-1 py-2">
@@ -57,7 +60,7 @@ export default function StudioBlankPageComposer({ language, draftKey, choices, o
     {slash && matching.length > 0 && <div role="listbox" aria-label="Commandes de blocs" className="mt-2 max-h-52 overflow-y-auto rounded-xl border border-slate-200 bg-white p-2 shadow-lg">
       {matching.map(choice => <button key={choice.type} type="button" role="option" aria-selected={false}
         className="block w-full rounded-lg px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 focus-visible:bg-blue-50"
-        onClick={() => void choose(choice.type)}>{choice.label}</button>)}
+        disabled={busy} onClick={() => void choose(choice.type)}>{choice.label}</button>)}
     </div>}
     {current && !slash && <div className="mt-2 flex justify-end gap-2 px-3">
       <span className="mr-auto self-center text-xs text-slate-400">Votre texte est conservé ici jusqu’à son ajout à la leçon.</span>

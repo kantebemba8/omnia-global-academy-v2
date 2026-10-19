@@ -1,6 +1,7 @@
 import { Component, lazy, Suspense, type ErrorInfo, type ReactNode } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, Outlet, useParams } from 'react-router-dom';
 import { RootGate } from './components/RootGate';
+import StudioRouteBoundary from './components/studio/StudioRouteBoundary';
 
 import { SiteModeProvider, useSiteMode } from './context/SiteModeContext';
 
@@ -140,6 +141,10 @@ const AdminStructureCodes = lazy(() => import('./pages/admin/AdminStructureCodes
 const AdminStructureB2B = lazy(() => import('./pages/admin/AdminStructureB2B'));
 const AdminCredentials = lazy(() => import('./pages/admin/AdminCredentials'));
 const StudioConceptionFormation = lazy(() => import('./pages/studio/StudioConceptionFormation'));
+
+function SafeStudioEditor({ returnTo }: { returnTo: string }) {
+  return <StudioRouteBoundary returnTo={returnTo}><StudioConceptionFormation /></StudioRouteBoundary>;
+}
 const ProfessorCourseStart = lazy(() => import('./pages/studio/ProfessorCourseStart'));
 const Checkout = lazy(() => import('./pages/Checkout'));
 const PaymentConfirmation = lazy(() => import('./pages/PaymentConfirmation'));
@@ -724,7 +729,7 @@ export default function App() {
         <Route path="/admin/courses" element={<AdminCatalogue />} />
         <Route path="/admin/courses/new" element={<Navigate to="/admin/studio/new" replace />} />
         <Route path="/admin/courses/import" element={<ProfessorCourseStart />} />
-        <Route path="/admin/courses/:id/edit" element={<StudioConceptionFormation />} />
+        <Route path="/admin/courses/:id/edit" element={<SafeStudioEditor returnTo="/admin/studio-mes-formations" />} />
         <Route path="/admin/team" element={<AdminEquipe />} />
         <Route path="/admin/special-access" element={<AdminDemoAccess />} />
         <Route path="/admin/demo-access" element={<Navigate to="/admin/special-access" replace />} />
@@ -808,21 +813,21 @@ export default function App() {
         <Route path="/professeur/courses/new" element={<ProfessorCourseStart />} />
         <Route path="/professeur/assessment-center" element={<ProfesseurAssessmentCenter />} />
         <Route path="/professeur/jurys" element={<ProfesseurJuries />} />
-        <Route path="/professeur/courses/:id/edit" element={<StudioConceptionFormation />} />
-          <Route path="/professeur/studio/new" element={<StudioConceptionFormation />} />
-<Route path="/professeur/studio/:courseId" element={<StudioConceptionFormation />} />
-<Route path="/partner/studio/new" element={<StudioConceptionFormation />} />
-<Route path="/partner/studio/:courseId" element={<StudioConceptionFormation />} />
+        <Route path="/professeur/courses/:id/edit" element={<SafeStudioEditor returnTo="/professeur/courses" />} />
+          <Route path="/professeur/studio/new" element={<SafeStudioEditor returnTo="/professeur/courses" />} />
+<Route path="/professeur/studio/:courseId" element={<SafeStudioEditor returnTo="/professeur/courses" />} />
+<Route path="/partner/studio/new" element={<SafeStudioEditor returnTo="/partner/dashboard" />} />
+<Route path="/partner/studio/:courseId" element={<SafeStudioEditor returnTo="/partner/dashboard" />} />
 <Route path="/partner/recognitions" element={<PartnerRecognitionWorkspace />} />
-<Route path="/admin/studio/new" element={<StudioConceptionFormation />} />
-<Route path="/admin/studio/:courseId" element={<StudioConceptionFormation />} />
+<Route path="/admin/studio/new" element={<SafeStudioEditor returnTo="/admin/studio-mes-formations" />} />
+<Route path="/admin/studio/:courseId" element={<SafeStudioEditor returnTo="/admin/studio-mes-formations" />} />
         <Route path="/admin/studio/:courseId/evaluations" element={<StudioEvaluations />} />
         <Route path="/professeur/studio/:courseId/evaluations" element={<StudioEvaluations />} />
         <Route path="/structure/studio/:courseId/evaluations" element={<StudioEvaluations />} />
-<Route path="/structure/studio/new" element={<StudioConceptionFormation />} />
+<Route path="/structure/studio/new" element={<SafeStudioEditor returnTo="/structure/formations" />} />
 <Route path="/structure/assessment-center" element={<ProfesseurAssessmentCenter />} />
 <Route path="/structure/jurys" element={<ProfesseurJuries />} />
-<Route path="/structure/studio/:courseId" element={<StudioConceptionFormation />} />
+<Route path="/structure/studio/:courseId" element={<SafeStudioEditor returnTo="/structure/formations" />} />
 <Route path="/structure/courses/new" element={<ProfessorCourseStart />} />
 <Route path="/structure/formations/nouvelle" element={<Navigate to="/structure/courses/new" replace />} />
 

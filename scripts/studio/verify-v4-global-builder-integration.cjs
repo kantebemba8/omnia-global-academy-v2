@@ -1,0 +1,63 @@
+// OGA — Global Builder integration source + isolated legacy normalization checks.
+// This is NOT browser/mobile Supabase or the 55 functional tests.
+const fs = require('fs');
+const path = require('path');
+const vm = require('vm');
+const assert = require('assert/strict');
+const ts = require('typescript');
+const root = path.resolve(__dirname, '../..');
+const read = rel => fs.readFileSync(path.join(root, rel), 'utf8');
+const builder = read('src/pages/studio/StudioConceptionFormation.tsx');
+const compat = read('src/lib/studioLegacyCompatibility.ts');
+const composer = read('src/components/studio/StudioBlankPageComposer.tsx');
+const rich = read('src/components/studio/StudioRichTextEditor.tsx');
+const app = read('src/App.tsx');
+const server = read('supabase/functions/studio-unified/index.ts');
+const boundary = read('src/components/studio/StudioRouteBoundary.tsx');
+let checks = 0;
+function verify(label, test) { assert.ok(test,label);checks++; console.log('PASS',label); }
+const any = (s,x)=>s.includes(x);
+for(const [f,code] of Object.entries({'builder.tsx':builder,'composer.tsx':composer,'editor.tsx':rich,'app.tsx':app,'boundary.tsx':boundary,'legacy.ts':compat,'edge.ts':server})) {
+ const sf = ts.createSourceFile(f, code, ts.ScriptTarget.Latest, true, f.endsWith('.tsx')?ts.ScriptKind.TSX:ts.ScriptKind.TS);
+ verify('Syntaxe TypeScript '+f, !sf.parseDiagnostics.length);
+}
+const compiled = ts.transpileModule(compat,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
+const fakeExports = {}; const fakeModule={exports:fakeExports};
+vm.runInNewContext(compiled,{exports:fakeExports,module:fakeModule,console});
+const c=fakeModule.exports;
+const course=c.normalizeStudioCourse({id:'oldcourse',title:'Cours historique',objectives:'A\nB',old_field:'keep',is_published:true});
+verify('Cours ancien conservé',course && course.old_field==='keep' && course.studio_status==='published' && course.objectives.join('/')==='A/B');
+const summary=c.normalizeStudioLesson({id:'oldsummary',title:'Bilan du module',is_intro:false});
+verify('Ancienne Synthèse reliée à module_summary',summary.stage_type==='module_summary');
+const classic=c.normalizeStudioLesson({id:'oldpresentation',is_module_intro:true});
+verify('Présentation historique reconnue',classic.stage_type==='module_presentation');
+const serialized=c.normalizeStudioBlock({id:'block1',block_type:'text',content_json:'<p>Bonjour <strong>OGA</strong></p>'});
+verify('HTML ancien sans balises brutes écrasées',serialized.content_json.html.includes('<strong>OGA</strong>'));
+const malformed=c.normalizeStudioBlock({id:'block2',block_type:'accordion',content_json:{title:'ancien',items:'not-json',another_field:17}});
+verify('Collections malformées ne plantent pas',Array.isArray(malformed.content_json.items));
+verify('Source historique conservée',malformed.content_json.__legacy_collection_source.items==='not-json' && malformed.content_json.another_field===17);
+const json=c.normalizeStudioBlock({id:'block3',block_type:'qcm',content_json:{options:'["A","B"]',correctIndex:1}});
+verify('Options sérialisées restaurées sans perte de réponse',json.content_json.options.length===2 && json.content_json.correctIndex===1);
+const oldPair=c.normalizeStudioBlock({id:'block4',block_type:'matching',content_json:{pairs:'[{"left":"A","right":"B"}]'}});
+verify('Paires QCM appariement sérialisées',oldPair.content_json.pairs[0].right==='B');
+verify('Réponse serveur incorrecte refusée',c.normalizeStudioEnvelope({success:true,course:{id:'oldcourse'},modules:[{title:'no id'}]})===null);
+verify('Bloc corrompu refusé sans masquer les autres',c.normalizeStudioBlocks({success:true,blocks:[{block_type:'text'}]})===null);
+verify('Données historiques non mutées',malformed.content_json.__legacy_collection_source.items==='not-json');
+verify('Écriture directe conservée', any(builder,'<StudioBlankPageComposer') && any(builder,'commitPageParagraph') && any(rich,'EditorContent editor={editor}'));
+verify('Slash ne vide que si ajout accepté', any(composer,"if (await onInsertBlock(type)) setDraft('');"));
+verify('Insertion non valide refusée', any(builder,'return false;') && any(builder,'async function addBlock'));
+verify('Insertion de texte legacy via backend', any(builder,"block_type: 'text', content_json: { html, content: html, text: stripHtml(html) }"));
+verify('Édition Tiptap directe dans blocs prose', any(builder,'<RichTextEditor plainPage') && any(builder,'const proseBlock'));
+verify('Bibliothèque 52 types présente', any(builder,'const modeBlocks = BLOCK_DEFS'));
+verify('Drag and drop conservé', any(builder,'<DndContext') && any(builder,'<SortableContext'));
+verify('Uppy conservé', any(builder,"import Uppy from '@uppy/core'"));
+verify('Contrôles séparés des suppressions', any(builder,'Supprimer uniquement le bloc') && any(builder,'Supprimer le module et ses leçons…'));
+verify('Récupération du bloc disponible sans HTML brut', any(builder,'Réessayer l’affichage du bloc') && any(builder,'Récupération manuelle du texte'));
+verify('Menu étape fermeture clic extérieur', any(builder,'data-oga-stage-menu') && any(builder,"document.addEventListener('pointerdown', closeOutside)"));
+verify('Actions évaluations contextuelles conservées', any(builder,'selectAssessmentWorkspace') && any(builder,"stageTypeOf(currentLesson) === 'module_summary' ? 'module'"));
+verify('Identifiant technique synthèse conservé', any(server,'stage_type:"module_summary"') && any(server,'title:"Synthèse"'));
+verify('Ouverture formation lecture seule côté serveur', any(server,'Opening an existing formation is strictly read-only.'));
+verify('Les pages Builder protégées', any(app,'StudioRouteBoundary') && any(boundary,'captureError(error'));
+verify('Pas de déploiement SQL implicite', !any(server,'db push --include-all'));
+verify('Éditeur mobile pas réduit par sidebar moyenne', any(builder,'lg:w-[242px]'));
+console.log(`OGA_V4_GLOBAL_INTEGRATION_SOURCE_SUCCESS ${checks} contrôles; pas de certification navigateur, Supabase, ni 55 scénarios.`);

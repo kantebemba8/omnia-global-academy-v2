@@ -1362,20 +1362,40 @@ Deno.serve(async(req)=>{
    return json({success:true});
   }
   if(action==="get_course"){
-   if(isAdmin)await ensurePublishedDurationEngineMigration(sb,userId);
-   await recalculateCourseDuration(sb,courseId);
-   const {data:course}=await sb.from("courses").select("*").eq("id",courseId).maybeSingle(); if(!course)return json({success:false,error:"NOT_FOUND"},404);
-   const {data:mods}=await sb.from("course_modules").select("*").eq("course_id",courseId).order("position");
-   const ids=(mods||[]).map((m:any)=>m.id); const {data:lessons}=ids.length?await sb.from("course_lessons").select("*").in("module_id",ids).order("position"):{data:[]};
-   const lsIds=(lessons||[]).map((l:any)=>l.id); let counts:any[]=[]; if(lsIds.length){const {data}=await sb.from("lesson_blocks").select("lesson_id").in("lesson_id",lsIds);counts=data||[]}
-   const modules=(mods||[]).map((m:any)=>({...m,lessons:(lessons||[]).filter((l:any)=>l.module_id===m.id).map((l:any)=>({...l,has_blocks:counts.some(x=>x.lesson_id===l.id),block_count:counts.filter(x=>x.lesson_id===l.id).length}))}));
+   // Editing an existing course must remain read-safe even if duration recalibration
+   // encounters legacy data. The dedicated duration migration is a separate operation;
+   // never run a global data migration as a side effect of opening the Builder.
+   const {data:course,error:courseReadError}=await sb.from("courses").select("*").eq("id",courseId).maybeSingle();
+   if(courseReadError)throw courseReadError;
+   if(!course)return json({success:false,error:"NOT_FOUND"},404);
+   const {data:mods,error:modulesReadError}=await sb.from("course_modules").select("*").eq("course_id",courseId).order("position");
+   if(modulesReadError)throw modulesReadError;
+   const ids=(mods||[]).map((m:any)=>m.id);
+   const lessonsResult=ids.length?await sb.from("course_lessons").select("*").in("module_id",ids).order("position"):{data:[],error:null};
+   if(lessonsResult.error)throw lessonsResult.error;
+   const lessons=lessonsResult.data||[];
+   const lsIds=lessons.map((l:any)=>l.id);
+   let counts:any[]=[];
+   if(lsIds.length){
+    // The editor needs counts, not every block's content. Keep this read isolated
+    // from editing so older courses do not fail due to a duration-write error.
+    const {data,error}=await sb.from("lesson_blocks").select("lesson_id").in("lesson_id",lsIds);
+    if(error)throw error;
+    counts=data||[];
+   }
+   const countsByLesson=new Map<string,number>();
+   for(const row of counts){const id=String(row.lesson_id||"");countsByLesson.set(id,(countsByLesson.get(id)||0)+1)}
+   const modules=(mods||[]).map((m:any)=>({...m,lessons:lessons.filter((l:any)=>l.module_id===m.id).map((l:any)=>({...l,has_blocks:(countsByLesson.get(String(l.id))||0)>0,block_count:countsByLesson.get(String(l.id))||0}))}));
+   // Opening an existing formation is strictly read-only. Duration updates stay
+   // on block/lesson modifications and explicit quality checks, where failures
+   // can be reported without preventing the author from reopening their course.
    return json({success:true,course,modules});
   }
   if(action==="create_module"){
    const [{data:normalMods},{data:courseMeta}]=await Promise.all([sb.from("course_modules").select("id").eq("course_id",courseId).eq("section_type","module"),sb.from("courses").select("language").eq("id",courseId).maybeSingle()]);
    const normalCount=(normalMods||[]).length;const lang=normalizedCourseLanguage(courseMeta?.language);
    const {data,error}=await sb.from("course_modules").insert({course_id:courseId,title:b.title||`Module ${normalCount+1}`,objective:b.objective||"",position:normalCount,is_intro:false,section_type:"module"}).select("*").single();if(error)throw error;
-   const {data:bilan,error:bilanError}=await sb.from("course_lessons").insert({course_id:courseId,module_id:data.id,title:"Bilan du module",position:9999,is_intro:false,is_module_intro:false,is_required:false,stage_type:"module_summary",content_text:""}).select("*").single();
+   const {data:bilan,error:bilanError}=await sb.from("course_lessons").insert({course_id:courseId,module_id:data.id,title:"Synthèse",position:9999,is_intro:false,is_module_intro:false,is_required:false,stage_type:"module_summary",content_text:""}).select("*").single();
    if(bilanError)throw bilanError;
    await log(sb,courseId,userId,"module_created",{module_id:data.id,automatic_lessons:false,bilan_lesson_id:bilan.id});return json({success:true,module:data,intro_lesson:null,bilan_lesson:bilan});
   }
@@ -1408,7 +1428,7 @@ Deno.serve(async(req)=>{
    if(!mod||!(await owns(sb,userId,String(mod.course_id),"can_manage_lessons")))return json({success:false,error:"FORBIDDEN"},403);
    const {data:existing}=await sb.from("course_lessons").select("*").eq("module_id",moduleId).eq("stage_type",stage).maybeSingle();
    if(existing)return json({success:true,lesson:{...existing,has_blocks:false,block_count:0},existing:true});
-   const title=String(b.title|| (stage==="module_presentation"?"Présentation du module":"Bilan du module")).trim();
+   const title=String(b.title|| (stage==="module_presentation"?"Présentation du module":"Synthèse")).trim();
    const position=stage==="module_presentation"?-1:9999;
    const {data,error}=await sb.from("course_lessons").insert({course_id:mod.course_id,module_id:moduleId,title,position,is_intro:false,is_module_intro:stage==="module_presentation",is_required:false,stage_type:stage}).select("*").single();if(error)throw error;
    await log(sb,String(mod.course_id),userId,"module_stage_created",{module_id:moduleId,lesson_id:data.id,stage_type:stage});

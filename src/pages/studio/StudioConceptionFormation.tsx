@@ -1,4 +1,5 @@
 import { openInternalPreviewUrl } from '../../lib/mobile';
+import { normalizeStudioEnvelope, normalizeStudioBlocks } from '../../lib/studioLegacyCompatibility';
 import MobileBuilderAdvice from '../../components/MobileBuilderAdvice';
 import { Component, useState, useEffect, useCallback, useRef, useMemo, type ReactNode } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
@@ -222,14 +223,17 @@ class BuilderBlockBoundary extends Component<{ children: ReactNode; blockType: s
       })();
       return <div role="alert" className="rounded-lg border border-red-200 bg-white px-4 py-3 text-sm text-slate-700">
         <p className="font-medium text-red-700">L’éditeur de ce bloc a rencontré une erreur. Son contenu est conservé.</p>
-        <p className="mt-1 text-xs text-slate-500">Détail disponible dans la console du navigateur. Modifier le texte ci-dessous n’altère pas les autres champs du bloc.</p>
+        <p className="mt-1 text-xs text-slate-500">Vous pouvez réessayer le rendu. Les contenus et les propriétés du bloc restent enregistrés.</p>
+        <button type="button" className="mt-2 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-[#002050]" onClick={() => this.setState({failed: false})}>Réessayer l’affichage du bloc</button>
+        <details className="mt-3 rounded-lg bg-slate-50 p-2"><summary className="cursor-pointer text-xs text-slate-600">Récupération manuelle du texte (si nécessaire)</summary>
+        <p className="mt-2 text-xs text-amber-800">Cette opération remplace uniquement le champ sélectionné. Copiez votre contenu avant de le modifier.</p>
         <textarea aria-label="Éditer le texte du bloc en secours" disabled={this.props.locked}
           className="mt-3 min-h-[110px] w-full rounded-lg border border-slate-200 bg-white p-3 text-sm"
           value={readable} onChange={event => {
             const escaped = event.target.value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
             const nextHtml = `<p>${escaped.replace(/\n/g, '<br>')}</p>`;
             this.props.onFallbackChange({ ...raw, [field]: nextHtml, ...(field === 'html' ? {text: event.target.value, content: nextHtml} : {}) });
-          }}/>
+          }}/></details>
       </div>;
     }
     return this.props.children;
@@ -276,6 +280,8 @@ export default function StudioConceptionFormation() {
 
   // UI
   const [loading, setLoading] = useState(true);
+  const [initialLoadError, setInitialLoadError] = useState('');
+  const [loadRetry, setLoadRetry] = useState(0);
   const [saving, setSaving] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [advancedMode, setAdvancedMode] = useState(true);
@@ -340,8 +346,17 @@ export default function StudioConceptionFormation() {
 
   // ─── Chargement initial ────────────────────────────────────
   useEffect(() => {
+    let active = true;
     async function load() {
       setLoading(true);
+      setInitialLoadError('');
+      // Switching between an old course and a new one must not reuse stale blocks.
+      setModules([]);
+      setCurrentModule(null);
+      setCurrentLesson(null);
+      setBlocks([]);
+      setSelectedBlock(null);
+      blockLoadRequest.current += 1;
       try {
         if (isNew) {
           const templateKey = searchParams.get('template') || 'simple_textual';
@@ -350,29 +365,42 @@ export default function StudioConceptionFormation() {
           setCourse({ ...EMPTY_COURSE, template_used: templateKey });
         } else if (courseId) {
           const data = await api('get_course', { course_id: courseId });
-          if (data.success) {
-            setCourse(data.course);
-            setModules(data.modules || []);
-            setAdvancedMode(data.course.studio_mode === 'advanced');
-            if (data.modules?.length > 0) {
-              const firstMod = data.modules[0];
+          if (!active) return;
+          const normalized = normalizeStudioEnvelope(data);
+          if (normalized) {
+            const safeCourse = normalized.course as unknown as Course;
+            const safeModules = normalized.modules as unknown as Module[];
+            setCourse(safeCourse);
+            setModules(safeModules);
+            setAdvancedMode(safeCourse.studio_mode === 'advanced');
+            const firstMod = safeModules.find(mod => mod.lessons.length > 0) || safeModules[0];
+            if (firstMod) {
               setCurrentModule(firstMod);
-              if (firstMod.lessons?.length > 0) {
-                const firstLesson = firstMod.lessons[0];
-                setCurrentLesson(firstLesson);
-                await loadBlocks(firstLesson.id);
+              const firstLesson = firstMod.lessons[0];
+              if (firstLesson) {
+                const loaded = await loadBlocks(firstLesson.id);
+                if (!active) return;
+                if (loaded) setCurrentLesson(firstLesson);
+                else showToast('Le programme est ouvert, mais la première leçon n’a pas pu être chargée. Sélectionnez une autre leçon.', 'error');
               }
             }
           } else {
-            setCourse({ ...EMPTY_COURSE });
-            showToast(data.error === 'AUTH_REQUIRED' ? 'Session expirée : reconnectez-vous puis enregistrez à nouveau.' : 'Formation introuvable ou inaccessible.', 'error');
+            const message = data?.error === 'AUTH_REQUIRED'
+              ? 'Votre session a expiré. Reconnectez-vous pour modifier cette formation.'
+              : data?.error === 'FORBIDDEN'
+                ? 'Vous ne disposez pas des droits de modification de cette formation.'
+                : data?.message || data?.error || 'La formation ne peut pas être chargée. Aucune donnée n’a été modifiée.';
+            setInitialLoadError(message);
           }
         }
-      } catch { showToast('Erreur de chargement', 'error'); }
-      finally { setLoading(false); }
+      } catch (error) {
+        console.error('OGA studio course load failed', error);
+        if (active) setInitialLoadError('Le chargement de la formation a échoué. Réessayez sans perdre vos contenus enregistrés.');
+      } finally { if (active) setLoading(false); }
     }
-    load();
-  }, [courseId]);
+    void load();
+    return () => { active = false; blockLoadRequest.current += 1; };
+  }, [courseId, loadRetry]);
 
   useEffect(() => {
     if (course.id && requestedPanel === 'assessment-rules') setShowAssessmentPolicy(true);
@@ -387,11 +415,18 @@ export default function StudioConceptionFormation() {
       showToast(data.message || data.error || 'Impossible de charger les blocs de la leçon.', 'error');
       return false;
     }
-    setBlocks(data.blocks || []);
-    // Compter les mots
-    const wc = (data.blocks || []).reduce((acc: number, b: Block) => {
-      const text = b.content_json?.html || b.content_json?.text || b.content_json?.question || '';
-      return acc + text.replace(/<[^>]+>/g, ' ').split(/\s+/).filter(Boolean).length;
+    const normalized = normalizeStudioBlocks(data);
+    if (!normalized) {
+      showToast('Réponse de chargement des blocs invalide. Aucun contenu existant n’a été effacé.', 'error');
+      return false;
+    }
+    const safeBlocks = normalized as unknown as Block[];
+    setBlocks(safeBlocks);
+    // Les contenus historiques peuvent avoir des valeurs non textuelles.
+    const wc = safeBlocks.reduce((acc: number, b: Block) => {
+      const source = b.content_json?.html ?? b.content_json?.text ?? b.content_json?.question ?? '';
+      const content = typeof source === 'string' ? source : '';
+      return acc + content.replace(/<[^>]+>/g, ' ').split(/\s+/).filter(Boolean).length;
     }, 0);
     setWordCount(wc);
     return true;
@@ -478,9 +513,15 @@ export default function StudioConceptionFormation() {
       showToast(data.error === 'AUTH_REQUIRED' ? 'Session expirée. Reconnectez-vous.' : 'Impossible de recharger la formation.', 'error');
       return false;
     }
-    setCourse(data.course);
-    setModules(data.modules || []);
-    setAdvancedMode(data.course?.studio_mode === 'advanced');
+    const normalized = normalizeStudioEnvelope(data);
+    if (!normalized) {
+      showToast('La réponse de rechargement de la formation est invalide. Les contenus restent inchangés.', 'error');
+      return false;
+    }
+    const safeCourse = normalized.course as unknown as Course;
+    setCourse(safeCourse);
+    setModules(normalized.modules as unknown as Module[]);
+    setAdvancedMode(safeCourse.studio_mode === 'advanced');
     return true;
   }
 
@@ -700,16 +741,16 @@ void openModuleAssessment;
 
   // ─── Ajouter bloc ─────────────────────────────────────────
   async function addBlock(blockType: string, insertionIndex?: number) {
-    if (locked || !BLOCK_DEFS.some(def => def.type === blockType)) return;
+    if (locked || !BLOCK_DEFS.some(def => def.type === blockType)) return false;
     if (!course?.id || !currentModule?.id || !currentLesson?.id) {
-      showToast('Sélectionnez d\'abord une leçon', 'error'); return;
+      showToast('Sélectionnez d\'abord une leçon', 'error'); return false;
     }
     if (assessmentWorkspace && !ASSESSMENT_CAPABLE_BLOCKS.has(blockType)) {
       showToast('Dans le sous-espace Évaluation, ajoutez uniquement un bloc pouvant servir de question officielle.', 'error');
-      return;
+      return false;
     }
     try { await flushBlockUpdates(); }
-    catch { showToast('Sauvegarde en attente : ajout annulé pour éviter une perte de données.', 'error'); return; }
+    catch { showToast('Sauvegarde en attente : ajout annulé pour éviter une perte de données.', 'error'); return false; }
     const targetLessonId = currentLesson.id;
     const defaultContent = contentDefaultForLanguage(getDefaultContent(blockType), course.language || 'fr');
     const data = await api('create_block', {
@@ -727,8 +768,10 @@ void openModuleAssessment;
       // Le panneau Paramètres ne s'ouvre que via l'engrenage, sur PC comme sur mobile.
       setSelectedBlock(null);
       setSelectedBlockDef(null);
+      return true;
     } else {
       showToast(data.message || data.error || 'Impossible de créer le bloc.', 'error');
+      return false;
     }
   }
 
@@ -765,6 +808,10 @@ void openModuleAssessment;
   // ─── Supprimer / dupliquer / réordonner les blocs ───────────
   async function deleteBlock(blockId: string) {
     if (locked) return;
+    const blockToDelete = blocks.find(item => item.id === blockId);
+    if (!blockToDelete) return;
+    const blockLabel = BLOCK_DEFS.find(item => item.type === blockToDelete.block_type)?.label || blockToDelete.block_type;
+    if (!window.confirm(`Supprimer uniquement le bloc « ${blockLabel} » ? Les autres blocs et la leçon seront conservés.`)) return;
     try { await flushBlockUpdates(); }
     catch { showToast('Sauvegarde incomplète : suppression annulée.', 'error'); return; }
     const result = await api('delete_block', { block_id: blockId });
@@ -1191,6 +1238,20 @@ void openModuleAssessment;
     );
   }
 
+  if (initialLoadError) {
+    return <main className="flex min-h-[100dvh] items-center justify-center bg-slate-50 p-4">
+      <section role="alert" className="w-full max-w-lg rounded-2xl border border-amber-200 bg-white p-6 shadow-sm">
+        <h1 className="text-lg font-bold text-[#002050]">Modification de la formation indisponible</h1>
+        <p className="mt-3 text-sm leading-6 text-slate-600">{initialLoadError}</p>
+        <p className="mt-2 text-xs text-slate-500">Les données déjà enregistrées ne sont pas modifiées.</p>
+        <div className="mt-5 flex flex-wrap gap-3">
+          <button type="button" onClick={() => setLoadRetry(n => n + 1)} className="rounded-lg bg-[#002050] px-4 py-2.5 text-sm font-semibold text-white">Réessayer le chargement</button>
+          <button type="button" onClick={() => navigate(-1)} className="rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-[#002050]">Retour</button>
+        </div>
+      </section>
+    </main>;
+  }
+
   return (
     <div className="flex flex-col h-[100dvh] overflow-hidden" style={{ background: '#F0F2F5', fontFamily: 'Arial, sans-serif' }}>
       <MobileBuilderAdvice
@@ -1298,13 +1359,13 @@ void openModuleAssessment;
 
       {/* ── CORPS PRINCIPAL ──────────────────────────────── */}
       <div className="flex flex-1 overflow-hidden relative">
-        {mobileLibraryOpen && <button type="button" aria-label="Fermer la bibliothèque" onClick={() => setMobileLibraryOpen(false)} className="absolute inset-0 z-30 bg-slate-950/30 md:hidden" />}
+        {mobileLibraryOpen && <button type="button" aria-label="Fermer la bibliothèque" onClick={() => setMobileLibraryOpen(false)} className="absolute inset-0 z-30 bg-slate-950/30 lg:hidden" />}
         {/* ── COLONNE GAUCHE : Bibliothèque ────────────── */}
-        <div className={`${mobileLibraryOpen ? 'absolute inset-y-0 left-0 z-40 flex w-[min(22rem,92vw)] shadow-2xl' : 'hidden'} bg-white border-r flex-col flex-shrink-0 md:flex md:static md:w-[264px] xl:w-[278px] md:shadow-none`} style={{ borderColor: '#E4E7EC' }}>
+        <div className={`${mobileLibraryOpen ? 'absolute inset-y-0 left-0 z-40 flex w-[min(22rem,92vw)] shadow-2xl' : 'hidden'} bg-white border-r flex-col flex-shrink-0 lg:flex lg:static lg:w-[242px] 2xl:w-[274px] lg:shadow-none`} style={{ borderColor: '#E4E7EC' }}>
 
           {/* Tabs bibliothèque */}
           <div className="flex items-center border-b" style={{ borderColor: '#E4E7EC' }}>
-            <button type="button" onClick={() => setMobileLibraryOpen(false)} className="ml-2 rounded-lg p-2 text-slate-500 md:hidden" aria-label="Fermer la bibliothèque"><X size={16} /></button>
+            <button type="button" onClick={() => setMobileLibraryOpen(false)} className="ml-2 rounded-lg p-2 text-slate-500 lg:hidden" aria-label="Fermer la bibliothèque"><X size={16} /></button>
             {(assessmentWorkspace ? (['blocs'] as const) : (['blocs', 'sections', 'templates'] as const)).map(tab => (
               <button key={tab} onClick={() => setActiveLibTab(tab)}
                 className="flex-1 py-2.5 text-xs font-semibold capitalize transition-all"
@@ -1516,7 +1577,7 @@ void openModuleAssessment;
           )}
 
           {/* Canevas */}
-          <div className="flex-1 overflow-y-auto px-2 py-4 sm:px-5 sm:py-6 lg:px-8" style={{ background: '#F1F4F8' }} onDragOver={(e) => { if (e.dataTransfer.types.includes('application/x-omnia-block')) e.preventDefault(); }} onDrop={async (e) => { const bt = e.dataTransfer.getData('application/x-omnia-block'); if (bt) { e.preventDefault(); setDragOverSlot(null); await addBlock(bt); } }}>
+          <div className="flex-1 overflow-y-auto px-2 py-4 sm:px-5 sm:py-6 lg:px-6" style={{ background: '#F1F4F8' }} onDragOver={(e) => { if (e.dataTransfer.types.includes('application/x-omnia-block')) e.preventDefault(); }} onDrop={async (e) => { const bt = e.dataTransfer.getData('application/x-omnia-block'); if (bt) { e.preventDefault(); setDragOverSlot(null); await addBlock(bt); } }}>
 
             {/* ── VUE INFOS FORMATION ──────────────────── */}
             {!currentModule && !showFinalization && (
@@ -1788,6 +1849,7 @@ void openModuleAssessment;
                     const idx = blocks.findIndex(item => item.id === block.id);
                     const def = BLOCK_DEFS.find(d => d.type === block.block_type);
                     const isSelected = selectedBlock?.id === block.id;
+                    const proseBlock = ['text', 'heading', 'subheading'].includes(block.block_type);
                     return (
                       <StudioSortableBlock key={block.id} id={block.id} disabled={locked || reorderInFlight.current}
                         onPaletteDragOver={e => onDragOver(e, idx)}
@@ -1795,7 +1857,7 @@ void openModuleAssessment;
                         {handle => <>
                         {(dragOverSlot === idx || insertionSlot === idx) && <div aria-hidden="true" className="absolute -top-1 inset-x-2 z-20 h-1 rounded-full bg-[#BF8813] shadow-md" />}
                         {(dragOverSlot === idx + 1 || insertionSlot === idx + 1) && <div aria-hidden="true" className="absolute -bottom-1 inset-x-2 z-20 h-1 rounded-full bg-[#BF8813] shadow-md" />}
-                        <div className={`group relative rounded-xl border bg-white transition-all hover:shadow-sm ${isSelected ? 'ring-1 ring-blue-100' : ''}`}
+                        <div className={`group relative rounded-xl border bg-white transition-all ${proseBlock ? 'hover:bg-slate-50/30' : 'hover:shadow-sm'} ${isSelected ? 'ring-1 ring-blue-100' : ''}`}
                           style={{ borderColor: isSelected ? '#CBD5E1' : 'transparent' }}>
                           {/* Header bloc */}
                           <div className="flex items-center justify-between px-2 py-1 opacity-50 transition-opacity hover:opacity-100 group-focus-within:opacity-100" style={{ borderColor: '#F3F4F6' }}>
@@ -1836,7 +1898,14 @@ void openModuleAssessment;
                           </div>
 
                           {/* Contenu du bloc */}
-                          <div className="px-2 pb-4 pt-1 sm:px-3 sm:pb-5" style={{ fontFamily: String(block.settings_json?.font_family || 'Inter, system-ui, sans-serif'), fontSize: block.settings_json?.font_scale === 'small' ? '0.875rem' : block.settings_json?.font_scale === 'large' ? '1.075rem' : undefined, textAlign: (block.settings_json?.text_align || 'left') as any }}>
+                          <div className={proseBlock ? 'px-1 pb-2 pt-0 sm:px-2 sm:pb-3' : 'px-2 pb-4 pt-1 sm:px-3 sm:pb-5'} style={{ fontFamily: String(block.settings_json?.font_family || 'Inter, system-ui, sans-serif'), fontSize: block.settings_json?.font_scale === 'small' ? '0.875rem' : block.settings_json?.font_scale === 'large' ? '1.075rem' : undefined, textAlign: (block.settings_json?.text_align || 'left') as any }}>
+                            {block.content_json?.__legacy_collection_source && Object.keys(block.content_json.__legacy_collection_source).length > 0 && (
+                              <details className="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+                                <summary className="cursor-pointer font-semibold">Contenu ancien conservé — vérifier avant d’enregistrer ce bloc</summary>
+                                <p className="mt-2">Certains éléments du bloc ont un format historique non reconnu. La version originale est préservée ici pour récupération manuelle.</p>
+                                <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-all rounded bg-white p-2 text-[11px]">{JSON.stringify(block.content_json.__legacy_collection_source, null, 2)}</pre>
+                              </details>
+                            )}
                             <BuilderBlockBoundary blockType={block.block_type} block={block} locked={locked} onFallbackChange={content_json => {
                               setBlocks(bs => bs.map(b => b.id === block.id ? { ...b, content_json } : b));
                               if (isSelected) setSelectedBlock(b => b ? { ...b, content_json } : b);
@@ -1875,7 +1944,11 @@ void openModuleAssessment;
                       key={currentLesson.id}
                       draftKey={currentLesson.id}
                       onCommit={commitPageParagraph}
-                      onInsertBlock={async type => { await addBlock(type, insertionSlot ?? undefined); setInsertionSlot(null); }}
+                      onInsertBlock={async type => {
+                        const created = await addBlock(type, insertionSlot ?? undefined);
+                        if (created) setInsertionSlot(null);
+                        return created;
+                      }}
                       choices={visibleBlocks.map(def => ({ type: def.type, label: def.label }))}
                       language={course?.instruction_language || course?.language || 'fr'}
                     />
@@ -2334,15 +2407,15 @@ function BlockPreview({ block, locked, onChange, onGenerateTts, onGenerateSubtit
 
   switch (block.block_type) {
     case 'heading': return (
-      <RichTextEditor value={c.html ?? c.text ?? ''} locked={locked} headingLevel={1}
+      <RichTextEditor plainPage value={c.html ?? c.text ?? ''} locked={locked} headingLevel={1}
         placeholder="Titre..." language={defaultLanguage} onChange={html => onChange({ ...c, html, text: stripHtml(html) })} />
     );
     case 'subheading': return (
-      <RichTextEditor value={c.html ?? c.text ?? ''} locked={locked} headingLevel={2}
+      <RichTextEditor plainPage value={c.html ?? c.text ?? ''} locked={locked} headingLevel={2}
         placeholder="Sous-titre..." language={defaultLanguage} onChange={html => onChange({ ...c, html, text: stripHtml(html) })} />
     );
     case 'text': return (
-      <RichTextEditor value={c.html ?? c.text ?? c.content ?? ''} locked={locked} placeholder="Saisissez votre texte..." language={defaultLanguage}
+      <RichTextEditor plainPage value={c.html ?? c.text ?? c.content ?? ''} locked={locked} placeholder="Saisissez votre texte..." language={defaultLanguage}
         onChange={html => onChange({ ...c, html, content: html, text: stripHtml(html) })} />
     );
     case 'callout': return (

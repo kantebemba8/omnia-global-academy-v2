@@ -84,8 +84,17 @@ export function cleanStudioRichHtml(raw: string): string {
 }
 
 function normalizeInput(raw: string): string {
-  const value = String(raw ?? '');
+  let value = String(raw ?? '');
   if (!value.trim()) return '';
+  // Some earlier Builders stored already-escaped HTML in their text fields.
+  // Decode only a recognized document fragment, not arbitrary lessons teaching HTML.
+  // The decoded result still goes through the allow-list sanitizer below.
+  if (/^\s*&lt;(?:p|h[1-6]|ul|ol|blockquote|table|div|strong|em)\b/i.test(value) && typeof document !== 'undefined') {
+    const decoder = document.createElement('textarea');
+    decoder.innerHTML = value;
+    const decoded = decoder.value;
+    if (/^\s*<(?:p|h[1-6]|ul|ol|blockquote|table|div|strong|em)\b/i.test(decoded)) value = decoded;
+  }
   // Old blocks can contain plain text, including literal angle brackets.
   if (!/<\/?[a-z][\s\S]*?>/i.test(value)) {
     return value.replace(/\r\n?/g, '\n').split(/\n\n+/)
