@@ -34,7 +34,7 @@ check('Policy lookup includes active flag', action('assessment_policy_get','asse
 check('Assessment UI has safe clear and toggle actions', builder.includes('Vider les questions…') && builder.includes('Désactiver l’évaluation'));
 check('Assessment state is re-fetched after first question created', builder.includes('setAssessmentRefresh(previous => previous + 1)'));
 check('Reorder history recorded after acknowledged API', builder.includes('blockOrderUndo.current.push({ lessonId'));
-check('Reorder undo/redo uses server persistence', builder.includes("async function replayBlockOrder(direction: 'undo'|'redo')") && builder.includes("api('reorder_blocks', { lesson_id: currentLesson.id, ordered_ids: target })"));
+check('Reorder undo/redo uses server persistence', builder.includes("async function replayBlockOrder(direction: 'undo'|'redo')") && builder.includes("expected_ordered_ids: expected, ordered_ids: target"));
 check('Stale reorder history invalidated', builder.includes('Historique de déplacement réinitialisé'));
 check('Course metadata flushed before navigation', builder.includes('async function flushPendingCourseEdits()') && (builder.match(/if \(!await flushPendingCourseEdits\(\)\) return false;/g)||[]).length >= 3);
 check('Unsent block and metadata warn on tab close', builder.includes("Object.keys(blockSaveQueues.current).length > 0") && builder.includes("['pending','saving','error'].includes(courseSaveStatus)"));

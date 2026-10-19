@@ -1450,12 +1450,22 @@ Deno.serve(async(req)=>{
   if(action==="delete_lesson"){
    const lessonId=String(b.lesson_id||"");const {data:lesson}=await sb.from("course_lessons").select("id,course_id,module_id,stage_type,is_intro,is_module_intro,is_conclusion,is_final_exam").eq("id",lessonId).maybeSingle();
    if(!lesson||!(await owns(sb,userId,String(lesson.course_id),"can_manage_lessons")))return json({success:false,error:"FORBIDDEN"},403);
-   const {data:deleteCourse}=await sb.from("courses").select("is_published,studio_status").eq("id",lesson.course_id).maybeSingle();if(deleteCourse?.is_published===true)return json({success:false,error:"PUBLISHED_VERSION_IMMUTABLE",message:"Créez une nouvelle version brouillon avant de supprimer une leçon d’une formation publiée."},409);
+   const {data:deleteCourse}=await sb.from("courses").select("is_published,studio_status").eq("id",lesson.course_id).maybeSingle();if(deleteCourse?.is_published===true||["published","pending_validation","validated","suspended"].includes(String(deleteCourse?.studio_status||"")))return json({success:false,error:"PUBLISHED_VERSION_IMMUTABLE",message:"Créez une nouvelle version brouillon avant de supprimer une leçon d’une formation publiée."},409);
    if(lesson.is_intro===true||lesson.is_conclusion===true||lesson.is_final_exam===true||["introduction","conclusion","final_exam"].includes(String(lesson.stage_type||"")))return json({success:false,error:"STRUCTURAL_STAGE_CANNOT_BE_DELETED"},409);
    if(await hasStageAssessmentAttempts(sb,String(lesson.course_id),[lessonId]))return json({success:false,error:"ASSESSMENT_HISTORY_IMMUTABLE_NEW_VERSION_REQUIRED",message:"Cette étape possède des copies d'évaluation. Créez une nouvelle version de la formation."},409);
-   const {data:blocks}=await sb.from("lesson_blocks").select("id,content_json,storage_path,bucket_name").eq("lesson_id",lessonId);
-   for(const blk of blocks||[]){const uid=String(blk.content_json?.cloudflare_stream_uid||"").trim();if(uid)await deleteStreamVideo(uid).catch(()=>{});if(blk.storage_path&&PRIVATE_COURSE_BUCKET_SET.has(String(blk.bucket_name||"")))await sb.storage.from(String(blk.bucket_name)).remove([String(blk.storage_path)]).catch(()=>{});}
+   const {data:blocks,error:blocksError}=await sb.from("lesson_blocks").select("id,content_json,storage_path,bucket_name").eq("lesson_id",lessonId);
+   if(blocksError)throw blocksError;
    const {error}=await sb.from("course_lessons").delete().eq("id",lessonId);if(error)throw error;
+   // Safe lifecycle: a failed deletion must not destroy previously stored files.
+   // Cascade deletes may leave shared resources referenced by other blocks.
+   for(const blk of blocks||[]){
+    const uid=String(blk.content_json?.cloudflare_stream_uid||"").trim();
+    if(uid){const {data:references,error:refError}=await sb.from("lesson_blocks").select("id").contains("content_json",{cloudflare_stream_uid:uid}).limit(1);
+     if(!refError&&!references?.length)await deleteStreamVideo(uid).catch(()=>{});}
+    if(blk.storage_path&&PRIVATE_COURSE_BUCKET_SET.has(String(blk.bucket_name||""))){
+     const {data:references,error:refError}=await sb.from("lesson_blocks").select("id").eq("storage_path",String(blk.storage_path)).eq("bucket_name",String(blk.bucket_name)).limit(1);
+     if(!refError&&!references?.length)await sb.storage.from(String(blk.bucket_name)).remove([String(blk.storage_path)]).catch(()=>{});}
+   }
    const {data:remaining}=await sb.from("course_lessons").select("id,stage_type,position").eq("module_id",lesson.module_id).order("position");
    let pos=0;for(const row of (remaining||[]).filter((x:any)=>String(x.stage_type||"lesson")==="lesson"))await sb.from("course_lessons").update({position:pos++,updated_at:new Date().toISOString()}).eq("id",row.id);
    await recalculateCourseDuration(sb,String(lesson.course_id));await log(sb,String(lesson.course_id),userId,"lesson_deleted",{lesson_id:lessonId});return json({success:true});
@@ -1463,13 +1473,21 @@ Deno.serve(async(req)=>{
   if(action==="delete_module"){
    const moduleId=String(b.module_id||"");const {data:mod}=await sb.from("course_modules").select("id,course_id,section_type").eq("id",moduleId).maybeSingle();
    if(!mod||!(await owns(sb,userId,String(mod.course_id),"can_manage_lessons")))return json({success:false,error:"FORBIDDEN"},403);
-   const {data:deleteCourse}=await sb.from("courses").select("is_published,studio_status").eq("id",mod.course_id).maybeSingle();if(deleteCourse?.is_published===true)return json({success:false,error:"PUBLISHED_VERSION_IMMUTABLE",message:"Créez une nouvelle version brouillon avant de supprimer un module d’une formation publiée."},409);
+   const {data:deleteCourse}=await sb.from("courses").select("is_published,studio_status").eq("id",mod.course_id).maybeSingle();if(deleteCourse?.is_published===true||["published","pending_validation","validated","suspended"].includes(String(deleteCourse?.studio_status||"")))return json({success:false,error:"PUBLISHED_VERSION_IMMUTABLE",message:"Créez une nouvelle version brouillon avant de supprimer un module d’une formation publiée."},409);
    if(String(mod.section_type||"module")!=="module")return json({success:false,error:"STRUCTURAL_SECTION_CANNOT_BE_DELETED"},409);
    const {data:stageLessons,error:stageLessonsError}=await sb.from("course_lessons").select("id").eq("module_id",moduleId);if(stageLessonsError)throw stageLessonsError;
    if(await hasStageAssessmentAttempts(sb,String(mod.course_id),(stageLessons||[]).map((x:any)=>String(x.id)),moduleId))return json({success:false,error:"ASSESSMENT_HISTORY_IMMUTABLE_NEW_VERSION_REQUIRED",message:"Ce module possède des copies d'évaluation. Créez une nouvelle version de la formation."},409);
-   const {data:blocks}=await sb.from("lesson_blocks").select("content_json,storage_path,bucket_name").eq("module_id",moduleId);
-   for(const blk of blocks||[]){const uid=String(blk.content_json?.cloudflare_stream_uid||"").trim();if(uid)await deleteStreamVideo(uid).catch(()=>{});if(blk.storage_path&&PRIVATE_COURSE_BUCKET_SET.has(String(blk.bucket_name||"")))await sb.storage.from(String(blk.bucket_name)).remove([String(blk.storage_path)]).catch(()=>{});}
+   const {data:blocks,error:blocksError}=await sb.from("lesson_blocks").select("content_json,storage_path,bucket_name").eq("module_id",moduleId);
+   if(blocksError)throw blocksError;
    const {error}=await sb.from("course_modules").delete().eq("id",moduleId);if(error)throw error;
+   for(const blk of blocks||[]){
+    const uid=String(blk.content_json?.cloudflare_stream_uid||"").trim();
+    if(uid){const {data:references,error:refError}=await sb.from("lesson_blocks").select("id").contains("content_json",{cloudflare_stream_uid:uid}).limit(1);
+     if(!refError&&!references?.length)await deleteStreamVideo(uid).catch(()=>{});}
+    if(blk.storage_path&&PRIVATE_COURSE_BUCKET_SET.has(String(blk.bucket_name||""))){
+     const {data:references,error:refError}=await sb.from("lesson_blocks").select("id").eq("storage_path",String(blk.storage_path)).eq("bucket_name",String(blk.bucket_name)).limit(1);
+     if(!refError&&!references?.length)await sb.storage.from(String(blk.bucket_name)).remove([String(blk.storage_path)]).catch(()=>{});}
+   }
    const {data:remaining}=await sb.from("course_modules").select("id,position").eq("course_id",mod.course_id).eq("section_type","module").order("position");
    for(const [i,row] of (remaining||[]).entries())await sb.from("course_modules").update({position:i,updated_at:new Date().toISOString()}).eq("id",row.id);
    await recalculateCourseDuration(sb,String(mod.course_id));await log(sb,String(mod.course_id),userId,"module_deleted",{module_id:moduleId});return json({success:true});
@@ -1514,7 +1532,29 @@ Deno.serve(async(req)=>{
    const {data,error}=await sb.from("lesson_blocks").update(allowed).eq("id",b.block_id).select("*").single();if(error)throw error;let linkedBlockIds=await blockLinkIds(sb,String(data.id));if(b.linked_block_ids!==undefined)linkedBlockIds=await syncPedagogicalLinks(sb,data,b.linked_block_ids);let rubricBlockIds=await incomingBlockLinkIds(sb,String(data.id),"rubric_for");let correctionBlockIds=await incomingBlockLinkIds(sb,String(data.id),"correction_for");if(b.rubric_block_ids!==undefined)rubricBlockIds=await syncIncomingPedagogicalLinks(sb,data,"rubric_for",b.rubric_block_ids);if(b.correction_block_ids!==undefined)correctionBlockIds=await syncIncomingPedagogicalLinks(sb,data,"correction_for",b.correction_block_ids);await syncExistingOfficialAssessmentFromBlock(sb,data);await recalculateCourseDuration(sb,String(blk.course_id));return json({success:true,block:{...await decorateStudioBlock(sb,data),linked_block_ids:linkedBlockIds,rubric_block_ids:rubricBlockIds,correction_block_ids:correctionBlockIds}});
   }
   if(action==="delete_block"){
-   const {data:blk}=await sb.from("lesson_blocks").select("course_id,lesson_id,content_json,storage_path,bucket_name").eq("id",b.block_id).maybeSingle();if(!blk||!(await owns(sb,userId,blk.course_id,"can_manage_lessons")))return json({success:false,error:"FORBIDDEN"},403);const streamUid=String(blk.content_json?.cloudflare_stream_uid||"").trim();await ensureOfficialQuestionHistoryEditable(sb,String(b.block_id));await sb.from("lesson_blocks").delete().eq("id",b.block_id);if(streamUid){await deleteStreamVideo(streamUid).catch(()=>{});const {data:remainingVideos}=await sb.from("lesson_blocks").select("content_json,position").eq("lesson_id",blk.lesson_id).eq("block_type","video").order("position",{ascending:false});const nextUid=String((remainingVideos||[]).map((row:any)=>row?.content_json?.cloudflare_stream_uid).find((value:any)=>String(value||"").trim())||"").trim()||null;await sb.from("course_lessons").update({cloudflare_stream_uid:nextUid,updated_at:new Date().toISOString()}).eq("id",blk.lesson_id);}if(blk.storage_path&&PRIVATE_COURSE_BUCKET_SET.has(String(blk.bucket_name||"")))await sb.storage.from(String(blk.bucket_name)).remove([String(blk.storage_path)]).then(()=>{}).catch(()=>{});await recalculateCourseDuration(sb,String(blk.course_id));await log(sb,blk.course_id,userId,"block_deleted",{block_id:b.block_id,stream_deleted:!!streamUid});return json({success:true});
+   const {data:blk,error:blockLookupError}=await sb.from("lesson_blocks").select("course_id,lesson_id,content_json,storage_path,bucket_name").eq("id",b.block_id).maybeSingle();
+   if(blockLookupError)throw blockLookupError;
+   if(!blk||!(await owns(sb,userId,blk.course_id,"can_manage_lessons")))return json({success:false,error:"FORBIDDEN"},403);
+   const streamUid=String(blk.content_json?.cloudflare_stream_uid||"").trim();
+   await ensureOfficialQuestionHistoryEditable(sb,String(b.block_id));
+   // Only delete external resources after PostgreSQL confirms the row deletion.
+   // A failed database operation must never destroy a video still in use.
+   const {error:deleteError}=await sb.from("lesson_blocks").delete().eq("id",b.block_id);
+   if(deleteError)throw deleteError;
+   if(streamUid){
+    const {data:references,error:referenceError}=await sb.from("lesson_blocks").select("id").contains("content_json",{cloudflare_stream_uid:streamUid}).limit(1);
+    if(!referenceError&&!references?.length)await deleteStreamVideo(streamUid).catch(()=>{});
+    const {data:remainingVideos,error:remainingError}=await sb.from("lesson_blocks").select("content_json,position").eq("lesson_id",blk.lesson_id).eq("block_type","video").order("position",{ascending:false});
+    if(!remainingError){const nextUid=String((remainingVideos||[]).map((row:any)=>row?.content_json?.cloudflare_stream_uid).find((value:any)=>String(value||"").trim())||"").trim()||null;
+     await sb.from("course_lessons").update({cloudflare_stream_uid:nextUid,updated_at:new Date().toISOString()}).eq("id",blk.lesson_id);}
+   }
+   if(blk.storage_path&&PRIVATE_COURSE_BUCKET_SET.has(String(blk.bucket_name||""))){
+    const {data:references,error:referenceError}=await sb.from("lesson_blocks").select("id").eq("storage_path",String(blk.storage_path)).eq("bucket_name",String(blk.bucket_name)).limit(1);
+    if(!referenceError&&!references?.length)await sb.storage.from(String(blk.bucket_name)).remove([String(blk.storage_path)]).catch(()=>{});
+   }
+   await recalculateCourseDuration(sb,String(blk.course_id));
+   await log(sb,blk.course_id,userId,"block_deleted",{block_id:b.block_id,stream_cleanup_checked:!!streamUid});
+   return json({success:true});
   }
   if(action==="duplicate_block"){
    const blockId=String(b.block_id||"");const {data:blk}=await sb.from("lesson_blocks").select("*").eq("id",blockId).maybeSingle();if(!blk||!(await owns(sb,userId,String(blk.course_id),"can_manage_lessons")))return json({success:false,error:"FORBIDDEN"},403);
@@ -1530,14 +1570,33 @@ Deno.serve(async(req)=>{
    const {data,error}=await sb.from("lesson_blocks").insert(payload).select("*").single();if(error)throw error;const originalLinks=await blockLinkIds(sb,blockId);if(originalLinks.length&&relationTypeForBlock(String(blk.block_type)))await syncPedagogicalLinks(sb,data,originalLinks);await recalculateCourseDuration(sb,String(blk.course_id));await log(sb,String(blk.course_id),userId,"block_duplicated",{source_block_id:blockId,block_id:data.id,resource_copied:!!storagePath,stream_cleared:!!streamUid});return json({success:true,block:{...await decorateStudioBlock(sb,data),linked_block_ids:originalLinks},stream_requires_reupload:!!streamUid});
   }
   if(action==="remove_block_resource"){
-   const blockId=String(b.block_id||"");const {data:blk}=await sb.from("lesson_blocks").select("id,course_id,lesson_id,block_type,content_json,storage_path,bucket_name").eq("id",blockId).maybeSingle();if(!blk||!(await owns(sb,userId,String(blk.course_id),"can_manage_lessons")))return json({success:false,error:"FORBIDDEN"},403);
+   const blockId=String(b.block_id||"");
+   const {data:blk,error:blockLookupError}=await sb.from("lesson_blocks").select("id,course_id,lesson_id,block_type,content_json,storage_path,bucket_name").eq("id",blockId).maybeSingle();
+   if(blockLookupError)throw blockLookupError;
+   if(!blk||!(await owns(sb,userId,String(blk.course_id),"can_manage_lessons")))return json({success:false,error:"FORBIDDEN"},403);
+   await ensureOfficialQuestionHistoryEditable(sb,blockId);
    const content={...(blk.content_json||{})};const streamUid=String(content.cloudflare_stream_uid||"").trim();
-   if(streamUid)await deleteStreamVideo(streamUid).catch(()=>{});
-   if(blk.storage_path&&PRIVATE_COURSE_BUCKET_SET.has(String(blk.bucket_name||"")))await sb.storage.from(String(blk.bucket_name)).remove([String(blk.storage_path)]).catch(()=>{});
    for(const key of ["url","provider","cloudflare_stream_uid","scorm_ready","scorm_package_prefix","launch_path","runtime_session_token","runtime_state","sheet","headers","preview_rows"])delete content[key];
-   const {data,error}=await sb.from("lesson_blocks").update({file_url:null,file_name:null,file_size:null,file_mime:null,storage_path:null,bucket_name:null,content_json:content,rag_enabled:false,updated_at:new Date().toISOString()}).eq("id",blockId).select("*").single();if(error)throw error;
-   if(String(blk.block_type)==="video"){const {data:remainingVideos}=await sb.from("lesson_blocks").select("content_json,position").eq("lesson_id",blk.lesson_id).eq("block_type","video").order("position",{ascending:false});const nextUid=String((remainingVideos||[]).map((row:any)=>row?.id===blockId?null:row?.content_json?.cloudflare_stream_uid).find((value:any)=>String(value||"").trim())||"").trim()||null;await sb.from("course_lessons").update({cloudflare_stream_uid:nextUid,updated_at:new Date().toISOString()}).eq("id",blk.lesson_id);}
-   await recalculateCourseDuration(sb,String(blk.course_id));await log(sb,String(blk.course_id),userId,"block_resource_removed",{block_id:blockId,stream_deleted:!!streamUid});return json({success:true,block:await decorateStudioBlock(sb,data)});
+   // First commit the block change. Never delete a Cloudflare/Storage object
+   // before the editor has saved the detachment successfully.
+   const {data,error}=await sb.from("lesson_blocks").update({file_url:null,file_name:null,file_size:null,file_mime:null,storage_path:null,bucket_name:null,content_json:content,rag_enabled:false,updated_at:new Date().toISOString()}).eq("id",blockId).select("*").single();
+   if(error)throw error;
+   if(streamUid){
+    const {data:references,error:referenceError}=await sb.from("lesson_blocks").select("id").contains("content_json",{cloudflare_stream_uid:streamUid}).limit(1);
+    if(!referenceError&&!references?.length)await deleteStreamVideo(streamUid).catch(()=>{});
+   }
+   if(blk.storage_path&&PRIVATE_COURSE_BUCKET_SET.has(String(blk.bucket_name||""))){
+    const {data:references,error:referenceError}=await sb.from("lesson_blocks").select("id").eq("storage_path",String(blk.storage_path)).eq("bucket_name",String(blk.bucket_name)).limit(1);
+    if(!referenceError&&!references?.length)await sb.storage.from(String(blk.bucket_name)).remove([String(blk.storage_path)]).catch(()=>{});
+   }
+   if(String(blk.block_type)==="video"){
+    const {data:remainingVideos,error:remainingError}=await sb.from("lesson_blocks").select("id,content_json,position").eq("lesson_id",blk.lesson_id).eq("block_type","video").order("position",{ascending:false});
+    if(!remainingError){const nextUid=String((remainingVideos||[]).map((row:any)=>row?.content_json?.cloudflare_stream_uid).find((value:any)=>String(value||"").trim())||"").trim()||null;
+     await sb.from("course_lessons").update({cloudflare_stream_uid:nextUid,updated_at:new Date().toISOString()}).eq("id",blk.lesson_id);}
+   }
+   await recalculateCourseDuration(sb,String(blk.course_id));
+   await log(sb,String(blk.course_id),userId,"block_resource_removed",{block_id:blockId,stream_cleanup_checked:!!streamUid});
+   return json({success:true,block:await decorateStudioBlock(sb,data)});
   }
   if(action==="reorder_blocks"){
    const lessonId=String(b.lesson_id||"");const ids=Array.isArray(b.ordered_ids)?b.ordered_ids.map(String):[];
@@ -1545,13 +1604,25 @@ Deno.serve(async(req)=>{
    const {data:lesson,error:lessonError}=await sb.from("course_lessons").select("id,course_id").eq("id",lessonId).maybeSingle();
    if(lessonError)throw lessonError;
    if(!lesson||String(lesson.course_id)!==String(courseId))return json({success:false,error:"LESSON_COURSE_MISMATCH"},403);
-   const {data:actual,error:actualError}=await sb.from("lesson_blocks").select("id").eq("lesson_id",lessonId);
+   const {data:actual,error:actualError}=await sb.from("lesson_blocks").select("id,position").eq("lesson_id",lessonId).order("position").order("id");
    if(actualError)throw actualError;
-   const existingIds=new Set((actual||[]).map((x:any)=>String(x.id)));
+   const original=(actual||[]).map((x:any)=>({id:String(x.id),position:Number(x.position)}));
+   const originalIds=original.map((x:any)=>x.id);
+   const existingIds=new Set(originalIds);
    if(existingIds.size!==ids.length||ids.some((id:string)=>!existingIds.has(id)))return json({success:false,error:"BLOCK_ORDER_STALE",message:"La liste des blocs a changé : rechargez la leçon avant de déplacer un bloc."},409);
-   for(let i=0;i<ids.length;i++){
-    const {error}=await sb.from("lesson_blocks").update({position:i,updated_at:new Date().toISOString()}).eq("id",ids[i]).eq("lesson_id",lessonId);
-    if(error)throw error;
+   const expected=Array.isArray(b.expected_ordered_ids)?b.expected_ordered_ids.map(String):null;
+   if(expected&&(expected.length!==originalIds.length||expected.some((id:string,index:number)=>id!==originalIds[index])))return json({success:false,error:"BLOCK_ORDER_STALE",message:"Un autre éditeur a modifié l’ordre des blocs. Rechargez la leçon."},409);
+   // PostgREST applies these updates individually. If one fails, attempt to
+   // restore every original position rather than leaving a partial ordering.
+   try{
+    for(let i=0;i<ids.length;i++){
+     const {error}=await sb.from("lesson_blocks").update({position:i,updated_at:new Date().toISOString()}).eq("id",ids[i]).eq("lesson_id",lessonId);
+     if(error)throw error;
+    }
+   }catch(error){
+    let restored=true;
+    for(const row of original){const result=await sb.from("lesson_blocks").update({position:row.position,updated_at:new Date().toISOString()}).eq("id",row.id).eq("lesson_id",lessonId);if(result.error)restored=false;}
+    return json({success:false,error:"BLOCK_ORDER_WRITE_FAILED",restored,message:restored?"Déplacement refusé ; ordre précédent restauré.":"Déplacement interrompu : rechargez la leçon avant toute nouvelle modification."},409);
    }
    return json({success:true});
   }

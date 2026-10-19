@@ -23,6 +23,7 @@ type Props = {
   onInsertBlock: (type: string) => Promise<boolean>;
   onDelete?: (blockId: string) => Promise<boolean>;
   onActivate?: () => void;
+  onEdit?: () => void;
 };
 
 function readable(html: string) {
@@ -33,7 +34,7 @@ function readable(html: string) {
 }
 
 const StudioBlankPageComposer = forwardRef<StudioProseComposerHandle, Props>(function StudioBlankPageComposer(
-  { language, draftKey, initialHtml, blockId, choices, onCommit, onInsertBlock, onDelete, onActivate }, ref,
+  { language, draftKey, initialHtml, blockId, choices, onCommit, onInsertBlock, onDelete, onActivate, onEdit }, ref,
 ) {
   const storageKey = `oga_studio_v4_unsent_text_${draftKey}`;
   // Never silently overwrite the server with an older unsent session draft.
@@ -160,7 +161,7 @@ const StudioBlankPageComposer = forwardRef<StudioProseComposerHandle, Props>(fun
       <button type="button" onClick={restoreLocalDraft} className="rounded border border-amber-300 bg-white px-3 py-1.5 font-semibold">Restaurer le brouillon</button>
       <button type="button" onClick={discardLocalDraft} className="rounded border border-slate-300 bg-white px-3 py-1.5">Garder la version serveur</button>
     </div>}
-    <StudioRichTextEditor ref={editorRef} onEditorFocus={onActivate} value={draft} onChange={html => { latestDraft.current = html; setDraft(html); setRecoveryPending(false); setStatus('pending'); }} locked={busy}
+    <StudioRichTextEditor ref={editorRef} onEditorFocus={onActivate} value={draft} onChange={html => { onEdit?.(); latestDraft.current = html; setDraft(html); setRecoveryPending(false); setStatus('pending'); }} locked={busy}
       language={language} plainPage onEditorBlur={() => { if (!busyPromise.current) void flush(); }}
       placeholder="Commencez à écrire ici, ou tapez / pour insérer un bloc…" />
     {slash && matching.length > 0 && <div role="listbox" aria-label="Commandes de blocs" className="mt-2 max-h-52 overflow-y-auto rounded-xl border border-slate-200 bg-white p-2 shadow-lg">

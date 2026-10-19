@@ -288,7 +288,21 @@ export default function StudioConceptionFormation() {
   type BlockOrderCommand = { lessonId: string; before: string[]; after: string[] };
   const blockOrderUndo = useRef<BlockOrderCommand[]>([]);
   const blockOrderRedo = useRef<BlockOrderCommand[]>([]);
-  const clearBlockOrderHistory = () => { blockOrderUndo.current = []; blockOrderRedo.current = []; };
+  // Changes to specialist blocks ("À retenir", objectives, activities...) do not
+  // belong to Tiptap history. Keep reversible content snapshots for this session.
+  type ContentEditCommand = { lessonId: string; blockId: string; before: Record<string, any>; after: Record<string, any>; at: number };
+  const contentUndo = useRef<ContentEditCommand[]>([]);
+  const contentRedo = useRef<ContentEditCommand[]>([]);
+  const lastHistoryKind = useRef<'prose'|'content'|'order'>('prose');
+  const historyReplayInFlight = useRef(false);
+  const [historyBusy, setHistoryBusy] = useState(false);
+  const blockSnapshotRef = useRef<Block[]>([]);
+  blockSnapshotRef.current = blocks;
+  const clearBlockOrderHistory = () => {
+    blockOrderUndo.current = []; blockOrderRedo.current = [];
+    contentUndo.current = []; contentRedo.current = [];
+    lastHistoryKind.current = 'prose';
+  };
 
   const [stageMenuId, setStageMenuId] = useState<string | null>(null);
   const [curriculumOpen, setCurriculumOpen] = useState(false);
@@ -504,6 +518,32 @@ export default function StudioConceptionFormation() {
     return true;
   }
 
+  function recordSpecialistBlockEdit(blockId: string, nextContent: Record<string, any>) {
+    if (historyReplayInFlight.current || !currentLesson?.id) return;
+    const block = blockSnapshotRef.current.find(item => item.id === blockId);
+    if (!block) return;
+    const before = structuredClone(block.content_json || {});
+    const after = structuredClone(nextContent || {});
+    if (JSON.stringify(before) === JSON.stringify(after)) return;
+    const now = Date.now();
+    const previous = contentUndo.current[contentUndo.current.length - 1];
+    // Coalesce rapid typing in the same specialist block into one undo step.
+    if (previous?.lessonId === currentLesson.id && previous.blockId === blockId && now - previous.at < 1200) {
+      previous.after = after;
+      previous.at = now;
+    } else {
+      contentUndo.current.push({ lessonId: currentLesson.id, blockId, before, after, at: now });
+      if (contentUndo.current.length > 40) contentUndo.current.shift();
+    }
+    contentRedo.current = [];
+    lastHistoryKind.current = 'content';
+    const updated = blockSnapshotRef.current.map(item => item.id === blockId ? { ...item, content_json: after } : item);
+    blockSnapshotRef.current = updated;
+    setBlocks(updated);
+    setSelectedBlock(selected => selected?.id === blockId ? { ...selected, content_json: after } : selected);
+    void queueBlockUpdate(blockId, { content_json: after }).catch(() => undefined);
+  }
+
   function queueBlockUpdate(blockId: string, updates: Record<string, any>) {
     const previous = blockSaveQueues.current[blockId] || Promise.resolve();
     const next = previous
@@ -690,10 +730,13 @@ export default function StudioConceptionFormation() {
   }
 
   // Leaving a lesson never silently drops a pending prose write.
-  async function flushProseComposer() {
+  async function flushProseComposer(excludeComposerKey?: string) {
     // Snapshot: saving a newly created tail block can remount its composer.
     // Always complete the pending request before switching the lesson.
-    for (const composer of [...proseComposerRefs.current.values()]) {
+    for (const [key, composer] of [...proseComposerRefs.current.entries()]) {
+      // A slash-command editor contains a transient "/block" instruction. Only
+      // that single segment is excluded; all other active editors are persisted.
+      if (key === excludeComposerKey) continue;
       if (!await composer.flush()) {
         showToast('La rédaction de la leçon n’a pas été enregistrée. Corrigez l’erreur avant de continuer.', 'error');
         return false;
@@ -716,6 +759,14 @@ export default function StudioConceptionFormation() {
     setAssessmentWorkspace(null);
     setShowFinalization(view === 'publication');
     setCurriculumOpen(false);
+    return true;
+  }
+
+  async function secureStructuralTransition(context: string): Promise<boolean> {
+    if (!await flushProseComposer()) return false;
+    try { await flushBlockUpdates(); }
+    catch { showToast(`${context} annulé : au moins un bloc n’a pas été enregistré.`, 'error'); return false; }
+    if (!await flushPendingCourseEdits()) return false;
     return true;
   }
 
@@ -762,7 +813,8 @@ export default function StudioConceptionFormation() {
 
   // ─── Ajouter module ───────────────────────────────────────
   async function addModule() {
-    if (!course?.id) return;
+    if (!course?.id || locked) return;
+    if (!await secureStructuralTransition('Création du module')) return;
     const normalCount = modules.filter(m => sectionTypeOf(m) === 'module').length;
     const title = `Module ${normalCount + 1}`;
     const data = await api('create_module', { course_id: course.id, title, objective: '', create_module_introduction: false });
@@ -775,6 +827,10 @@ export default function StudioConceptionFormation() {
         const before = current.filter(m => sectionTypeOf(m) !== 'conclusion' && sectionTypeOf(m) !== 'final_exam');
         return [...before, newMod, ...endings];
       });
+      clearBlockOrderHistory();
+      setAssessmentWorkspace(null);
+      setSelectedBlock(null);
+      setSelectedBlockDef(null);
       setCurrentModule(newMod);
       setCurrentLesson(introLesson || null);
       setBlocks([]);
@@ -785,8 +841,8 @@ export default function StudioConceptionFormation() {
 
   // ─── Ajouter leçon ────────────────────────────────────────
   async function addLesson(mod: Module) {
-    if (!await flushProseComposer()) return;
-    if (!course?.id) return;
+    if (!course?.id || locked) return;
+    if (!await secureStructuralTransition('Création de la leçon')) return;
     const lessonCount = (mod.lessons || []).filter(l => stageTypeOf(l) === 'lesson').length;
     const title = `Leçon ${lessonCount + 1}`;
     const data = await api('create_lesson', { course_id: course.id, module_id: mod.id, title });
@@ -794,6 +850,10 @@ export default function StudioConceptionFormation() {
       const newLesson = data.lesson;
       const nextModule = { ...mod, lessons: [...(mod.lessons || []), newLesson] };
       setModules(ms => ms.map(m => m.id === mod.id ? nextModule : m));
+      clearBlockOrderHistory();
+      setAssessmentWorkspace(null);
+      setSelectedBlock(null);
+      setSelectedBlockDef(null);
       setCurrentModule(nextModule);
       setCurrentLesson(newLesson);
       setBlocks([]);
@@ -803,7 +863,8 @@ export default function StudioConceptionFormation() {
   }
 
   async function addModuleStage(mod: Module, stageType: 'module_presentation' | 'module_summary') {
-    if (!course?.id) return;
+    if (!course?.id || locked) return;
+    if (!await secureStructuralTransition('Création de l’étape')) return;
     const data = await api('create_module_stage', { course_id: course.id, module_id: mod.id, stage_type: stageType });
     if (data.success) {
       const lesson = data.lesson as Lesson;
@@ -817,6 +878,7 @@ export default function StudioConceptionFormation() {
   // jamais par une leçon choisie arbitrairement dans le programme.
   async function openModuleAssessment(mod: Module) {
     if (!course?.id || locked) return;
+    if (!await secureStructuralTransition('Accès à l’évaluation du module')) return;
     let summary = (mod.lessons || []).find(l => stageTypeOf(l) === 'module_summary');
     let nextModule = mod;
     if (!summary) {
@@ -838,30 +900,35 @@ void openModuleAssessment;
   async function deleteLesson(mod: Module, lesson: Lesson) {
     if (!course?.id || locked) return;
     if (!window.confirm(`Supprimer « ${lesson.title} » et tous ses contenus ? Cette action est définitive pour ce brouillon.`)) return;
-    if (!await flushProseComposer()) return;
-    try { await flushBlockUpdates(); } catch { showToast('Sauvegarde incomplète : suppression annulée.', 'error'); return; }
+    if (!await secureStructuralTransition('Suppression de la leçon')) return;
     const data = await api('delete_lesson', { course_id: course.id, lesson_id: lesson.id });
     if (!data.success) { showToast(data.message || data.error || 'Suppression impossible.', 'error'); return; }
     const nextModule = { ...mod, lessons: (mod.lessons || []).filter(l => l.id !== lesson.id) };
     setModules(ms => ms.map(m => m.id === mod.id ? nextModule : m));
-    if (currentLesson?.id === lesson.id) { setCurrentLesson(null); setBlocks([]); }
+    setCurrentModule(previous => previous?.id === mod.id ? nextModule : previous);
+    if (currentLesson?.id === lesson.id) {
+      clearBlockOrderHistory(); setCurrentLesson(null); setBlocks([]);
+      setSelectedBlock(null); setSelectedBlockDef(null); setAssessmentWorkspace(null);
+    }
     showToast('Étape supprimée');
   }
 
   async function deleteModule(mod: Module) {
     if (!course?.id || locked || mod.is_intro || mod.is_conclusion || mod.is_final_exam) return;
     if (!window.confirm(`Supprimer le module « ${mod.title} », ses leçons, sa synthèse et tous leurs contenus ?`)) return;
-    if (!await flushProseComposer()) return;
-    try { await flushBlockUpdates(); } catch { showToast('Sauvegarde incomplète : suppression annulée.', 'error'); return; }
+    if (!await secureStructuralTransition('Suppression du module')) return;
     const data = await api('delete_module', { course_id: course.id, module_id: mod.id });
     if (!data.success) { showToast(data.message || data.error || 'Suppression du module impossible.', 'error'); return; }
     setModules(ms => ms.filter(m => m.id !== mod.id));
-    if (currentModule?.id === mod.id) { setCurrentModule(null); setCurrentLesson(null); setBlocks([]); }
+    if (currentModule?.id === mod.id) {
+      clearBlockOrderHistory(); setCurrentModule(null); setCurrentLesson(null); setBlocks([]);
+      setSelectedBlock(null); setSelectedBlockDef(null); setAssessmentWorkspace(null);
+    }
     showToast('Module supprimé');
   }
 
   // ─── Ajouter bloc ─────────────────────────────────────────
-  async function addBlock(blockType: string, insertionIndex?: number, skipSlashFlush = false) {
+  async function addBlock(blockType: string, insertionIndex?: number, slashComposerKey?: string) {
     if (locked || !BLOCK_DEFS.some(def => def.type === blockType)) return false;
     if (!course?.id || !currentModule?.id || !currentLesson?.id) {
       showToast('Sélectionnez d\'abord une leçon', 'error'); return false;
@@ -870,7 +937,7 @@ void openModuleAssessment;
       showToast('Dans le sous-espace Évaluation, ajoutez uniquement un bloc pouvant servir de question officielle.', 'error');
       return false;
     }
-    if (!skipSlashFlush && !await flushProseComposer()) return false;
+    if (!await flushProseComposer(slashComposerKey)) return false;
     try { await flushBlockUpdates(); }
     catch { showToast('Sauvegarde en attente : ajout annulé pour éviter une perte de données.', 'error'); return false; }
     const targetLessonId = currentLesson.id;
@@ -990,6 +1057,10 @@ void openModuleAssessment;
     clearBlockOrderHistory();
     setBlocks(bs => bs.filter(b => b.id !== blockId));
     if (selectedBlock?.id === blockId) { setSelectedBlock(null); setSelectedBlockDef(null); }
+    // Deleting a block must never redirect to (or reopen) the Quality Centre.
+    setShowChecklist(false);
+    setChecklist(null); // the prior quality score is now outdated
+    showToast(`Bloc « ${blockLabel} » supprimé.`, 'success');
     return true;
   }
 
@@ -1014,7 +1085,10 @@ void openModuleAssessment;
   }
 
   async function removeBlockResource(block: Block) {
-    if (!course?.id) return;
+    if (!course?.id || locked) return;
+    if (!await flushProseComposer()) return;
+    try { await flushBlockUpdates(); }
+    catch { showToast('Enregistrement incomplet : retrait de ressource annulé.', 'error'); return; }
     const data = await api('remove_block_resource', { course_id: course.id, block_id: block.id });
     if (!data.success || !data.block) {
       showToast(data.message || data.error || 'Impossible de retirer la ressource.', 'error');
@@ -1045,13 +1119,15 @@ void openModuleAssessment;
     try {
       if (!await flushProseComposer()) return;
       await flushBlockUpdates();
-      const result = await api('reorder_blocks', { lesson_id: lessonId, ordered_ids: next.map(b => b.id) });
+      const result = await api('reorder_blocks', { lesson_id: lessonId,
+        expected_ordered_ids: original.map(block => block.id), ordered_ids: next.map(b => b.id) });
       if (!result.success) throw new Error(result.message || result.error || 'Échec du déplacement');
       if (currentLesson?.id === lessonId) {
         setBlocks(next.map((block, position) => ({ ...block, position })));
         blockOrderUndo.current.push({ lessonId, before: original.map(block => block.id), after: next.map(block => block.id) });
         if (blockOrderUndo.current.length > 30) blockOrderUndo.current.shift();
         blockOrderRedo.current = [];
+        lastHistoryKind.current = 'order';
       }
       showToast('Nouvel ordre enregistré (annulable)', 'success');
     } catch (error) {
@@ -1078,11 +1154,13 @@ void openModuleAssessment;
     try {
       if (!await flushProseComposer()) return true;
       await flushBlockUpdates();
-      const result = await api('reorder_blocks', { lesson_id: currentLesson.id, ordered_ids: target });
+      const result = await api('reorder_blocks', { lesson_id: currentLesson.id,
+        expected_ordered_ids: expected, ordered_ids: target });
       if (!result.success) throw new Error(result.message || result.error || 'Impossible de rétablir l’ordre précédent.');
       const byId = new Map(blocks.map(block => [block.id, block]));
       setBlocks(target.map((id, position) => ({ ...byId.get(id)!, position })));
       from.pop(); to.push(command);
+      lastHistoryKind.current = 'order';
       showToast(direction === 'undo' ? 'Déplacement annulé.' : 'Déplacement rétabli.');
     } catch (error) {
       showToast(error instanceof Error ? error.message : 'Historique indisponible', 'error');
@@ -1090,16 +1168,60 @@ void openModuleAssessment;
     return true;
   }
 
+  async function replaySpecialistContent(direction: 'undo'|'redo'): Promise<boolean> {
+    if (locked || historyReplayInFlight.current || !currentLesson) return false;
+    const from = direction === 'undo' ? contentUndo.current : contentRedo.current;
+    const to = direction === 'undo' ? contentRedo.current : contentUndo.current;
+    const command = from[from.length - 1];
+    if (!command || command.lessonId !== currentLesson.id) return false;
+    const expected = direction === 'undo' ? command.after : command.before;
+    const target = direction === 'undo' ? command.before : command.after;
+    const block = blockSnapshotRef.current.find(item => item.id === command.blockId);
+    if (!block || JSON.stringify(block.content_json || {}) !== JSON.stringify(expected)) {
+      contentUndo.current = []; contentRedo.current = [];
+      showToast('Le bloc a changé depuis cette édition. Historique de contenu annulé pour éviter un écrasement.', 'error');
+      return true;
+    }
+    historyReplayInFlight.current = true;
+    setHistoryBusy(true);
+    try {
+      await flushBlockUpdates();
+      const result = await queueBlockUpdate(command.blockId, { content_json: target });
+      if (!result?.success) throw new Error('HISTORY_WRITE_FAILED');
+      const updated = blockSnapshotRef.current.map(item => item.id === command.blockId ? { ...item, content_json: structuredClone(target) } : item);
+      blockSnapshotRef.current = updated;
+      setBlocks(updated);
+      setSelectedBlock(selected => selected?.id === command.blockId ? { ...selected, content_json: structuredClone(target) } : selected);
+      from.pop(); to.push(command);
+      lastHistoryKind.current = 'content';
+      showToast(direction === 'undo' ? 'Modification du bloc annulée.' : 'Modification du bloc rétablie.');
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Impossible de modifier le bloc sur le serveur.', 'error');
+    } finally {
+      historyReplayInFlight.current = false;
+      setHistoryBusy(false);
+    }
+    return true;
+  }
+
   async function undoStudioAction() {
-    if (proseComposerRefs.current.get(activeProseKey.current)?.undo()) return;
+    if (historyReplayInFlight.current) return;
+    if (lastHistoryKind.current === 'content' && await replaySpecialistContent('undo')) return;
+    if (lastHistoryKind.current === 'order' && await replayBlockOrder('undo')) return;
+    if (proseComposerRefs.current.get(activeProseKey.current)?.undo()) { lastHistoryKind.current = 'prose'; return; }
+    if (await replaySpecialistContent('undo')) return;
     if (await replayBlockOrder('undo')) return;
-    showToast('Aucune modification rédactionnelle ou de déplacement à annuler.', 'info');
+    showToast('Aucune modification annulable dans cette session. L’historique ne survit pas à une actualisation.', 'info');
   }
 
   async function redoStudioAction() {
-    if (proseComposerRefs.current.get(activeProseKey.current)?.redo()) return;
+    if (historyReplayInFlight.current) return;
+    if (lastHistoryKind.current === 'content' && await replaySpecialistContent('redo')) return;
+    if (lastHistoryKind.current === 'order' && await replayBlockOrder('redo')) return;
+    if (proseComposerRefs.current.get(activeProseKey.current)?.redo()) { lastHistoryKind.current = 'prose'; return; }
+    if (await replaySpecialistContent('redo')) return;
     if (await replayBlockOrder('redo')) return;
-    showToast('Aucune modification rédactionnelle ou de déplacement à rétablir.', 'info');
+    showToast('Aucune modification à rétablir dans cette session. L’historique ne survit pas à une actualisation.', 'info');
   }
 
   async function onDrop(e: React.DragEvent, targetIdx: number) {
@@ -1513,8 +1635,17 @@ void openModuleAssessment;
           targetId={builderImportTarget.id}
           creatorContext={creatorContext}
           onApplied={async () => {
-            await reloadCourse(course.id);
-            if (currentLesson?.id) await loadBlocks(currentLesson.id);
+            // Import has already been committed by the dialog. Avoid pretending
+            // the Studio view reflects it unless both refreshes actually succeed.
+            const refreshed = await reloadCourse(course.id);
+            if (!refreshed) {
+              showToast('Import appliqué, mais actualisation des informations impossible. Rechargez la formation.', 'error');
+              return;
+            }
+            if (currentLesson?.id && !await loadBlocks(currentLesson.id)) {
+              showToast('Import appliqué, mais rechargement de la leçon indisponible. Rechargez-la.', 'error');
+              return;
+            }
             showToast('Import appliqué au Builder.', 'success');
           }}
         />
@@ -1535,6 +1666,7 @@ void openModuleAssessment;
         <button onClick={async () => {
           if (!await flushProseComposer()) return;
           try { await flushBlockUpdates(); } catch { showToast('Enregistrement incomplet : retour annulé.', 'error'); return; }
+          if (!await flushPendingCourseEdits()) return;
           const back = window.location.pathname.includes('/admin/') ? '/admin/studio-mes-formations'
             : window.location.pathname.includes('/partner/') ? '/partner/dashboard'
             : window.location.pathname.includes('/structure/') ? '/structure/formations'
@@ -1586,10 +1718,10 @@ void openModuleAssessment;
         {/* Actions */}
         <div className="flex items-center gap-2 flex-shrink-0">
           <button type="button" onMouseDown={event => event.preventDefault()} onClick={() => { void undoStudioAction(); }}
-            disabled={locked || !currentLesson || !!assessmentWorkspace} title="Annuler la rédaction ou le dernier déplacement de bloc" aria-label="Annuler le texte"
+            disabled={locked || historyBusy || !currentLesson || !!assessmentWorkspace} title="Annuler la rédaction, une modification de bloc ou un déplacement (session actuelle)" aria-label="Annuler la dernière modification"
             className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm font-semibold text-[#002050] disabled:opacity-40">↶ Annuler</button>
           <button type="button" onMouseDown={event => event.preventDefault()} onClick={() => { void redoStudioAction(); }}
-            disabled={locked || !currentLesson || !!assessmentWorkspace} title="Rétablir la rédaction ou le dernier déplacement de bloc" aria-label="Rétablir le texte"
+            disabled={locked || historyBusy || !currentLesson || !!assessmentWorkspace} title="Rétablir la rédaction, une modification de bloc ou un déplacement (session actuelle)" aria-label="Rétablir la dernière modification"
             className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm font-semibold text-[#002050] disabled:opacity-40">↷ Rétablir</button>
           <button type="button" onClick={() => setCurriculumOpen(value => !value)} aria-expanded={curriculumOpen}
             className={`flex items-center gap-1 rounded-lg border px-3 py-1.5 text-xs font-semibold ${curriculumOpen ? 'border-[#BF8813] bg-amber-50 text-[#002050]' : 'border-slate-200 text-[#002050]'}`}>
@@ -1802,12 +1934,16 @@ void openModuleAssessment;
                       {!hasModuleStage(mod, 'module_presentation') && <button type="button" disabled={locked} onClick={() => void addModuleStage(mod, 'module_presentation')} className="rounded-lg border px-3 py-1.5 text-xs font-semibold text-slate-700">+ Présentation</button>}
                       {!hasModuleStage(mod, 'module_summary') && <button type="button" disabled={locked} onClick={() => void addModuleStage(mod, 'module_summary')} className="rounded-lg border px-3 py-1.5 text-xs font-semibold text-amber-800">+ Synthèse</button>}
                       {/* The only assessment entry is in the contextual toolbar above the document. */}
-                      <button type="button" disabled={locked || !course.id} onClick={() => setBuilderImportTarget({ type:'module', id:mod.id })} className="rounded-lg border px-3 py-1.5 text-xs text-slate-700"><UploadCloud size={13} className="mr-1 inline"/>Importer</button>
+                      <button type="button" disabled={locked || !course.id} onClick={async () => { if (await secureStructuralTransition('Import')) setBuilderImportTarget({ type:'module', id:mod.id }); }} className="rounded-lg border px-3 py-1.5 text-xs text-slate-700"><UploadCloud size={13} className="mr-1 inline"/>Importer</button>
                       <button type="button" disabled={locked} onClick={() => void addLesson(mod)} className="rounded-lg bg-[#002050] px-3 py-1.5 text-xs font-semibold text-white"><Plus size={13} className="mr-1 inline"/>Leçon</button>
                       {!locked && <details className="group/actions relative ml-auto"><summary className="cursor-pointer list-none rounded-lg border border-slate-200 px-3 py-1.5 text-xs text-slate-600">Gérer le module <ChevronDown size={13} className="ml-1 inline"/></summary>
                         <div className="absolute right-0 z-30 mt-2 w-64 rounded-xl border border-slate-200 bg-white p-2 shadow-xl"><button type="button" onClick={() => void deleteModule(mod)} className="w-full rounded-lg px-3 py-2 text-left text-sm text-red-700 hover:bg-red-50">Supprimer le module et ses leçons…</button></div></details>}
                     </>}
-                    {stage === 'final_exam' && !locked && <details className="group/actions relative ml-auto"><summary className="cursor-pointer list-none rounded-lg border px-3 py-1.5 text-xs text-slate-600">Gérer l’examen</summary><div className="absolute right-0 z-30 mt-2 w-64 rounded-lg border bg-white p-2 shadow-xl"><button type="button" onClick={async () => { if (!window.confirm('Retirer l’examen final du brouillon ? Les tentatives existantes seront protégées.')) return; const result = await api('remove_final_exam', { course_id: course.id }); if (result.success) await reloadCourse(course.id); else showToast(result.message || result.error || 'Impossible de retirer cet examen', 'error'); }} className="w-full px-3 py-2 text-left text-sm text-red-700">Retirer l’examen final…</button></div></details>}
+                    {stage === 'final_exam' && !locked && <details className="group/actions relative ml-auto"><summary className="cursor-pointer list-none rounded-lg border px-3 py-1.5 text-xs text-slate-600">Gérer l’examen</summary><div className="absolute right-0 z-30 mt-2 w-64 rounded-lg border bg-white p-2 shadow-xl"><button type="button" onClick={async () => { if (!window.confirm('Retirer l’examen final du brouillon ? Les tentatives existantes seront protégées.')) return; if (!await secureStructuralTransition('Retrait de l’examen final')) return; const result = await api('remove_final_exam', { course_id: course.id }); if (result.success) {
+      setCurrentModule(null); setCurrentLesson(null); setBlocks([]);
+      setAssessmentWorkspace(null); setSelectedBlock(null); clearBlockOrderHistory();
+      if (!await reloadCourse(course.id)) showToast('Examen retiré, mais programme à recharger.', 'error');
+    } else showToast(result.message || result.error || 'Impossible de retirer cet examen', 'error'); }} className="w-full px-3 py-2 text-left text-sm text-red-700">Retirer l’examen final…</button></div></details>}
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                     {(mod.lessons || []).map(lesson => <div key={lesson.id} className="inline-flex items-center rounded-lg border border-slate-200 bg-white p-0.5">
@@ -1820,7 +1956,7 @@ void openModuleAssessment;
                         {stageMenuId === lesson.id && <div role="menu" className="absolute right-0 z-40 mt-1 w-56 rounded-xl border border-slate-200 bg-white p-2 shadow-xl">
                           <button type="button" role="menuitem" onClick={() => {setStageMenuId(null);void selectLesson(mod,lesson).then(() => document.getElementById('oga-current-stage-title')?.focus());}}
                             className="w-full rounded-lg px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50">Renommer la leçon</button>
-                          <button type="button" role="menuitem" onClick={() => {setStageMenuId(null);void selectLesson(mod,lesson);setBuilderImportTarget({type:'lesson',id:lesson.id});}}
+                          <button type="button" role="menuitem" onClick={async () => { setStageMenuId(null); if (await selectLesson(mod, lesson)) setBuilderImportTarget({ type: 'lesson', id: lesson.id }); }}
                             className="w-full rounded-lg px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50">Importer des ressources</button>
                           {stageTypeOf(lesson) === 'lesson' && <button type="button" role="menuitem" onClick={() => {setStageMenuId(null);void selectLesson(mod,lesson);}}
                             className="w-full rounded-lg px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50">Ouvrir la leçon</button>}
@@ -2069,7 +2205,7 @@ void openModuleAssessment;
                   )}
                   {!assessmentWorkspace && !locked && course.id && (
                     <div className="mt-3 flex flex-wrap items-center gap-3">
-                      <button type="button" onClick={() => setBuilderImportTarget({ type: 'lesson', id: currentLesson.id })} className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold" style={{ borderColor: '#E4E7EC', color: '#002050' }}>
+                      <button type="button" onClick={async () => { if (await secureStructuralTransition('Import')) setBuilderImportTarget({ type: 'lesson', id: currentLesson.id }); }} className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold" style={{ borderColor: '#E4E7EC', color: '#002050' }}>
                         <UploadCloud size={13} /> Importer un document dans cette leçon
                       </button>
                       {stageTypeOf(currentLesson) === 'lesson' && (
@@ -2143,7 +2279,7 @@ void openModuleAssessment;
                             </div>
                             <div className="flex items-center gap-1 opacity-70 transition-opacity md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
                               {course.id && ['text','heading','subtitle','objective','summary','example','definition','important','remember','key_takeaway','callout','quote','bullet_list','numbered_list','list','interactive_table','table','code'].includes(block.block_type) && (
-                                <button title="Remplir ce bloc depuis un document" onClick={e => { e.stopPropagation(); setBuilderImportTarget({ type: 'block', id: block.id }); }} className="p-1 rounded hover:bg-gray-100" disabled={locked}>
+                                <button title="Remplir ce bloc depuis un document" onClick={async e => { e.stopPropagation(); if (await secureStructuralTransition('Import du bloc')) setBuilderImportTarget({ type: 'block', id: block.id }); }} className="p-1 rounded hover:bg-gray-100" disabled={locked}>
                                   <UploadCloud size={13} style={{ color: '#BF8813' }} />
                                 </button>
                               )}
@@ -2159,7 +2295,10 @@ void openModuleAssessment;
                               <button onClick={e => { e.stopPropagation(); duplicateBlock(block); }} className="p-1 rounded hover:bg-gray-100" disabled={locked}>
                                 <Copy size={12} style={{ color: '#6B7280' }} />
                               </button>
-                              <button onClick={e => { e.stopPropagation(); deleteBlock(block.id); }} className="p-1 rounded hover:bg-red-50" disabled={locked}>
+                              <button type="button" aria-label={`Supprimer uniquement le bloc ${def?.label || block.block_type}`} title="Supprimer ce bloc (pas la leçon)"
+                                onPointerDown={event => event.stopPropagation()}
+                                onClick={event => { event.preventDefault(); event.stopPropagation(); void deleteBlock(block.id); }}
+                                className="p-1 rounded hover:bg-red-50" disabled={locked || historyBusy}>
                                 <Trash2 size={12} style={{ color: '#DC2626' }} />
                               </button>
                             </div>
@@ -2181,25 +2320,22 @@ void openModuleAssessment;
                                 initialHtml={String(block.content_json?.html ?? block.content_json?.content ?? block.content_json?.text ?? '')}
                                 blockId={block.id}
                                 onActivate={() => { activeProseKey.current = block.id; }}
+                                onEdit={() => { lastHistoryKind.current = 'prose'; }}
                                 onCommit={commitPageParagraph}
                                 onDelete={deleteBlock}
-                                onInsertBlock={async type => addBlock(type, idx + 1, true)}
+                                onInsertBlock={async type => addBlock(type, idx + 1, block.id)}
                                 choices={visibleBlocks.map(choice => ({ type: choice.type, label: choice.label }))}
                                 language={course?.instruction_language || course?.language || 'fr'}
                               />
-                            ) : <BuilderBlockBoundary blockType={block.block_type} block={block} locked={locked} onFallbackChange={content_json => {
-                              setBlocks(bs => bs.map(b => b.id === block.id ? { ...b, content_json } : b));
-                              if (isSelected) setSelectedBlock(b => b ? { ...b, content_json } : b);
-                              void queueBlockUpdate(block.id, { content_json });
+                            ) : <BuilderBlockBoundary blockType={block.block_type} block={block} locked={locked || historyBusy} onFallbackChange={content_json => {
+                              recordSpecialistBlockEdit(block.id, content_json);
                             }}>
-                            <BlockPreview block={block} def={def} locked={locked} mediaAiBusy={mediaAiBusy}
+                            <BlockPreview block={block} def={def} locked={locked || historyBusy} mediaAiBusy={mediaAiBusy}
                               defaultLanguage={course?.instruction_language || course?.language || 'fr'}
                               onGenerateTts={(text,targetPath)=>generateTtsForBlock(block,text,targetPath)}
                               onGenerateSubtitles={()=>generateSubtitlesForBlock(block)}
                               onChange={async (content_json) => {
-                                setBlocks(bs => bs.map(b => b.id === block.id ? { ...b, content_json } : b));
-                                if (isSelected) setSelectedBlock(b => b ? { ...b, content_json } : b);
-                                await queueBlockUpdate(block.id, { content_json });
+                                recordSpecialistBlockEdit(block.id, content_json);
                               }} />
                             </BuilderBlockBoundary>}
                           </div>
@@ -2224,6 +2360,7 @@ void openModuleAssessment;
                     <StudioBlankPageComposer
                       ref={instance => registerProseComposer('tail', instance)}
                       onActivate={() => { activeProseKey.current = 'tail'; }}
+                      onEdit={() => { lastHistoryKind.current = 'prose'; }}
                       key={`${currentLesson.id}:${lastContentBlock?.id ?? 'blank'}`}
                       draftKey={`${currentLesson.id}:${lastContentBlock?.id ?? 'blank'}`}
                       initialHtml={String(trailingProse?.content_json?.html ?? trailingProse?.content_json?.content ?? trailingProse?.content_json?.text ?? '')}
@@ -2231,7 +2368,7 @@ void openModuleAssessment;
                       onCommit={commitPageParagraph}
                       onDelete={deleteBlock}
                       onInsertBlock={async type => {
-                        const created = await addBlock(type, insertionSlot ?? undefined, true);
+                        const created = await addBlock(type, insertionSlot ?? undefined, 'tail');
                         if (created) setInsertionSlot(null);
                         return created;
                       }}
@@ -2408,9 +2545,20 @@ void openModuleAssessment;
                 <div className="flex-1 overflow-y-auto p-4">
                   <BlockSettings block={selectedBlock} locked={locked}
                     onUpdate={async (updates) => {
-                      setBlocks(bs => bs.map(b => b.id === selectedBlock.id ? { ...b, ...updates } : b));
-                      setSelectedBlock(b => b ? { ...b, ...updates } : b);
-                      await queueBlockUpdate(selectedBlock.id, updates);
+                      if (updates.content_json) {
+                        recordSpecialistBlockEdit(selectedBlock.id, updates.content_json);
+                        const rest = { ...updates };
+                        delete rest.content_json;
+                        if (Object.keys(rest).length) {
+                          setBlocks(bs => bs.map(b => b.id === selectedBlock.id ? { ...b, ...rest } : b));
+                          setSelectedBlock(b => b ? { ...b, ...rest } : b);
+                          await queueBlockUpdate(selectedBlock.id, rest);
+                        }
+                      } else {
+                        setBlocks(bs => bs.map(b => b.id === selectedBlock.id ? { ...b, ...updates } : b));
+                        setSelectedBlock(b => b ? { ...b, ...updates } : b);
+                        await queueBlockUpdate(selectedBlock.id, updates);
+                      }
                     }}
                     onAI={async (action, prompt) => {
                       setAiAction(action); setAiInput(prompt); setShowAI(true); setSelectedBlock(null);
