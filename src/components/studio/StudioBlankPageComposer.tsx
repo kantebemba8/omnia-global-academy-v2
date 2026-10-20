@@ -26,6 +26,7 @@ type Props = {
   onActivate?: () => void;
   onEdit?: (before: string, after: string) => void;
   onHistoryAction?: (direction: 'undo' | 'redo') => void;
+  legacyDraftKey?: string;
 };
 
 function readable(html: string) {
@@ -36,13 +37,14 @@ function readable(html: string) {
 }
 
 const StudioBlankPageComposer = forwardRef<StudioProseComposerHandle, Props>(function StudioBlankPageComposer(
-  { language, draftKey, initialHtml, blockId, choices, onCommit, onInsertBlock, onDelete, onActivate, onEdit, onHistoryAction }, ref,
+  { language, draftKey, initialHtml, blockId, choices, onCommit, onInsertBlock, onDelete, onActivate, onEdit, onHistoryAction, legacyDraftKey }, ref,
 ) {
   const storageKey = `oga_studio_v4_unsent_text_${draftKey}`;
+  const legacyStorageKey = legacyDraftKey ? `oga_studio_v4_unsent_text_${legacyDraftKey}` : storageKey;
   // Never silently overwrite the server with an older unsent session draft.
   // Offer explicit recovery; a previously completed remote save stays authoritative.
   const [recoveryHtml] = useState<string | null>(() => {
-    try { return sessionStorage.getItem(storageKey); } catch { return null; }
+    try { return sessionStorage.getItem(storageKey) ?? sessionStorage.getItem(legacyStorageKey); } catch { return null; }
   });
   const [recoveryPending, setRecoveryPending] = useState(recoveryHtml !== null && recoveryHtml !== initialHtml);
   const [draft, setDraft] = useState(initialHtml);
@@ -62,14 +64,22 @@ const StudioBlankPageComposer = forwardRef<StudioProseComposerHandle, Props>(fun
     `${choice.label} ${choice.type}`.toLocaleLowerCase('fr').includes(slash[1].toLocaleLowerCase('fr'))).slice(0, 8) : [], [choices, slash?.[1]]);
 
   useEffect(() => {
-    if (blockId && !savedBlockId.current) savedBlockId.current = blockId;
-  }, [blockId]);
+    // Conserver l'éditeur pendant la première sauvegarde.
+    if (blockId === savedBlockId.current) return;
+    if (busyPromise.current || latestDraft.current !== savedHtml.current) return;
+    savedBlockId.current = blockId;
+    savedHtml.current = initialHtml;
+    latestDraft.current = initialHtml;
+    setDraft(initialHtml);
+    setStatus('saved');
+    try { sessionStorage.removeItem(storageKey); } catch { /* synchronisation du bloc */ }
+  }, [blockId, initialHtml, busy, storageKey]);
   useEffect(() => {
     // Keep the unsent original untouched until the author chooses Restore/Ignore.
     if (recoveryPending) return;
     try {
       if (draft !== savedHtml.current) sessionStorage.setItem(storageKey, draft);
-      else sessionStorage.removeItem(storageKey);
+      else { sessionStorage.removeItem(storageKey); sessionStorage.removeItem(legacyStorageKey); }
     } catch { /* Private browsing may disable session storage. */ }
   }, [draft, status, storageKey, recoveryPending]);
 
@@ -94,7 +104,7 @@ const StudioBlankPageComposer = forwardRef<StudioProseComposerHandle, Props>(fun
         // The component may remount under the server-assigned block id before an
         // effect runs; clear the old recovery key synchronously on confirmation.
         if (latestDraft.current === snapshot) {
-          try { sessionStorage.removeItem(storageKey); } catch { /* optional recovery */ }
+          try { sessionStorage.removeItem(storageKey); sessionStorage.removeItem(legacyStorageKey); } catch { /* optional recovery */ }
         }
         setStatus(latestDraft.current === snapshot ? 'saved' : 'pending');
         return true;
@@ -129,7 +139,7 @@ const StudioBlankPageComposer = forwardRef<StudioProseComposerHandle, Props>(fun
         savedHtml.current = target;
         latestDraft.current = target;
         setDraft(target);
-        try { sessionStorage.removeItem(storageKey); } catch { /* optional */ }
+        try { sessionStorage.removeItem(storageKey); sessionStorage.removeItem(legacyStorageKey); } catch { /* optional */ }
         setStatus('saved');
         return true;
       } catch {
@@ -151,7 +161,7 @@ const StudioBlankPageComposer = forwardRef<StudioProseComposerHandle, Props>(fun
 
   useEffect(() => {
     if (draft === savedHtml.current || slash || status === 'error' || busy) return;
-    const timer = window.setTimeout(() => { void flush(); }, 2200);
+    const timer = window.setTimeout(() => { void flush(); }, 1200);
     return () => window.clearTimeout(timer);
   }, [draft, status, busy, slash?.[1]]);
 
@@ -188,17 +198,19 @@ const StudioBlankPageComposer = forwardRef<StudioProseComposerHandle, Props>(fun
     setStatus('pending');
   }
   function discardLocalDraft() {
-    try { sessionStorage.removeItem(storageKey); } catch {}
+    try { sessionStorage.removeItem(storageKey); sessionStorage.removeItem(legacyStorageKey); } catch {}
     setRecoveryPending(false);
   }
 
-  return <section aria-label="Rédaction directe de la leçon" className="mt-3 mb-2 rounded-xl bg-white px-1 py-2">
+  return <section aria-label="Rédaction directe de la leçon"
+    className="mt-3 mb-2 min-h-[220px] cursor-text rounded-xl bg-white px-1 py-2"
+    onClick={event => { if (event.target === event.currentTarget) editorRef.current?.focus(); }}>
     {recoveryPending && <div role="alert" className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
       <span className="mr-auto">Un brouillon local différent du contenu serveur a été retrouvé. Choisissez avant toute restauration.</span>
       <button type="button" onClick={restoreLocalDraft} className="rounded border border-amber-300 bg-white px-3 py-1.5 font-semibold">Restaurer le brouillon</button>
       <button type="button" onClick={discardLocalDraft} className="rounded border border-slate-300 bg-white px-3 py-1.5">Garder la version serveur</button>
     </div>}
-    <StudioRichTextEditor ref={editorRef} onEditorFocus={onActivate} onHistoryAction={onHistoryAction} value={draft} onChange={html => { const before = latestDraft.current; if (before !== html) onEdit?.(before, html); latestDraft.current = html; setDraft(html); setRecoveryPending(false); setStatus('pending'); }} locked={busy}
+    <StudioRichTextEditor ref={editorRef} onEditorFocus={onActivate} onHistoryAction={onHistoryAction} value={draft} onChange={html => { const before = latestDraft.current; if (before !== html) onEdit?.(before, html); latestDraft.current = html; setDraft(html); setRecoveryPending(false); setStatus('pending'); }} locked={false}
       language={language} plainPage onEditorBlur={() => { if (!busyPromise.current) void flush(); }}
       placeholder="Commencez à écrire ici, ou tapez / pour insérer un bloc…" />
     {slash && matching.length > 0 && <div role="listbox" aria-label="Commandes de blocs" className="mt-2 max-h-52 overflow-y-auto rounded-xl border border-slate-200 bg-white p-2 shadow-lg">
@@ -208,11 +220,11 @@ const StudioBlankPageComposer = forwardRef<StudioProseComposerHandle, Props>(fun
     </div>}
     <div className="mt-2 flex flex-wrap items-center gap-2 px-3 text-xs">
       <span role={status === 'error' ? 'alert' : 'status'} className={`mr-auto ${status === 'error' ? 'text-red-700' : status === 'saved' ? 'text-emerald-700' : 'text-amber-700'}`}>
-        {status === 'saved' ? 'Texte enregistré' : status === 'saving' ? 'Enregistrement…' : status === 'error' ? 'Échec réseau : brouillon conservé dans cet onglet' : 'Modifications non enregistrées'}
+        {status === 'saved' ? 'Texte enregistré' : status === 'saving' ? 'Enregistrement…' : status === 'error' ? 'Échec réseau : brouillon conservé dans cet onglet' : 'Sauvegarde automatique en attente…'}
       </span>
       {status === 'error' && <button type="button" onClick={() => void flush()} className="rounded-lg border border-red-300 px-3 py-1.5 font-semibold text-red-700">Réessayer</button>}
       {savedBlockId.current && onDelete && <button type="button" disabled={busy} onClick={() => void remove()}
-        className="rounded-lg border border-slate-200 px-3 py-1.5 text-slate-600 disabled:opacity-50">Supprimer ce texte</button>}
+        className="rounded-lg border border-slate-200 px-3 py-1.5 text-slate-600 disabled:opacity-50">Supprimer le bloc Texte</button>}
     </div>
   </section>;
 });

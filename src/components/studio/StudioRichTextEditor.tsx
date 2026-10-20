@@ -171,6 +171,7 @@ type RichTextProps = {
 export type StudioRichTextEditorHandle = {
   undo: () => boolean;
   redo: () => boolean;
+  focus: () => void;
 };
 
 const StudioRichTextEditor = forwardRef<StudioRichTextEditorHandle, RichTextProps>(function StudioRichTextEditor({
@@ -245,6 +246,7 @@ const StudioRichTextEditor = forwardRef<StudioRichTextEditorHandle, RichTextProp
   useImperativeHandle(ref, () => ({
     undo: () => Boolean(editor && !editor.isDestroyed && !locked && editor.can().undo() && editor.chain().focus().undo().run()),
     redo: () => Boolean(editor && !editor.isDestroyed && !locked && editor.can().redo() && editor.chain().focus().redo().run()),
+    focus: () => { if (editor && !editor.isDestroyed && !locked) editor.chain().focus().run(); },
   }), [editor, locked]);
 
   useEffect(() => {

@@ -27,6 +27,7 @@ import { ChevronLeft, ChevronRight, Save, Eye, Send, History, Plus, Trash2, Copy
 
 const SB = import.meta.env.VITE_SUPABASE_URL;
 const API = `${SB}/functions/v1/studio-unified`;
+const STUDIO_HISTORY_UI_ENABLED = false;
 
 // ─── Types ────────────────────────────────────────────────────
 interface Block {
@@ -289,6 +290,9 @@ export default function StudioConceptionFormation() {
   const sessionHistory = useRef(createStudioUndoLedger());
   const historyReplayInFlight = useRef(false);
   const [historyBusy, setHistoryBusy] = useState(false);
+  const [deleteBusyBlockId, setDeleteBusyBlockId] = useState<string | null>(null);
+  const [confirmDialog, setConfirmDialog] = useState<{ message: string; resolve: (yes: boolean) => void } | null>(null);
+  const confirmStudio = (message: string) => new Promise<boolean>(resolve => setConfirmDialog({ message, resolve }));
   const blockSnapshotRef = useRef<Block[]>([]);
   blockSnapshotRef.current = blocks;
   const clearBlockOrderHistory = () => sessionHistory.current.clear();
@@ -901,7 +905,7 @@ void openModuleAssessment;
 
   async function deleteLesson(mod: Module, lesson: Lesson) {
     if (!course?.id || locked) return;
-    if (!window.confirm(`Supprimer « ${lesson.title} » et tous ses contenus ? Cette action est définitive pour ce brouillon.`)) return;
+    if (!await confirmStudio(`Supprimer « ${lesson.title} » et tous ses contenus ? Cette action est définitive pour ce brouillon.`)) return;
     if (!await secureStructuralTransition('Suppression de la leçon')) return;
     const data = await api('delete_lesson', { course_id: course.id, lesson_id: lesson.id });
     if (!data.success) { showToast(data.message || data.error || 'Suppression impossible.', 'error'); return; }
@@ -917,7 +921,7 @@ void openModuleAssessment;
 
   async function deleteModule(mod: Module) {
     if (!course?.id || locked || mod.is_intro || mod.is_conclusion || mod.is_final_exam) return;
-    if (!window.confirm(`Supprimer le module « ${mod.title} », ses leçons, sa synthèse et tous leurs contenus ?`)) return;
+    if (!await confirmStudio(`Supprimer le module « ${mod.title} », ses leçons, sa synthèse et tous leurs contenus ?`)) return;
     if (!await secureStructuralTransition('Suppression du module')) return;
     const data = await api('delete_module', { course_id: course.id, module_id: mod.id });
     if (!data.success) { showToast(data.message || data.error || 'Suppression du module impossible.', 'error'); return; }
@@ -955,8 +959,15 @@ void openModuleAssessment;
         blockId: String(data.block.id), at: Date.now() });
       if (assessmentWorkspace) setAssessmentRefresh(previous => previous + 1);
       if (currentLesson?.id === targetLessonId) {
-        const refreshed = await loadBlocks(targetLessonId);
-        if (!refreshed) showToast('Bloc créé, mais rechargement impossible : actualisez cette leçon.', 'error');
+        setBlocks(previous => {
+          if (previous.some(block => block.id === data.block.id)) return previous;
+          const next = [...previous];
+          const index = typeof insertionIndex === 'number'
+            ? Math.max(0, Math.min(next.length, insertionIndex))
+            : next.length;
+          next.splice(index, 0, data.block as Block);
+          return next.map((item, position) => ({ ...item, position }));
+        });
       }
       // Un nouveau bloc reste directement éditable dans le canevas.
       // Le panneau Paramètres ne s'ouvre que via l'engrenage, sur PC comme sur mobile.
@@ -1017,8 +1028,8 @@ void openModuleAssessment;
 
   async function manageAssessment(action: 'assessment_set_active'|'assessment_clear_questions', enabled?: boolean) {
     if (locked || assessmentManagementBusy || !assessmentWorkspace || !activeAssessment || !course?.id) return;
-    if (action === 'assessment_clear_questions' && !window.confirm('Vider les questions de cette évaluation brouillon ? Les blocs sources seront conservés comme activités d’entraînement. Les tentatives historiques empêchent cette opération.')) return;
-    if (action === 'assessment_set_active' && enabled === false && !window.confirm('Désactiver cette évaluation du parcours apprenant ? Les tentatives et résultats déjà enregistrés seront conservés.')) return;
+    if (action === 'assessment_clear_questions' && !await confirmStudio('Vider les questions de cette évaluation brouillon ? Les blocs sources seront conservés comme activités d’entraînement. Les tentatives historiques empêchent cette opération.')) return;
+    if (action === 'assessment_set_active' && enabled === false && !await confirmStudio('Désactiver cette évaluation du parcours apprenant ? Les tentatives et résultats déjà enregistrés seront conservés.')) return;
     setAssessmentManagementBusy(true);
     try {
       if (!await flushProseComposer()) return;
@@ -1045,43 +1056,62 @@ void openModuleAssessment;
 
   // ─── Supprimer / dupliquer / réordonner les blocs ───────────
   async function deleteBlock(blockId: string): Promise<boolean> {
-    // Capture a stable lesson ID before any await: currentLesson may become null
-    // when navigating away while a deletion is pending.
-    const deletingLessonId = currentLesson?.id;
-    if (locked || historyReplayInFlight.current || !deletingLessonId) return false;
-    if (!await flushProseComposer()) return false;
-    const blockToDelete = blocks.find(item => item.id === blockId);
-    if (!blockToDelete) return false;
-    const blockLabel = BLOCK_DEFS.find(item => item.type === blockToDelete.block_type)?.label || blockToDelete.block_type;
-    if (!window.confirm(`Supprimer uniquement le bloc « ${blockLabel} » ? Les autres blocs et la leçon seront conservés.`)) return false;
-    try { await flushBlockUpdates(); }
-    catch { showToast('Sauvegarde incomplète : suppression annulée.', 'error'); return false; }
-    // Reversible deletion is server-authorized and signs its restoration receipt.
-    // Media with external resources or graded/question-linked blocks are never
-    // silently restored from a client-side snapshot.
-    let result = await api('history_remove_block', { course_id: course.id, block_id: blockId,
-      expected_content_json: blockToDelete.content_json });
-    if (!result.success && result.error === 'BLOCK_NOT_REVERSIBLE') {
-      if (!window.confirm('Ce bloc contient une ressource, une évaluation ou un lien qui ne peut pas être restauré automatiquement. Confirmer une suppression NON ANNULABLE ?')) return false;
-      result = await api('delete_block', { course_id: course.id, block_id: blockId });
-      if (result.success) clearBlockOrderHistory();
-    } else if (result.success && result.restore_receipt) {
-      rememberAction({ kind: 'structure', operation: 'delete', lessonId: deletingLessonId,
-        blockId, receipt: String(result.restore_receipt), at: Date.now() });
-    }
-    if (!result.success) {
-      showToast(result.message || result.error || 'Impossible de supprimer le bloc.', 'error');
-      return false;
-    }
-    setBlocks(bs => bs.filter(b => b.id !== blockId));
-    if (selectedBlock?.id === blockId) { setSelectedBlock(null); setSelectedBlockDef(null); }
-    // Deleting a block must never redirect to (or reopen) the Quality Centre.
-    setShowChecklist(false);
-    setChecklist(null); // the prior quality score is now outdated
-    showToast(`Bloc « ${blockLabel} » supprimé.`, 'success');
-    return true;
-  }
+    const lessonId = currentLesson?.id;
+    const block = blocks.find(item => item.id === blockId);
 
+    if (!course?.id || !lessonId || !block || locked || deleteBusyBlockId) return false;
+
+    const label = BLOCK_DEFS.find(item => item.type === block.block_type)?.label || block.block_type;
+
+    if (!await confirmStudio(`Supprimer définitivement le bloc « ${label} » ? Cette action ne pourra pas être annulée.`)) return false;
+
+    setDeleteBusyBlockId(blockId);
+
+    try {
+      if (!await flushProseComposer()) return false;
+
+      try {
+        await flushBlockUpdates();
+      } catch {
+        showToast('Sauvegarde incomplète : suppression annulée.', 'error');
+        return false;
+      }
+
+      showToast('Suppression du bloc en cours…', 'info');
+
+      const result = await api('delete_block', {
+        course_id: course.id,
+        block_id: blockId
+      });
+
+      if (!result.success) {
+        showToast(result.message || result.error || 'Suppression refusée.', 'error');
+        return false;
+      }
+
+      clearBlockOrderHistory();
+
+      setBlocks(previous => previous.filter(item => item.id !== blockId));
+
+      if (selectedBlock?.id === blockId) {
+        setSelectedBlock(null);
+        setSelectedBlockDef(null);
+      }
+
+      setShowChecklist(false);
+      setChecklist(null);
+
+      showToast(`Bloc « ${label} » supprimé.`, 'success');
+      return true;
+
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Suppression impossible.', 'error');
+      return false;
+
+    } finally {
+      setDeleteBusyBlockId(null);
+    }
+  }
   async function duplicateBlock(block: Block) {
     if (locked || !course?.id || !currentLesson?.id) return;
     if (!await flushProseComposer()) return;
@@ -1641,6 +1671,7 @@ void openModuleAssessment;
   // Keyboard shortcuts must use the same history as the Studio buttons.
   // Never let native Tiptap undo create a second Studio action.
   useEffect(() => {
+    if (!STUDIO_HISTORY_UI_ENABLED) return;
     const onHistoryKeyDown = (event: KeyboardEvent) => {
       if (locked || historyBusy || !currentLesson || assessmentWorkspace ||
           historyReplayInFlight.current || event.altKey || (!event.ctrlKey && !event.metaKey)) return;
@@ -1657,6 +1688,21 @@ void openModuleAssessment;
     document.addEventListener('keydown', onHistoryKeyDown, true);
     return () => document.removeEventListener('keydown', onHistoryKeyDown, true);
   }, [locked, historyBusy, currentLesson?.id, assessmentWorkspace]);
+  useEffect(() => {
+    const onSaveShortcut = (event: KeyboardEvent) => {
+      if ((!event.ctrlKey && !event.metaKey) || event.altKey || event.shiftKey || event.key.toLowerCase() !== 's') return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (locked || !currentLesson) return;
+      void (async () => {
+        if (!await flushProseComposer()) return;
+        try { await flushBlockUpdates(); showToast('Leçon enregistrée.', 'success'); }
+        catch { showToast('Des modifications restent non enregistrées.', 'error'); }
+      })();
+    };
+    document.addEventListener('keydown', onSaveShortcut, true);
+    return () => document.removeEventListener('keydown', onSaveShortcut, true);
+  }, [locked, currentLesson?.id]);
   const workflowLocked = ['pending_validation', 'validated', 'published', 'suspended'].includes(course.studio_status || '');
   const statusCfg = STATUS_CFG[course.studio_status || 'draft'] || STATUS_CFG.draft;
   const modeBlocks = BLOCK_DEFS; // The 52 identifiers remain supported in both modes.
@@ -1716,6 +1762,28 @@ void openModuleAssessment;
         storageKey="formation-builder"
         description="La création et la modification d’une formation fonctionnent sur mobile. Pour les gros imports, SCORM, la réorganisation de nombreux modules ou une mise en page complexe, un ordinateur reste plus confortable."
       />
+
+      {confirmDialog && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/60 px-4">
+          <div role="alertdialog" aria-modal="true" aria-label="Confirmer l'action"
+            className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+            <h2 className="text-lg font-bold text-[#002050]">Confirmer l'action</h2>
+            <p className="mt-3 text-sm leading-6 text-slate-700">{confirmDialog.message}</p>
+            <div className="mt-6 flex justify-end gap-3">
+              <button type="button" autoFocus
+                className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold"
+                onClick={() => { confirmDialog.resolve(false); setConfirmDialog(null); }}>
+                Annuler
+              </button>
+              <button type="button"
+                className="rounded-lg bg-[#002050] px-4 py-2 text-sm font-semibold text-white"
+                onClick={() => { confirmDialog.resolve(true); setConfirmDialog(null); }}>
+                Confirmer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Toast */}
 
@@ -1810,12 +1878,14 @@ void openModuleAssessment;
 
         {/* Actions */}
         <div className="flex items-center gap-2 flex-shrink-0">
+          {STUDIO_HISTORY_UI_ENABLED && <>
           <button type="button" onMouseDown={event => event.preventDefault()} onClick={() => { void undoStudioAction(); }}
             disabled={locked || historyBusy || !currentLesson || !!assessmentWorkspace} title="Annuler texte, ajout, duplication, suppression réversible, modification ou déplacement (session actuelle)" aria-label="Annuler la dernière modification"
             className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm font-semibold text-[#002050] disabled:opacity-40">↶ Annuler</button>
           <button type="button" onMouseDown={event => event.preventDefault()} onClick={() => { void redoStudioAction(); }}
             disabled={locked || historyBusy || !currentLesson || !!assessmentWorkspace} title="Rétablir la dernière opération annulée dans cette session" aria-label="Rétablir la dernière modification"
             className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm font-semibold text-[#002050] disabled:opacity-40">↷ Rétablir</button>
+          </>}
           <button type="button" onClick={() => setCurriculumOpen(value => !value)} aria-expanded={curriculumOpen}
             className={`flex items-center gap-1 rounded-lg border px-3 py-1.5 text-xs font-semibold ${curriculumOpen ? 'border-[#BF8813] bg-amber-50 text-[#002050]' : 'border-slate-200 text-[#002050]'}`}>
             <Layers size={14} /> Plan
@@ -1948,7 +2018,7 @@ void openModuleAssessment;
                   <button key={tmpl.key} disabled={locked}
                     onClick={async () => {
                       if (!course?.id) return;
-                      const replaceExisting = modules.length === 0 || window.confirm('Appliquer ce modèle remplacera les modules et leçons actuels. Continuer ?');
+                      const replaceExisting = modules.length === 0 || await confirmStudio('Appliquer ce modèle remplacera les modules et leçons actuels. Continuer ?');
                       if (!replaceExisting) return;
                       const data = await api('apply_template', { course_id: course.id, template_key: tmpl.key, replace_existing: modules.length > 0 });
                       if (data.success) { window.location.reload(); } else showToast('Impossible d’appliquer le modèle', 'error');
@@ -2032,7 +2102,7 @@ void openModuleAssessment;
                       {!locked && <details className="group/actions relative ml-auto"><summary className="cursor-pointer list-none rounded-lg border border-slate-200 px-3 py-1.5 text-xs text-slate-600">Gérer le module <ChevronDown size={13} className="ml-1 inline"/></summary>
                         <div className="absolute right-0 z-30 mt-2 w-64 rounded-xl border border-slate-200 bg-white p-2 shadow-xl"><button type="button" onClick={() => void deleteModule(mod)} className="w-full rounded-lg px-3 py-2 text-left text-sm text-red-700 hover:bg-red-50">Supprimer le module et ses leçons…</button></div></details>}
                     </>}
-                    {stage === 'final_exam' && !locked && <details className="group/actions relative ml-auto"><summary className="cursor-pointer list-none rounded-lg border px-3 py-1.5 text-xs text-slate-600">Gérer l’examen</summary><div className="absolute right-0 z-30 mt-2 w-64 rounded-lg border bg-white p-2 shadow-xl"><button type="button" onClick={async () => { if (!window.confirm('Retirer l’examen final du brouillon ? Les tentatives existantes seront protégées.')) return; if (!await secureStructuralTransition('Retrait de l’examen final')) return; const result = await api('remove_final_exam', { course_id: course.id }); if (result.success) {
+                    {stage === 'final_exam' && !locked && <details className="group/actions relative ml-auto"><summary className="cursor-pointer list-none rounded-lg border px-3 py-1.5 text-xs text-slate-600">Gérer l’examen</summary><div className="absolute right-0 z-30 mt-2 w-64 rounded-lg border bg-white p-2 shadow-xl"><button type="button" onClick={async () => { if (!await confirmStudio('Retirer l’examen final du brouillon ? Les tentatives existantes seront protégées.')) return; if (!await secureStructuralTransition('Retrait de l’examen final')) return; const result = await api('remove_final_exam', { course_id: course.id }); if (result.success) {
       setCurrentModule(null); setCurrentLesson(null); setBlocks([]);
       setAssessmentWorkspace(null); setSelectedBlock(null); clearBlockOrderHistory();
       if (!await reloadCourse(course.id)) showToast('Examen retiré, mais programme à recharger.', 'error');
@@ -2413,7 +2483,7 @@ void openModuleAssessment;
                                 initialHtml={String(block.content_json?.html ?? block.content_json?.content ?? block.content_json?.text ?? '')}
                                 blockId={block.id}
                                 onActivate={() => { activeProseKey.current = block.id; }}
-                                onHistoryAction={direction => { void replayStudioHistory(direction); }}
+                                
                                 onEdit={(before, after) => { if (currentLesson && !historyReplayInFlight.current) rememberAction({kind:'prose', lessonId:currentLesson.id, key:block.id, before, after, at:Date.now()}); }}
                                 onCommit={commitPageParagraph}
                                 onDelete={deleteBlock}
@@ -2454,10 +2524,11 @@ void openModuleAssessment;
                     <StudioBlankPageComposer
                       ref={instance => registerProseComposer('tail', instance)}
                       onActivate={() => { activeProseKey.current = 'tail'; }}
-                      onHistoryAction={direction => { void replayStudioHistory(direction); }}
+                      
                       onEdit={(before, after) => { if (currentLesson && !historyReplayInFlight.current) rememberAction({kind:'prose', lessonId:currentLesson.id, key:'tail', before, after, at:Date.now()}); }}
-                      key={`${currentLesson.id}:${lastContentBlock?.id ?? 'blank'}`}
-                      draftKey={`${currentLesson.id}:${lastContentBlock?.id ?? 'blank'}`}
+                      key={`${currentLesson.id}:tail`}
+                      draftKey={`${currentLesson.id}:tail`}
+                      legacyDraftKey={`${currentLesson.id}:${lastContentBlock?.id ?? 'blank'}`}
                       initialHtml={String(trailingProse?.content_json?.html ?? trailingProse?.content_json?.content ?? trailingProse?.content_json?.text ?? '')}
                       blockId={trailingProse?.id}
                       onCommit={commitPageParagraph}
