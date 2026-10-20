@@ -219,9 +219,9 @@ const StudioBlankPageComposer = forwardRef<StudioProseComposerHandle, Props>(fun
         disabled={busy} onClick={() => void choose(choice.type)}>{choice.label}</button>)}
     </div>}
     <div className="mt-2 flex flex-wrap items-center gap-2 px-3 text-xs">
-      <span role={status === 'error' ? 'alert' : 'status'} className={`mr-auto ${status === 'error' ? 'text-red-700' : status === 'saved' ? 'text-emerald-700' : 'text-amber-700'}`}>
-        {status === 'saved' ? 'Texte enregistré' : status === 'saving' ? 'Enregistrement…' : status === 'error' ? 'Échec réseau : brouillon conservé dans cet onglet' : 'Sauvegarde automatique en attente…'}
-      </span>
+      {status === 'error' && <span role="alert" className="mr-auto text-red-700">
+        Sauvegarde impossible : le brouillon est conservé dans cet onglet.
+      </span>}
       {status === 'error' && <button type="button" onClick={() => void flush()} className="rounded-lg border border-red-300 px-3 py-1.5 font-semibold text-red-700">Réessayer</button>}
       {savedBlockId.current && onDelete && <button type="button" disabled={busy} onClick={() => void remove()}
         className="rounded-lg border border-slate-200 px-3 py-1.5 text-slate-600 disabled:opacity-50">Supprimer le bloc Texte</button>}

@@ -294,7 +294,7 @@ function shouldFallback(error: unknown): boolean {
   if (error.code === "AI_INVALID_STRUCTURED_RESPONSE") return true;
   if (error.provider !== "anthropic") return false;
   if (["ANTHROPIC_NOT_CONFIGURED", "ANTHROPIC_TIMEOUT", "ANTHROPIC_EMPTY_RESPONSE", "ANTHROPIC_UNAVAILABLE"].includes(error.code)) return true;
-  return error.status === 408 || error.status === 409 || error.status === 429 || error.status >= 500;
+  return error.status === 401 || error.status === 403 || error.status === 408 || error.status === 409 || error.status === 429 || error.status >= 500;
 }
 
 export async function runAiText(sb: any, options: Parameters<typeof runAnthropicText>[1] & {
@@ -391,6 +391,7 @@ export async function runOpenAITranscription(sb: any, options: { context: Runtim
 
 export function aiErrorPayload(error: unknown) {
   if (error instanceof AiRuntimeError) {
+    if (error.status === 401 || error.status === 403) return { error: "AI_PROVIDER_AUTH_INVALID", provider: error.provider, message: `Authentification IA refusée par ${error.provider}. Vérifiez la clé API de ce fournisseur dans les secrets Supabase.`, status: 503 };
     return { error: error.code, provider: error.provider, message: error.detail || "Le service IA est momentanément indisponible.", status: error.status };
   }
   return { error: "AI_RUNTIME_ERROR", provider: "unknown", message: "Le service IA est momentanément indisponible.", status: 502 };

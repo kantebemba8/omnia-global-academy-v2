@@ -63,7 +63,7 @@ interface Course {
   category?: string; level?: string; language?: string; course_type?: 'standard'|'language_learning'; instruction_language?: string; target_language?: string; cefr_start_level?: string; cefr_target_level?: string; language_framework?: string; prerequisites?: string;
   objectives?: string[]; cover_image_url?: string; cover_image_prompt?: string;
   target_audience?: string; learning_outcomes?: string[]; course_intro_title?: string;
-  course_intro_summary?: string; studio_status: string;
+  course_intro_summary?: string; studio_status: string; is_published?: boolean;
   creator_context?: string;
   studio_mode?: string; word_count?: number; estimated_read_min?: number; calculated_duration_minutes?: number;
   last_autosave_at?: string; admin_comment?: string; template_used?: string;
@@ -1085,7 +1085,10 @@ void openModuleAssessment;
       });
 
       if (!result.success) {
-        showToast(result.message || result.error || 'Suppression refusée.', 'error');
+        const details = result.error === 'FORBIDDEN'
+          ? 'Suppression refusée : ce compte ne possède pas les droits sur la formation ou ce bloc. Vérifiez le compte créateur et les autorisations de la structure.'
+          : result.message || result.error || 'Suppression refusée.';
+        showToast(details, 'error');
         return false;
       }
 
@@ -1622,6 +1625,25 @@ void openModuleAssessment;
   }
 
   // ─── IA ───────────────────────────────────────────────────
+  async function createEditableVersion() {
+    if (!course.id) return;
+    if (!await confirmStudio('Créer une nouvelle version brouillon modifiable ? La version publiée et les résultats des apprenants seront conservés.')) return;
+
+    const result = await api('create_major_version', {
+      course_id: course.id
+    });
+
+    if (!result.success || !result.course?.id) {
+      showToast(result.message || result.error || 'Impossible de créer la nouvelle version.', 'error');
+      return;
+    }
+
+    navigate(
+      window.location.pathname.replace(course.id, String(result.course.id))
+      + window.location.search
+    );
+  }
+
   async function runAI() {
     if (!aiInput.trim()) return;
     setAiLoading(true); setAiResult('');
@@ -1665,8 +1687,8 @@ void openModuleAssessment;
     finally { setMediaAiBusy(null); }
   }
 
-  const publishedSuperAdminEditable = course.studio_status === 'published' && course.creator_context === 'super_admin';
-  const locked = ['pending_validation', 'validated', 'suspended'].includes(course.studio_status || '') || (course.studio_status === 'published' && !publishedSuperAdminEditable);
+  const publishedVersionLocked = course.is_published === true || course.studio_status === 'published';
+  const locked = ['pending_validation', 'validated', 'suspended'].includes(course.studio_status || '') || publishedVersionLocked;
 
   // Keyboard shortcuts must use the same history as the Studio buttons.
   // Never let native Tiptap undo create a second Studio action.
@@ -1874,7 +1896,10 @@ void openModuleAssessment;
           <div className="w-2 h-2 rounded-full" style={{ background: statusCfg.dot }} />
           {statusCfg.label}
         </div>}
-        {publishedSuperAdminEditable && !headerCollapsed && <span className="hidden md:inline text-[11px] font-semibold text-emerald-700 mr-2">Modifications publiées en direct</span>}
+        {publishedVersionLocked && <button type="button" onClick={() => { void createEditableVersion(); }}
+          className="rounded-lg border border-amber-400 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-[#002050]">
+          Créer une version modifiable
+        </button>}
 
         {/* Actions */}
         <div className="flex items-center gap-2 flex-shrink-0">

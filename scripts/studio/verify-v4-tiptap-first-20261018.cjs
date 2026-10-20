@@ -12,7 +12,7 @@ const lock = JSON.parse(read('package-lock.json'));
 let passed = 0;
 function check(name, predicate) { assert.ok(predicate, name); console.log('PASS', name); passed++; }
 check('52 existing block definitions preserved', (builder.match(/\{ type: '[^']+',\s*label:/g) || []).length === 52);
-check('Live Tiptap text segment reuses stable row', composer.includes('<StudioRichTextEditor') && composer.includes('onCommitRef.current(snapshot, savedBlockId.current)') && composer.includes('Texte enregistré'));
+check('Live Tiptap text segment reuses stable row', composer.includes('<StudioRichTextEditor') && composer.includes('onCommitRef.current(snapshot, savedBlockId.current)') && composer.includes('savedHtml.current = snapshot') && composer.includes("status === 'error'") && !composer.includes("'Texte enregistré'"));
 check('Slash commands use registered block IDs', composer.includes('onInsertBlock(type)') && composer.includes('role="listbox"'));
 check('Text creation preserves historical format', builder.includes("block_type: 'text', content_json: content, settings_json: {}"));
 check('Text updates reuse stable block id', builder.includes('await queueBlockUpdate(blockId, { content_json })') && composer.includes('savedBlockId.current = id'));
