@@ -57,6 +57,7 @@ const LEARNER_NAV: CareerNavGroup[] = [
     icon: Target,
     children: [
       { label: 'Préparation entretien', path: '/omnia-career/entretien', description: 'Questions, simulations et conseils.', icon: MessageSquare },
+      { label: 'Simulation d’entretien', path: '/omnia-career/entretien?tab=simulation', description: 'Entraînement guidé avec correction IA.', icon: Target },
       { label: 'Profil carrière', path: '/omnia-career/profil', description: 'Votre profil professionnel Omnia.', icon: UserRound },
     ],
   },

@@ -1,4 +1,4 @@
-import { type CSSProperties, type ReactNode, useEffect, useState } from 'react';
+import { Fragment, type CSSProperties, type ReactNode, useEffect, useState } from 'react';
 import { ArrowLeft, ChevronDown, ChevronRight, Home, LogIn, Menu, UserPlus, X, type LucideIcon } from 'lucide-react';
 import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import UserAccountMenu from '../UserAccountMenu';
@@ -93,8 +93,8 @@ function PrimaryLinks({ navigation, pathname, params, onNavigate, onPreviewGroup
         const active = groupIsActive(group, pathname);
         const Icon = group.icon;
         return (
+          <Fragment key={group.id}>
           <Link
-            key={group.id}
             to={withPreview(group.path, params)}
             onClick={onNavigate}
             onMouseEnter={() => !compact && onPreviewGroup?.(group.children?.length ? group : null)}
@@ -109,6 +109,17 @@ function PrimaryLinks({ navigation, pathname, params, onNavigate, onPreviewGroup
             {group.children?.length ? (compact ? <ChevronRight size={13} className="text-slate-300" /> : <ChevronDown size={13} className="text-slate-300" />) : null}
             {!compact && <span className="absolute inset-x-3 bottom-0 h-[2px] transition-colors" style={{ background: active ? accent : 'transparent' }} />}
           </Link>
+          {compact && group.path.startsWith('/omnia-career/') && group.children?.length ? (
+            <div className="ml-5 space-y-0.5 border-l border-slate-200 pl-2" aria-label={`Sous-menus ${group.label}`}>
+              {group.children.map(child => (
+                <Link key={child.path} to={withPreview(child.path, params)} onClick={onNavigate}
+                  className="block rounded-lg px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-white/80 hover:text-[#002050]">
+                  {child.label}
+                </Link>
+              ))}
+            </div>
+          ) : null}
+          </Fragment>
         );
       })}
     </nav>

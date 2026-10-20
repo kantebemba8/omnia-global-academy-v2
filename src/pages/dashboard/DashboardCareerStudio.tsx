@@ -638,7 +638,14 @@ function InterviewFeedbackCard({ feedback }: { feedback: InterviewFeedback }) {
 function InterviewView({ jobId }: { jobId?: string }) {
   type InterviewTab = 'questions' | 'simulation' | 'answers' | 'advice';
   const categories = ['Général','RH','Comportemental','Technique','Sectoriel','Lié à une offre'] as const;
-  const [tab,setTab]=useState<InterviewTab>('questions');
+  const [interviewParams] = useSearchParams();
+  const requestedInterviewTab = interviewParams.get('tab');
+  const [tab,setTab]=useState<InterviewTab>(() => requestedInterviewTab === 'simulation' ? 'simulation' : 'questions');
+  useEffect(() => {
+    if (requestedInterviewTab && ['questions', 'simulation', 'answers', 'advice'].includes(requestedInterviewTab)) {
+      setTab(requestedInterviewTab as InterviewTab);
+    }
+  }, [requestedInterviewTab]);
   const [category,setCategory]=useState<typeof categories[number]>(jobId ? 'Lié à une offre' : 'Général');
   const [seed,setSeed]=useState(() => Math.floor(Math.random()*1000));
   const [openQuestion,setOpenQuestion]=useState<string | null>(null);
@@ -722,7 +729,7 @@ function InterviewView({ jobId }: { jobId?: string }) {
   const simulationQuestion=questions[simulationIndex%questions.length];
 
   return <div className="space-y-6">
-    <div className="flex flex-wrap items-start justify-between gap-4"><PageHeader title="Préparer mon entretien" subtitle="Entraînement guidé, contexte de candidature et correction pédagogique par Assistant IA."/><div className="rounded-xl border border-[#BF8813]/25 bg-[#FFF9EC] px-3 py-2 text-xs font-bold text-[#805A0C]">Vos réponses restent liées à votre espace Career.</div></div>
+    <div className="flex flex-wrap items-start justify-between gap-4"><PageHeader title="Préparer mon entretien" subtitle="Entraînement guidé, contexte de candidature et correction pédagogique par Assistant IA."/><div className="rounded-xl border border-[#BF8813]/25 bg-[#FFF9EC] px-3 py-2 text-xs font-bold text-[#805A0C]">Vos réponses sont conservées sur cet appareil.</div></div>
 
     <Card className="overflow-hidden">
       <div className="grid gap-0 lg:grid-cols-[1fr_1.1fr]">
@@ -737,7 +744,7 @@ function InterviewView({ jobId }: { jobId?: string }) {
       </div>
     </Card>
 
-    <div className="overflow-x-auto border-b border-slate-200"><div className="flex min-w-max gap-6">{tabs.map(item=><button key={item.id} onClick={()=>setTab(item.id)} className="border-b-2 px-1 pb-3 text-sm font-black" style={{borderColor:tab===item.id?OMNIA_GOLD:'transparent',color:tab===item.id?OMNIA_BLUE:MUTED}}>{item.label}</button>)}</div></div>
+    <div className="grid grid-cols-2 gap-2 border-b border-slate-200 sm:block sm:overflow-x-auto"><div className="contents sm:flex sm:min-w-max sm:gap-6">{tabs.map(item=><button key={item.id} onClick={()=>setTab(item.id)} className="w-full rounded-lg border-b-2 px-2 py-3 text-xs font-black sm:w-auto sm:rounded-none sm:px-1 sm:pb-3 sm:text-sm" style={{borderColor:tab===item.id?OMNIA_GOLD:'transparent',color:tab===item.id?OMNIA_BLUE:MUTED}}>{item.label}</button>)}</div></div>
 
     {(tab==='questions'||tab==='simulation')&&<div className="flex flex-wrap gap-2">{categories.map(item=><button key={item} onClick={()=>{setCategory(item);setSeed(Math.floor(Math.random()*1000));setOpenQuestion(null);setSimulationIndex(0)}} className="rounded-full px-4 py-2 text-sm font-semibold" style={{background:category===item?OMNIA_BLUE:'#fff',color:category===item?'#fff':OMNIA_BLUE,border:`1px solid ${BORDER}`}}>{item}</button>)}<button onClick={()=>{setSeed(Math.floor(Math.random()*1000));setSimulationIndex(0)}} className="inline-flex items-center gap-2 rounded-full border bg-white px-4 py-2 text-sm font-semibold" style={{borderColor:BORDER,color:OMNIA_BLUE}}><RefreshCw size={15}/>Changer les questions</button></div>}
 

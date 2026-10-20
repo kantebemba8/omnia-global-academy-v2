@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ChevronDown, ChevronRight, Lock, PlayCircle, Volume2, FileText, Check, Ear, BookOpen, Mic, PenLine, AlertTriangle, BadgeCheck, Building2, ExternalLink, Eye, Radio, Video, ShieldCheck, MapPin, CalendarDays, Users } from 'lucide-react';
+import { ArrowLeft, ChevronDown, ChevronRight, Lock, PlayCircle, Volume2, FileText, Check, Ear, BookOpen, Mic, PenLine, AlertTriangle, BadgeCheck, Building2, ExternalLink, Eye, Radio, Video, ShieldCheck, MapPin, CalendarDays, Users } from 'lucide-react';
 import { AdaptiveFormationsLayout } from '../components/formations/FormationsRoleLayout';
 import { CourseCard, type CourseCardData } from '../components/CourseCard';
 import { useAuth } from '../hooks/useAuth';
@@ -236,7 +236,7 @@ export function CoursDetail() {
 
   return (
     <AdaptiveFormationsLayout>
-    <div style={{ fontFamily: 'Inter, system-ui, sans-serif', backgroundColor: '#FFFFFF' }}>
+    <div className="oga-course-detail-page w-full min-w-0 max-w-full" style={{ fontFamily: 'Inter, system-ui, sans-serif', backgroundColor: '#FFFFFF' }}>
 
       {isCreatorPreview && <div className="fixed left-0 right-0 top-0 z-50 border-b" style={{background:'#FFFBEB',borderColor:'#E9C969'}}><div className="mx-auto flex max-w-7xl items-center gap-2 px-4 py-2.5 text-xs font-semibold" style={{color:'#7A560C'}}><ShieldCheck size={15}/>Prévisualisation « visiteur avant achat » — cette page est la vraie présentation de la formation. Les actions d’achat sont neutralisées.</div></div>}
 
@@ -244,10 +244,10 @@ export function CoursDetail() {
       <section className={isCreatorPreview ? "pt-24" : "pt-16"} style={{ background: 'linear-gradient(135deg,#00183F 0%,#002050 62%,#123C6A 100%)' }}>
         <div className="max-w-7xl mx-auto px-5 sm:px-6 py-10 sm:py-14 grid lg:grid-cols-[minmax(0,1fr)_minmax(390px,480px)] gap-9 items-center">
           {/* Left */}
-          <div className="flex-1">
+          <div className="min-w-0 flex-1">
             {/* Breadcrumb */}
             <div className="flex items-center gap-1.5 text-xs mb-5 flex-wrap" style={{ color: 'rgba(255,255,255,0.55)' }}>
-              <button onClick={() => navigate('/catalogue')} className="hover:text-white transition-colors">Catalogue</button>
+              <button type="button" onClick={() => navigate('/catalogue')} className="inline-flex shrink-0 items-center gap-1 hover:text-white transition-colors"><ArrowLeft size={14} /> Retour au catalogue</button>
               <ChevronRight size={12} />
               {Boolean(course.category) && <button onClick={() => navigate(`/catalogue?categorie=${encodeURIComponent(String(course.category))}`)} className="hover:text-white transition-colors">{String(course.category)}</button>}
               <ChevronRight size={12} />

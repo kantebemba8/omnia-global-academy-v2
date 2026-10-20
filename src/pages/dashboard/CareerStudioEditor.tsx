@@ -49,7 +49,6 @@ import CareerVersionPanel from '../../components/career/CareerVersionPanel';
 import CareerDocumentSurface, { getCareerSurfaceMetrics } from '../../components/career/CareerDocumentSurface';
 import { analyzeCareerDocument, createLinkedLetterFromCv, getCareerMeta, hasCareerQualityStarted, markCareerDocumentModified, normalizeCareerDocument, type CareerSourceProfile } from '../../lib/careerBuilderV2';
 import { isLearnerPreviewMode, withLearnerPreview } from '../../lib/learnerPreview';
-import MobileBuilderAdvice from '../../components/MobileBuilderAdvice';
 import { createCareerHistory, recordCareerEdit, undoCareerEdit, redoCareerEdit, moveCareerEntry, type CareerHistory } from '../../lib/careerEditingHistory';
 import { appendVerifiedCareerSkills, buildSpecializedCareerCv, isCareerAiProposalCurrent } from '../../lib/careerFinalization';
 
@@ -154,9 +153,9 @@ function PreviewFrame({ children, zoom, onZoomChange, width = 794, height = 1123
         <button type="button" onClick={()=>onZoomChange(Math.max(.35, zoom-.1))} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold">−</button>
         <span className="w-16 text-center text-xs font-semibold text-slate-600">{Math.round(zoom*100)}%</span>
         <button type="button" onClick={()=>onZoomChange(Math.min(1.05, zoom+.1))} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold">+</button>
-        <button type="button" onClick={()=>onZoomChange(.62)} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold">Ajuster</button>
+        <button type="button" onClick={()=>onZoomChange(window.innerWidth < 768 ? Math.max(0.3, Math.min(0.7, (window.innerWidth - 72) / width)) : .62)} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold">Ajuster</button>
       </div>
-      <div className="mx-auto flex h-[calc(100dvh-280px)] min-h-[420px] w-full justify-center overflow-auto rounded-2xl border border-slate-200 bg-slate-100 p-2 shadow-inner sm:h-[760px] sm:p-5">
+      <div className="mx-auto flex h-[calc(100dvh-280px)] min-h-[300px] w-full max-w-full justify-center overflow-auto rounded-2xl border border-slate-200 bg-slate-100 p-2 shadow-inner sm:h-[760px] sm:min-h-[420px] sm:p-5">
         <div style={{ width: width * zoom, height: height * zoom }}><div style={{ transform: `scale(${zoom})`, transformOrigin: 'top left', width, height }}>{children}</div></div>
       </div>
     </div>
@@ -227,7 +226,7 @@ export default function CareerStudioEditor() {
   const saveTimer = useRef<number | null>(null);
   const printRef = useRef<HTMLDivElement | null>(null);
   const [dirty, setDirty] = useState(false);
-  const [previewZoom, setPreviewZoom] = useState(() => typeof window !== 'undefined' && window.innerWidth < 640 ? 0.38 : 0.62);
+  const [previewZoom, setPreviewZoom] = useState(() => typeof window !== 'undefined' && window.innerWidth < 768 ? Math.max(0.3, Math.min(0.7, (window.innerWidth - 72) / 794)) : 0.62);
   const [nameDialogOpen, setNameDialogOpen] = useState(false);
   const [pendingDocumentName, setPendingDocumentName] = useState('');
   const [pendingSaveAction, setPendingSaveAction] = useState<'save' | 'pdf' | 'word' | 'manual' | 'rename' | null>(null);
@@ -236,7 +235,7 @@ export default function CareerStudioEditor() {
   const [personalizeText, setPersonalizeText] = useState('');
   const [personalizeLoading, setPersonalizeLoading] = useState(false);
   const [workspace, setWorkspace] = useState<Workspace>('content');
-  const [toolPanelOpen, setToolPanelOpen] = useState(true);
+  const [toolPanelOpen, setToolPanelOpen] = useState(() => typeof window === 'undefined' || window.innerWidth >= 768);
   const [focusMode, setFocusMode] = useState(false);
   const [actionsOpen, setActionsOpen] = useState(false);
   const [sourceProfile, setSourceProfile] = useState<CareerSourceProfile>({});
@@ -590,7 +589,10 @@ export default function CareerStudioEditor() {
     if(previewMode)return;
     const target=event.target;
     if(!(target instanceof HTMLElement))return;
-    const field=target.closest<HTMLElement>('[data-career-field]')?.dataset.careerField;
+    const inlineText = target.closest<HTMLElement>('[data-career-field]');
+    // Un clic sur un texte éditable doit rester dans l'éditeur, sans ouvrir le panneau de champs.
+    if (inlineText?.isContentEditable) return;
+    const field=inlineText?.dataset.careerField;
     const section=target.closest<HTMLElement>('[data-career-section]')?.dataset.careerSection;
     const chosen=field?.startsWith('experience:')?'experiences':field?.startsWith('education:')?'education':field?.startsWith('skill:')?'skills':field?.startsWith('language:')?'languages':field?.startsWith('certification:')?'certifications':field?.startsWith('project:')?'projects':field?.startsWith('custom:')?'projects':field==='summary'||field==='objective'?'summary':field==='name'||field==='title'||field?.startsWith('contact.')||field?.startsWith('sender.')?'profile':section;
     if(!chosen)return;
@@ -999,13 +1001,7 @@ export default function CareerStudioEditor() {
   const editCount = historyRevision >= 0 ? historyRef.current.past.length : 0;
 
   return (
-    <div className="flex h-[100dvh] flex-col overflow-hidden bg-[#F8FAFC] text-slate-900">
-      <MobileBuilderAdvice
-        storageKey={isCv ? 'career-cv' : 'career-lm'}
-        description={isCv
-          ? 'La création et la modification de votre CV fonctionnent sur mobile. Pour des documents longs ou un ajustement précis des colonnes, un ordinateur reste plus confortable.'
-          : 'La création et la modification de votre lettre fonctionnent sur mobile. Pour une personnalisation typographique précise, un ordinateur reste plus confortable.'}
-      />
+    <div className="oga-career-editor flex h-[100dvh] w-full min-w-0 max-w-full flex-col overflow-hidden bg-[#F8FAFC] text-slate-900">
       {toast && (
         <div className="fixed right-5 top-5 z-[160] rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-[#002050] shadow-lg">
           {toast}
@@ -1013,7 +1009,7 @@ export default function CareerStudioEditor() {
       )}
 
       <header className="relative z-40 shrink-0 border-b border-slate-200 bg-white/95 backdrop-blur">
-        <div className="flex min-h-[64px] items-center justify-between gap-2 px-3 sm:min-h-[76px] sm:gap-4 sm:px-4 lg:px-6">
+        <div className="flex min-h-[64px] min-w-0 flex-col gap-2 px-3 py-2 sm:min-h-[76px] sm:gap-4 sm:px-4 md:flex-row md:items-center md:justify-between md:py-0 lg:px-6">
           <div className="flex min-w-0 items-center gap-2 sm:gap-3">
             <button
               type="button"
@@ -1037,7 +1033,7 @@ export default function CareerStudioEditor() {
             </div>
           </div>
 
-          <div className="flex shrink-0 items-center gap-2">
+          <div className="flex w-full min-w-0 shrink-0 items-center gap-2 overflow-x-auto pb-1 md:w-auto md:overflow-visible md:pb-0">
             <div className="hidden items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 xl:flex">
               {saveState === 'saving' && <Loader2 className="h-3.5 w-3.5 animate-spin text-[#bf8813]" />}
               {saveState === 'saved' && <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />}
@@ -1190,7 +1186,7 @@ export default function CareerStudioEditor() {
                   <span className="rounded-full bg-white px-3 py-1.5 shadow-sm">{selectedTemplate?.name_fr || 'Modèle sélectionné'}</span>
                   <span className="rounded-full bg-white px-3 py-1.5 shadow-sm">{score === null ? 'Qualité —' : `Qualité ${score}%`}</span>
                 </div>
-                <h1 className="mt-2 text-lg font-semibold text-[#002050] sm:text-xl">Aperçu du document</h1>{!previewMode&&<p className="text-xs text-slate-500">Cliquez sur une rubrique pour ouvrir son édition, ou directement sur un texte pour le modifier.</p>}
+                <h1 className="mt-2 text-lg font-semibold text-[#002050] sm:text-xl">Votre document</h1>{!previewMode&&<p className="text-xs text-slate-500">Touchez un texte pour le modifier directement.</p>}
               </div>
               <button type="button" onClick={() => { setFocusMode(value => !value); }} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-[#002050] shadow-sm" aria-pressed={focusMode}>{focusMode ? 'Afficher les colonnes de travail' : 'Masquer les colonnes de travail'}</button>
               {!focusMode && !toolPanelOpen && <button type="button" onClick={() => setToolPanelOpen(true)} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-[#002050] shadow-sm"><Settings className="h-4 w-4" />Ouvrir les outils</button>}

@@ -19,6 +19,7 @@ export default function CareerInlineText({field,value,fallback='',multiline=fals
     tabIndex={onChange?0:undefined}
     style={{cursor:onChange?'text':undefined,outlineOffset:2,whiteSpace:multiline?'pre-wrap':undefined}}
     className={onChange?'rounded-sm outline-none focus:bg-amber-50/80 focus:ring-2 focus:ring-[#bf8813]':''}
+    onClick={e=>{if(onChange)e.stopPropagation();}}
     onKeyDown={e=>{if(onChange&&!multiline&&e.key==='Enter'){e.preventDefault();e.currentTarget.blur();}}}
     onBlur={e=>{if(!onChange)return;const next=(multiline ? e.currentTarget.innerText : e.currentTarget.textContent || '').trim();if(next!==text)onChange(field,next);}}
   >{text}</span>;

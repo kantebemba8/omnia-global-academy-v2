@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { CheckCircle, Circle, PlayCircle, Volume2, FileText, ChevronDown, ChevronRight, X, Bot, ArrowLeft, ClipboardList, Trophy, Send, AlertCircle, ExternalLink, Database, ShieldCheck, Gauge, Menu, Target, Clock3, Layers3, Sparkles, BookOpen } from 'lucide-react';
+import { CheckCircle, Circle, PlayCircle, Volume2, FileText, ChevronDown, ChevronRight, X, Bot, ArrowLeft, ClipboardList, Trophy, Send, AlertCircle, ExternalLink, Database, Gauge, Menu } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { useCpdTimer } from '../hooks/useCpdTimer';
 import { ENDPOINTS } from '../lib/config';
@@ -81,9 +81,12 @@ interface LessonDataPayload {
 function findFirstIncomplete(mods: ModuleItem[]): string | null {
   for (const mod of mods) {
     if (!mod.is_unlocked) continue;
-    for (const l of mod.lessons) { if (!l.is_completed) return l.lesson_id; }
+    for (const lesson of mod.lessons) {
+      if (lesson.is_unlocked !== false && !lesson.is_completed) return lesson.lesson_id;
+    }
   }
-  return mods[0]?.lessons[0]?.lesson_id ?? null;
+  return mods.flatMap(mod => mod.is_unlocked ? mod.lessons : [])
+    .find(lesson => lesson.is_unlocked !== false)?.lesson_id ?? null;
 }
 function findNext(mods: ModuleItem[], id: string): string | null {
   const all = mods.flatMap(m => m.lessons);
@@ -409,109 +412,7 @@ function CpdBar({ required, spent, reached, isActive, assessmentPassed, isComple
   );
 }
 
-function CourseInfoView({ info, modules, progressPct, preview, previewMode, onStart, onSelectLesson, onBackToCourses }: {
-  info: CourseInfoPayload | null; modules: ModuleItem[]; progressPct: number; preview: boolean; previewMode?: string | null;
-  onStart: () => void; onSelectLesson: (id: string) => void; onBackToCourses?: () => void;
-}) {
-  const course = info?.course || {};
-  const creator = info?.creator || {};
-  const [aboutOpen, setAboutOpen] = useState(false);
-  const totalLessons = modules.reduce((sum, mod) => sum + mod.lessons.filter(l => (l.stage_type || 'lesson') === 'lesson').length, 0);
-  const totalModules = modules.filter(mod => (mod.section_type || (mod.is_intro ? 'introduction' : mod.is_conclusion ? 'conclusion' : mod.is_final_exam ? 'final_exam' : 'module')) === 'module').length;
-  const duration = Number(course.total_duration_seconds || 0);
-  const durationLabel = duration > 0
-    ? duration >= 3600 ? `${Math.floor(duration / 3600)} h ${Math.round((duration % 3600) / 60)} min` : `${Math.max(1, Math.round(duration / 60))} min`
-    : null;
-  const creatorName = String(creator.full_name || creator.school_name || 'Omnia Global Academy');
-  const creatorRole = String(creator.expertise_domain || (creator.school_name ? 'Structure de formation' : course.creator_type === 'plateforme' ? 'Équipe pédagogique Omnia' : 'Créateur de la formation'));
-  const avatar = String(creator.avatar_url || creator.logo_url || '');
-  const initials = creatorName.split(/\s+/).filter(Boolean).slice(0, 2).map((part:string) => part[0]?.toUpperCase() || '').join('') || 'OG';
-  const description = String(course.long_description || '');
-  const longDescription = description.length > 720;
-  const visibleDescription = !longDescription || aboutOpen ? description : `${description.slice(0, 720).trim()}…`;
-  const previewLabel = previewMode === 'admin' ? 'Administration Omnia' : 'Apprenant après achat';
-
-  const stageLabel = (mod: ModuleItem, index: number) => {
-    const type = mod.section_type || (mod.is_intro ? 'introduction' : mod.is_conclusion ? 'conclusion' : mod.is_final_exam ? 'final_exam' : 'module');
-    if (type === 'introduction') return 'Introduction';
-    if (type === 'conclusion') return 'Conclusion';
-    if (type === 'final_exam') return 'Examen final';
-    return `Module ${Math.max(1, modules.slice(0, index + 1).filter(item => (item.section_type || (item.is_intro ? 'introduction' : item.is_conclusion ? 'conclusion' : item.is_final_exam ? 'final_exam' : 'module')) === 'module').length)}`;
-  };
-
-  return (
-    <div className="min-h-screen pb-14" style={{ background: '#F5F7FB', fontFamily: 'Inter, system-ui, sans-serif' }}>
-      {preview && (
-        <div className="border-b" style={{ background: '#FFFBEB', borderColor: '#F4D788' }}>
-          <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-3 px-4 py-3 text-sm sm:px-6">
-            <ShieldCheck size={17} className="shrink-0" style={{ color: '#9A6D0F' }} />
-            <div className="min-w-0 flex-1"><strong style={{ color: '#7A560C' }}>Prévisualisation {previewLabel}</strong><span className="text-amber-800"> — rendu réel de la formation, sans inscription, progression, tentative ni certificat enregistrés.</span></div>
-            {previewMode === 'admin' && onBackToCourses && <button type="button" onClick={onBackToCourses} className="inline-flex shrink-0 items-center gap-2 rounded-lg border bg-white px-3 py-2 text-xs font-bold" style={{borderColor:'#E8C96F',color:'#7A560C'}}><ArrowLeft size={14}/>Mes formations OGA</button>}
-          </div>
-        </div>
-      )}
-
-      <section style={{ background: 'linear-gradient(135deg,#00183F 0%,#002050 58%,#123C6A 100%)' }}>
-        <div className="mx-auto grid max-w-7xl gap-8 px-4 py-8 sm:px-6 sm:py-12 lg:grid-cols-[minmax(0,1fr)_minmax(390px,520px)] lg:items-center lg:py-14">
-          <div className="min-w-0 text-white">
-            <div className="mb-4 flex flex-wrap gap-2 text-[11px] font-bold uppercase tracking-[.12em]">
-              {course.category && <span className="rounded-full border border-white/20 bg-white/10 px-3 py-1.5">{String(course.category)}</span>}
-              {course.level && <span className="rounded-full border border-white/20 bg-white/10 px-3 py-1.5">{String(course.level)}</span>}
-              {course.language && <span className="rounded-full border border-white/20 bg-white/10 px-3 py-1.5">{String(course.language).toUpperCase()}</span>}
-            </div>
-            <p className="text-xs font-black uppercase tracking-[.18em]" style={{ color: '#E5BE5B' }}>Info formation</p>
-            <h1 className="mt-3 max-w-4xl text-3xl font-black leading-tight tracking-[-.035em] sm:text-4xl lg:text-[46px]">{String(course.title || 'Formation')}</h1>
-            {course.short_description && <p className="mt-4 max-w-3xl text-base leading-7 text-slate-200 sm:text-lg">{String(course.short_description)}</p>}
-            <div className="mt-6 flex flex-wrap gap-x-5 gap-y-3 text-sm text-slate-200">
-              {durationLabel && <span className="inline-flex items-center gap-2"><Clock3 size={16} style={{ color: '#E5BE5B' }} />{durationLabel}</span>}
-              <span className="inline-flex items-center gap-2"><Layers3 size={16} style={{ color: '#E5BE5B' }} />{totalModules} module{totalModules > 1 ? 's' : ''}</span>
-              <span className="inline-flex items-center gap-2"><BookOpen size={16} style={{ color: '#E5BE5B' }} />{totalLessons} leçon{totalLessons > 1 ? 's' : ''}</span>
-            </div>
-            <div className="mt-7 flex items-center gap-3">
-              {course.creator_type === 'plateforme' || creatorName.toLowerCase().includes('omnia global academy') ? <img src="/omnia-sidebar-logo.png" alt="Omnia Global Academy" className="h-11 w-11 rounded-xl border border-white/30 bg-white object-contain p-1" /> : avatar ? <img src={avatar} alt="" className="h-11 w-11 rounded-full border-2 border-white/30 object-cover" /> : <span className="flex h-11 w-11 items-center justify-center rounded-full border-2 border-white/20 bg-white/10 text-sm font-black">{initials}</span>}
-              <div><p className="text-xs text-slate-300">Créé par</p><p className="font-bold text-white">{creatorName}</p></div>
-            </div>
-          </div>
-
-          <div className="overflow-hidden rounded-[24px] bg-white shadow-[0_24px_70px_rgba(0,0,0,.28)]">
-            <div className="aspect-video bg-slate-100">
-              {course.cover_image_url ? <img src={String(course.cover_image_url)} alt={`Couverture — ${String(course.title || 'formation')}`} className="h-full w-full object-cover" /> : <div className="flex h-full items-center justify-center"><BookOpen size={44} style={{ color: '#BF8813' }} /></div>}
-            </div>
-            <div className="p-5 sm:p-6">
-              {!preview && progressPct > 0 && <div className="mb-4"><div className="mb-1.5 flex justify-between text-xs font-semibold text-slate-500"><span>Votre progression</span><span>{progressPct}%</span></div><div className="h-2.5 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full" style={{ width:`${progressPct}%`, background:'#1E7A52' }}/></div></div>}
-              <button onClick={onStart} className="w-full rounded-xl px-4 py-3.5 text-sm font-black text-white shadow-sm transition hover:opacity-90" style={{ background:'#002050' }}>{preview ? 'Entrer dans la formation' : progressPct > 0 ? 'Continuer la formation' : 'Commencer la formation'}</button>
-              <p className="mt-3 text-center text-xs text-slate-400">La formation commence par l’Introduction, puis suit l’ordre pédagogique défini.</p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 sm:py-10">
-        <div className="grid gap-7 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start">
-          <div className="space-y-7">
-            {description && <section className="rounded-[22px] border bg-white p-5 sm:p-7" style={{ borderColor:'#E4E7EC' }}><p className="text-xs font-black uppercase tracking-[.15em]" style={{ color:'#BF8813' }}>Présentation</p><h2 className="mt-1 text-2xl font-black tracking-[-.02em]" style={{ color:'#002050' }}>À propos de cette formation</h2><div className="mt-4 whitespace-pre-line text-sm leading-7 text-slate-600">{visibleDescription}</div>{longDescription&&<button type="button" onClick={()=>setAboutOpen(value=>!value)} className="mt-3 text-sm font-bold" style={{color:'#002050'}}>{aboutOpen?'Réduire':'Voir plus'}</button>}</section>}
-
-            {Array.isArray(course.objectives) && course.objectives.length > 0 && <section className="rounded-[22px] border bg-white p-5 sm:p-7" style={{ borderColor:'#E4E7EC' }}><div className="flex items-center gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-xl" style={{background:'#ECFDF5',color:'#1E7A52'}}><Target size={19}/></span><div><p className="text-xs font-black uppercase tracking-[.15em]" style={{color:'#1E7A52'}}>Objectifs</p><h2 className="text-xl font-black" style={{color:'#002050'}}>Ce que vous saurez faire</h2></div></div><div className="mt-5 grid gap-3 sm:grid-cols-2">{course.objectives.map((item:any,index:number)=><div key={index} className="flex items-start gap-3 rounded-xl bg-slate-50 p-3.5"><CheckCircle size={17} className="mt-0.5 shrink-0" style={{color:'#1E7A52'}}/><span className="text-sm leading-6 text-slate-700">{String(item)}</span></div>)}</div></section>}
-
-            <section className="rounded-[22px] border bg-white p-5 sm:p-7" style={{ borderColor:'#E4E7EC' }}>
-              <div className="flex flex-wrap items-end justify-between gap-3"><div><p className="text-xs font-black uppercase tracking-[.15em]" style={{ color:'#BF8813' }}>Programme</p><h2 className="mt-1 text-2xl font-black tracking-[-.02em]" style={{ color:'#002050' }}>Contenu de la formation</h2></div><p className="text-xs font-semibold text-slate-400">{totalModules} module{totalModules>1?'s':''} · {totalLessons} leçon{totalLessons>1?'s':''}</p></div>
-              <div className="mt-5 space-y-3">{modules.map((mod, mi) => <details key={mod.module_id} open={mi < 2 || !!mod.is_intro} className="group overflow-hidden rounded-xl border" style={{ borderColor:'#E4E7EC' }}>
-                <summary className="flex cursor-pointer list-none items-center gap-3 bg-slate-50 px-4 py-3.5"><span className="rounded-lg px-2 py-1 text-[10px] font-black uppercase tracking-[.08em]" style={{background:'#FFF7E1',color:'#8A650F'}}>{stageLabel(mod,mi)}</span><span className="min-w-0 flex-1 font-bold" style={{color:'#002050'}}>{mod.title}</span>{sectionType(mod) === 'module' && <span className="text-xs text-slate-400">{mod.lessons.filter(l => (l.stage_type || 'lesson') === 'lesson').length} leçon{mod.lessons.filter(l => (l.stage_type || 'lesson') === 'lesson').length>1?'s':''}</span>}<ChevronDown size={16} className="text-slate-400 transition group-open:rotate-180"/></summary>
-                {(mod.section_type || (mod.is_intro ? 'introduction' : mod.is_conclusion ? 'conclusion' : mod.is_final_exam ? 'final_exam' : 'module')) === 'module' && mod.description && <p className="border-t px-4 py-3 text-xs leading-5 text-slate-500" style={{borderColor:'#EEF1F5'}}>{mod.description}</p>}
-                <div className="divide-y" style={{borderColor:'#EEF1F5'}}>{mod.lessons.map((lesson, li) => <button key={lesson.lesson_id} type="button" onClick={() => (preview || lesson.is_unlocked !== false) ? onSelectLesson(lesson.lesson_id) : undefined} className="flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-45" disabled={!preview && lesson.is_unlocked === false}><span className="flex h-7 min-w-7 shrink-0 items-center justify-center rounded-full bg-slate-100 px-2 text-[10px] font-black" style={{color:'#002050'}}>{lesson.stage_type === 'module_presentation' ? 'Intro' : lesson.stage_type === 'module_summary' ? 'Synthèse' : lesson.stage_type === 'introduction' ? 'Intro' : lesson.stage_type === 'conclusion' ? 'Fin' : lesson.stage_type === 'final_exam' ? 'Exam' : mod.lessons.filter((candidate, idx) => idx <= li && (candidate.stage_type || 'lesson') === 'lesson').length}</span><span className="min-w-0 flex-1 text-sm font-medium text-slate-700">{lesson.stage_type === 'module_summary' && /^Bilan du module$/i.test(lesson.title) ? 'Synthèse' : lesson.title}</span>{lesson.duration_seconds > 0 && <span className="text-xs text-slate-400">{Math.max(1,Math.round(lesson.duration_seconds/60))} min</span>}{!preview&&lesson.is_unlocked===false&&<span className="text-xs text-slate-400">Verrouillée</span>}</button>)}</div>
-              </details>)}</div>
-            </section>
-          </div>
-
-          <aside className="space-y-5 lg:sticky lg:top-24">
-            <section className="rounded-[22px] border bg-white p-5" style={{borderColor:'#E4E7EC'}}><p className="text-xs font-black uppercase tracking-[.15em]" style={{color:'#BF8813'}}>Votre formateur</p><div className="mt-4 flex items-center gap-3">{course.creator_type === 'plateforme' || creatorName.toLowerCase().includes('omnia global academy') ? <img src="/omnia-sidebar-logo.png" alt="Omnia Global Academy" className="h-14 w-14 rounded-xl bg-white object-contain p-1"/> : avatar?<img src={avatar} alt="" className="h-14 w-14 rounded-full object-cover"/>:<span className="flex h-14 w-14 items-center justify-center rounded-full text-sm font-black text-white" style={{background:'#002050'}}>{initials}</span>}<div className="min-w-0"><p className="truncate font-black" style={{color:'#002050'}}>{creatorName}</p><p className="mt-0.5 text-xs font-semibold" style={{color:'#BF8813'}}>{creatorRole}</p></div></div>{creator.bio&&<p className="mt-4 text-sm leading-6 text-slate-500">{String(creator.bio)}</p>}</section>
-            <section className="rounded-[22px] border p-5" style={{borderColor:'#DDE5EF',background:'#F8FAFC'}}><div className="flex items-start gap-3"><Sparkles size={18} className="mt-0.5 shrink-0" style={{color:'#BF8813'}}/><div><p className="font-bold" style={{color:'#002050'}}>Parcours clair</p><p className="mt-1 text-xs leading-5 text-slate-500">Consultez d’abord les informations et le programme. Le bouton principal vous fait ensuite entrer dans l’Introduction puis dans les modules.</p></div></div></section>
-          </aside>
-        </div>
-      </main>
-    </div>
-  );
-}
+// La fiche publique reste l'unique présentation; le lecteur ouvre les leçons.
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 export function CoursLecteur() {
@@ -530,7 +431,6 @@ export function CoursLecteur() {
   const [finalAssessmentExists, setFinalAssessmentExists] = useState(false);
   const [progressPct, setProgressPct] = useState(0);
   const [currentLessonId, setCurrentLessonId] = useState<string | null>(routeLessonId ?? null);
-  const [readerStarted, setReaderStarted] = useState(Boolean(routeLessonId));
   const [courseInfo, setCourseInfo] = useState<CourseInfoPayload | null>(null);
   const [lessonData, setLessonData] = useState<LessonDataPayload | null>(null);
   // B3: sérialise les écritures de chaque bloc, sans perdre les modifications rapides.
@@ -739,12 +639,17 @@ export function CoursLecteur() {
   }, [sessionToken, loadProgress]);
 
   useEffect(() => {
-    if (!readerStarted || modules.length === 0 || currentLessonId) return;
+    if (modules.length === 0 || currentLessonId) return;
     const first = routeLessonId ?? (isOnline
       ? findFirstIncomplete(modules)
       : findFirstOfflineLesson(modules, offlineLessonSet));
-    if (first) setCurrentLessonId(first);
-  }, [modules, routeLessonId, currentLessonId, isOnline, offlineLessonSet, readerStarted]);
+    if (first) {
+      setCurrentLessonId(first);
+      if (!routeLessonId && courseId) {
+        navigate(`/cours/${courseId}/apprendre/${first}${previewRouteQuery}`, { replace: true });
+      }
+    }
+  }, [modules, routeLessonId, currentLessonId, isOnline, offlineLessonSet, courseId, previewRouteQuery, navigate]);
 
   useEffect(() => {
     if (!currentLessonId || !courseId || !sessionToken || !user?.id) return;
@@ -872,7 +777,6 @@ export function CoursLecteur() {
         return;
       }
     }
-    setReaderStarted(true);
     setCurrentLessonId(id);
     navigate(`/cours/${courseId}/apprendre/${id}${previewRouteQuery}`, { replace: true });
   };
@@ -1229,21 +1133,28 @@ void choosePedagogicalCurrency;
     <div className="min-h-screen bg-slate-50 px-4 py-10"><div className="mx-auto max-w-2xl rounded-2xl border bg-white p-6" style={{borderColor:'#FCA5A5'}}><div className="flex gap-3"><AlertCircle size={20} className="mt-0.5 shrink-0 text-red-600"/><div><h1 className="font-black text-[#002050]">Prévisualisation indisponible</h1><p className="mt-2 text-sm text-slate-600">{courseInfoError}</p><p className="mt-3 text-xs text-slate-500">La formation elle-même n’a pas pu être chargée. Le lecteur ne redirige plus vers une page publique qui masquerait cette erreur.</p></div></div></div></div>
   );
 
-  if (!readerStarted) return <CourseInfoView info={courseInfo} modules={modules} progressPct={progressPct} preview={isPreview} previewMode={previewMode} onStart={() => { const first = modules.flatMap(m=>m.lessons).find(l=>l.stage_type==='introduction'||l.is_intro) || modules.flatMap(m=>m.lessons)[0]; if(first) goToLesson(first.lesson_id); else setReaderStarted(true); }} onSelectLesson={goToLesson} onBackToCourses={previewMode === 'admin' ? () => navigate('/admin/studio-mes-formations') : undefined} />;
+  if (!currentLessonId) return (
+    <div className="flex min-h-[60dvh] w-full min-w-0 flex-col items-center justify-center gap-4 bg-slate-50 px-5 text-center">
+      <p className="text-base font-semibold text-[#002050]" role="status">
+        {modules.length ? 'Ouverture de votre première leçon…' : 'Le programme de cette formation est actuellement indisponible.'}
+      </p>
+      <button type="button" onClick={() => navigate(previewMode === 'admin' ? '/admin/studio-mes-formations' : `/cours/${courseId}${isPreview ? '?preview=visitor' : ''}`)}
+        className="rounded-xl bg-[#002050] px-4 py-2.5 text-sm font-semibold text-white">Retour à la fiche formation</button>
+    </div>
+  );
 
   return (
-    <div className="oga-course-reader-shell flex flex-col" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
+    <div className="oga-course-reader-shell flex w-full min-w-0 max-w-full flex-col" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
       {/* Header */}
       <header className="flex items-center gap-3 px-4 flex-shrink-0" style={{ backgroundColor: '#002050', height: 56 }}>
-        {previewMode === 'admin' && <button type="button" onClick={() => navigate('/admin/studio-mes-formations')} className="inline-flex items-center gap-2 rounded-lg border border-white/20 px-2.5 py-1.5 hover:bg-white/10 transition-colors" title="Retour à Mes formations OGA" aria-label="Retour à Mes formations OGA"><ArrowLeft size={17} className="text-white"/><span className="hidden lg:inline text-xs font-semibold text-white">Mes formations OGA</span></button>}
-        <button
-          onClick={() => { setReaderStarted(false); setCurrentLessonId(null); navigate(`/cours/${courseId}/apprendre${previewRouteQuery}`, { replace: true }); }}
-          className="inline-flex items-center gap-2 rounded-lg px-2.5 py-1.5 hover:bg-white/10 transition-colors"
-          title="Retour à Info formation"
-          aria-label="Retour à Info formation"
+        <button type="button"
+          onClick={() => navigate(previewMode === 'admin' ? '/admin/studio-mes-formations' : `/cours/${courseId}${isPreview ? '?preview=visitor' : ''}`)}
+          className="inline-flex shrink-0 items-center gap-2 rounded-lg px-2.5 py-1.5 hover:bg-white/10 transition-colors"
+          title={previewMode === 'admin' ? 'Retour aux formations OGA' : 'Retour à la fiche formation'}
+          aria-label={previewMode === 'admin' ? 'Retour aux formations OGA' : 'Retour à la fiche formation'}
         >
-          <ArrowLeft size={18} style={{ color: '#FFFFFF' }} />
-          <span className="hidden sm:inline text-xs font-semibold text-white">Info formation</span>
+          <ArrowLeft size={18} className="text-white" />
+          <span className="hidden sm:inline text-xs font-semibold text-white">Retour à la formation</span>
         </button>
         <button
           type="button"
@@ -1331,9 +1242,9 @@ void choosePedagogicalCurrency;
       )}
 
       {/* Body */}
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex min-w-0 flex-1 overflow-hidden">
         {/* Content */}
-        <main className="flex-1 overflow-y-auto" style={{ backgroundColor: '#FFFFFF' }}>
+        <main className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto" style={{ backgroundColor: '#FFFFFF' }}>
           {lessonLoading ? (
             <div className="flex items-center justify-center h-full">
               <div className="w-7 h-7 rounded-full border-2 animate-spin" style={{ borderColor: '#002050', borderTopColor: 'transparent' }} />
