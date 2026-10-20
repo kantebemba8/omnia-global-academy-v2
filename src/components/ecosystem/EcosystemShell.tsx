@@ -104,16 +104,16 @@ function PrimaryLinks({ navigation, pathname, params, onNavigate, onPreviewGroup
               ? `flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-bold ${active ? 'bg-white text-[#002050] shadow-sm' : 'text-slate-600 hover:bg-white/70 hover:text-[#002050]'}`
               : `group relative inline-flex min-h-14 items-center gap-2 px-3 text-[13px] font-bold transition ${active ? 'text-[#002050]' : 'text-slate-500 hover:text-[#002050]'}`}
           >
-            {Icon ? <Icon size={15} style={{ color: active ? accent : '#64748B' }} /> : null}
-            <span>{group.label}</span>
+            {Icon ? <Icon size={15} className={compact ? "shrink-0" : ""} style={{ color: active ? accent : '#64748B' }} /> : null}
+            <span className={compact ? "min-w-0 flex-1 break-words" : ""}>{group.label}</span>
             {group.children?.length ? (compact ? <ChevronRight size={13} className="text-slate-300" /> : <ChevronDown size={13} className="text-slate-300" />) : null}
             {!compact && <span className="absolute inset-x-3 bottom-0 h-[2px] transition-colors" style={{ background: active ? accent : 'transparent' }} />}
           </Link>
-          {compact && group.path.startsWith('/omnia-career/') && group.children?.length ? (
-            <div className="ml-5 space-y-0.5 border-l border-slate-200 pl-2" aria-label={`Sous-menus ${group.label}`}>
+          {compact && group.children?.length ? (
+            <div className="ml-5 min-w-0 space-y-0.5 border-l border-slate-200 pl-2" aria-label={`Sous-menus ${group.label}`}>
               {group.children.map(child => (
                 <Link key={child.path} to={withPreview(child.path, params)} onClick={onNavigate}
-                  className="block rounded-lg px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-white/80 hover:text-[#002050]">
+                  className="block min-w-0 break-words rounded-lg px-3 py-2.5 text-xs font-semibold leading-5 text-slate-600 hover:bg-white/80 hover:text-[#002050]">
                   {child.label}
                 </Link>
               ))}
@@ -350,7 +350,7 @@ export function EcosystemPublicHeader({
               </button>
             </div>
 
-            <div className="min-h-0 flex-1 overflow-y-auto p-4">
+            <div className="oga-mobile-ecosystem-menu min-h-0 min-w-0 flex-1 overflow-y-auto p-4 overscroll-contain">
               {search ? <div className="mb-5">{search}</div> : null}
 
               <Link
@@ -444,7 +444,7 @@ export function EcosystemConnectedHeader({ ecosystem, audienceLabel, navigation,
           <button type="button" className="absolute inset-0 bg-slate-950/50" onClick={() => setMobileOpen(false)} aria-label="Fermer le menu" />
           <aside className="absolute right-0 top-0 flex h-[100dvh] w-[min(92vw,390px)] flex-col bg-[#F8FAFC] shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-200 bg-white px-5 py-4"><EcosystemBrand ecosystem={ecosystem} href={withPreview(ecosystemHomePath, params)} /><button type="button" onClick={() => setMobileOpen(false)} className="flex h-10 w-10 items-center justify-center rounded-xl hover:bg-slate-100" aria-label="Fermer"><X size={19} /></button></div>
-            <div className="min-h-0 flex-1 overflow-y-auto p-4">
+            <div className="oga-mobile-ecosystem-menu min-h-0 min-w-0 flex-1 overflow-y-auto p-4 overscroll-contain">
               {search ? <div className="mb-5">{search}</div> : null}
               <p className="mb-2 px-1 text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">Écosystèmes</p>
               <EcosystemSwitcher ecosystem={ecosystem} params={params} mobile onNavigate={() => setMobileOpen(false)} />
@@ -473,7 +473,7 @@ export function EcosystemConnectedShell({ ecosystem, audienceLabel, navigation, 
   return (
     <div className="oga-ecosystem-shell flex h-[100dvh] min-h-0 flex-col overflow-hidden" data-ecosystem={ecosystem} style={style}>
       <EcosystemConnectedHeader ecosystem={ecosystem} audienceLabel={audienceLabel} navigation={navigation} search={search} dashboardPath={dashboardPath} />
-      <div className="oga-ecosystem-content min-h-0 flex-1 overflow-y-auto overscroll-contain">{children}<PageFooter ecosystem={ecosystem} /></div>
+      <div className="oga-ecosystem-content min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain">{children}<PageFooter ecosystem={ecosystem} /></div>
     </div>
   );
 }
@@ -483,7 +483,15 @@ export function EcosystemStandaloneNav({ ecosystem, audienceLabel: _audienceLabe
   const [params] = useSearchParams();
   const [mobileOpen, setMobileOpen] = useState(false);
   const theme = getEcosystem(ecosystem);
-  useEffect(() => setMobileOpen(false), [location.pathname]);
+  useEffect(() => setMobileOpen(false), [location.pathname, location.search, location.hash]);
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    const close = (event: KeyboardEvent) => { if (event.key === 'Escape') setMobileOpen(false); };
+    document.body.style.overflow = 'hidden';
+    window.addEventListener('keydown', close);
+    return () => { document.body.style.overflow = previousOverflow; window.removeEventListener('keydown', close); };
+  }, [mobileOpen]);
   return (
     <>
       <div className="relative z-30 border-b bg-white/95 backdrop-blur-xl" style={{ borderColor: theme.border }}>
@@ -493,7 +501,7 @@ export function EcosystemStandaloneNav({ ecosystem, audienceLabel: _audienceLabe
           <button type="button" onClick={() => setMobileOpen(true)} className="ml-auto flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 text-[#002050] lg:hidden" aria-label={`Ouvrir le menu ${theme.name}`}><Menu size={19} /></button>
         </div>
       </div>
-      {mobileOpen && <div className="fixed inset-0 z-[85] lg:hidden"><button type="button" className="absolute inset-0 bg-slate-950/45" onClick={() => setMobileOpen(false)} aria-label="Fermer"/><aside className="absolute right-0 top-0 h-full w-[min(92vw,380px)] bg-[#F8FAFC] p-4 shadow-2xl"><div className="mb-4 flex items-center justify-between"><strong className="text-[#002050]">Omnia <span style={{ color: theme.accent }}>{theme.name}</span></strong><button type="button" onClick={() => setMobileOpen(false)} className="flex h-10 w-10 items-center justify-center rounded-xl hover:bg-white"><X size={19}/></button></div><PrimaryLinks navigation={navigation} pathname={location.pathname} params={params} compact accent={theme.accent} onNavigate={() => setMobileOpen(false)} /></aside></div>}
+      {mobileOpen && <div className="fixed inset-0 z-[85] lg:hidden"><button type="button" className="absolute inset-0 bg-slate-950/45" onClick={() => setMobileOpen(false)} aria-label="Fermer"/><aside className="absolute right-0 top-0 flex h-[100dvh] w-[min(92vw,380px)] flex-col overflow-hidden bg-[#F8FAFC] p-4 shadow-2xl"><div className="mb-4 flex shrink-0 items-center justify-between"><strong className="text-[#002050]">Omnia <span style={{ color: theme.accent }}>{theme.name}</span></strong><button type="button" onClick={() => setMobileOpen(false)} className="flex h-10 w-10 items-center justify-center rounded-xl hover:bg-white"><X size={19}/></button></div><div className="oga-mobile-ecosystem-menu min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain"><PrimaryLinks navigation={navigation} pathname={location.pathname} params={params} compact accent={theme.accent} onNavigate={() => setMobileOpen(false)} /></div></aside></div>}
     </>
   );
 }
@@ -512,7 +520,7 @@ export function EcosystemSectionLanding({ ecosystem, group }: { ecosystem: Ecosy
         <ArrowLeft size={17} /> Omnia {theme.name}
       </Link>
 
-      <div className="mt-5 border-b pb-6" style={{ borderColor: theme.border }}>
+      <div className="mt-5 min-w-0 border-b pb-6" style={{ borderColor: theme.border }}>
         <div className="flex items-center gap-3">
           {GroupIcon ? <span className="flex h-11 w-11 items-center justify-center rounded-2xl" style={{ color: theme.accent, background: theme.soft }}><GroupIcon size={21} /></span> : null}
           <div>

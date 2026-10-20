@@ -21,7 +21,7 @@ const checks = [
   ['édition directe du document', () => editor.includes('inlineText?.isContentEditable') && inline.includes('e.stopPropagation()')],
   ['panneau mobile fermé au départ', () => editor.includes('window.innerWidth >= 768')],
   ['zoom mobile adaptatif', () => editor.includes('(window.innerWidth - 72) / width')],
-  ['navigation PC maintenue', () => menu.includes("compact && group.path.startsWith('/omnia-career/')") && menu.includes('lg:block')],
+  ['navigation PC maintenue', () => menu.includes("compact && group.children?.length") && !menu.includes("compact && group.path.startsWith('/omnia-career/')") && menu.includes('lg:block')],
   ['CSS mobile isolé', () => css.includes('@media (max-width: 767px) {') && css.includes('.oga-course-detail-page')],
   ['moteur Career export préservé', () => editor.includes('exportCareerWord') && editor.includes('handlePdfDownload') && editor.includes('<CareerDocumentSurface')],
 ];

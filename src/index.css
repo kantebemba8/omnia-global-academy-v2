@@ -4538,13 +4538,31 @@ html.oga-native .oga-scorm-fullscreen {
 .oga-horizontal-menu-scroll::-webkit-scrollbar-thumb { background: rgba(0, 32, 80, 0.42); border-radius: 999px; }
 .oga-horizontal-menu-scroll::-webkit-scrollbar-thumb:hover { background: rgba(0, 32, 80, 0.62); }
 
-/* OGA mobile, périmètre Formations/Career uniquement : pas d'effet sur desktop. */
+/* OGA mobile : le viewport ne doit pas se déplacer horizontalement.
+   Les vues PC restent inchangées et les tableaux/carrousels conservent
+   leur propre défilement horizontal à l'intérieur du conteneur. */
 @media (max-width: 767px) {
-  .oga-ecosystem-shell[data-ecosystem="formations"] .oga-ecosystem-content,
-  .oga-ecosystem-shell[data-ecosystem="career"] .oga-ecosystem-content {
+  .oga-ecosystem-shell,
+  .oga-role-shell {
+    box-sizing: border-box;
+    width: 100%;
     min-width: 0;
     max-width: 100%;
     overflow-x: clip;
+  }
+  .oga-ecosystem-shell .oga-ecosystem-content,
+  .oga-role-shell .oga-role-content {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    overflow-x: hidden;
+    overscroll-behavior-x: none;
+  }
+  .oga-mobile-ecosystem-menu {
+    overflow-x: hidden;
+    overscroll-behavior-x: none;
+    -webkit-overflow-scrolling: touch;
   }
   .oga-course-detail-page,
   .oga-course-reader-shell,
@@ -4554,6 +4572,8 @@ html.oga-native .oga-scorm-fullscreen {
     max-width: 100%;
     overflow-x: clip;
   }
+  .oga-ecosystem-shell .oga-ecosystem-content :where(h1, h2, h3),
+  .oga-role-shell .oga-role-content :where(h1, h2, h3),
   .oga-course-detail-page :where(h1, h2, h3, p) {
     overflow-wrap: anywhere;
   }
